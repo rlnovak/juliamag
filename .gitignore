@@ -1,0 +1,6 @@
+Manifest.toml
+/docs/build/
+*.ovf
+*.out
+.vscode/
+.claude/
