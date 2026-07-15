@@ -30,4 +30,10 @@ export Material, exchangelength
 include("magnetization.jl")
 export zeromag, uniform, uniform!, randommag, randommag!, vortex, vortex!, normalize!, average
 
+# --- Effective-field terms -------------------------------------------------
+include("exchange.jl")
+include("anisotropy.jl")
+include("zeeman.jl")
+export exchange!, anisotropy!, zeeman!
+
 end # module
