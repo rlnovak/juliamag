@@ -10,4 +10,5 @@ using Test
     include("test_demag_kernel.jl")
     include("test_demag_field.jl")
     include("test_dynamics.jl")
+    include("test_energy.jl")
 end

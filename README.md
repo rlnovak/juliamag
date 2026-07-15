@@ -28,7 +28,9 @@ Under construction. Roadmap:
 - [x] **4.** Demagnetization field via FFT convolution
 - [x] **5.** LLG torque + adaptive RK45 solver + energy minimizer + OrdinaryDiffEq integration
 - [x] **6.** µMAG standard problem 4 ([`examples/`](examples/stdproblem4.jl))
-- [ ] **7.** OVF I/O and output tables
+- [x] **7.** Energies (exchange, demag, anisotropy, DMI, Zeeman) for convergence checking
+- [ ] Spin-transfer torque (Zhang-Li, Slonczewski)
+- [ ] OVF I/O and output tables
 
 ## Usage
 

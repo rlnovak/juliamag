@@ -56,4 +56,9 @@ export Minimizer, minimizestep!, minimize!
 include("integrator.jl")
 export Integrator, advance!, relaxate!, currenttime, state
 
+# --- Energies --------------------------------------------------------------
+include("energy.jl")
+export fieldenergy, exchangeenergy, anisotropyenergy, dmienergy, demagenergy,
+       zeemanenergy, totalenergy
+
 end # module
