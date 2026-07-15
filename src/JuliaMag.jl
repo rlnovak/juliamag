@@ -13,6 +13,7 @@ module JuliaMag
 
 using Random: AbstractRNG
 import Random
+using LinearAlgebra: mul!
 
 # --- Constants -------------------------------------------------------------
 include("constants.jl")
@@ -39,5 +40,7 @@ export exchange!, anisotropy!, zeeman!
 # --- Demagnetization -------------------------------------------------------
 include("demag_kernel.jl")
 export DemagKernel, demagkernel
+include("demag_field.jl")
+export DemagPlan, demagfield!
 
 end # module

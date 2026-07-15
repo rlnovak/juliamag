@@ -25,7 +25,7 @@ Under construction. Roadmap:
 - [x] **1.** Package skeleton, `Mesh`, `Material`, magnetization states
 - [x] **2.** Exchange, uniaxial anisotropy, Zeeman fields
 - [x] **3.** Demagnetization kernel (Newell / brute-force integration)
-- [ ] **4.** Demagnetization field via FFT convolution
+- [x] **4.** Demagnetization field via FFT convolution
 - [ ] **5.** LLG torque + adaptive RK45 solver
 - [ ] **6.** µMAG standard problem 4
 - [ ] **7.** OVF I/O and output tables
