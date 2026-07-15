@@ -11,4 +11,5 @@ using Test
     include("test_demag_field.jl")
     include("test_dynamics.jl")
     include("test_energy.jl")
+    include("test_stt.jl")
 end

@@ -61,4 +61,8 @@ include("energy.jl")
 export fieldenergy, exchangeenergy, anisotropyenergy, dmienergy, demagenergy,
        zeemanenergy, totalenergy
 
+# --- Spin-transfer torque --------------------------------------------------
+include("stt.jl")
+export zhanglitorque!, slonczewskitorque!
+
 end # module

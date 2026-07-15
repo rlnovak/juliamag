@@ -29,26 +29,36 @@ struct Material{T<:AbstractFloat}
     anisU::NTuple{3,T}
     Dind::T
     Dbulk::T
+    # Spin-transfer-torque parameters (0 disables the respective term).
+    pol::T          # current spin polarization (both Zhang-Li and Slonczewski)
+    xi::T           # Zhang-Li non-adiabaticity (β)
+    lambda::T       # Slonczewski Slonczewski asymmetry parameter Λ
+    epsilonPrime::T # Slonczewski secondary (field-like) torque ε'
 
-    function Material{T}(Msat, Aex, alpha, Ku, anisU, Dind, Dbulk) where {T<:AbstractFloat}
+    function Material{T}(Msat, Aex, alpha, Ku, anisU, Dind, Dbulk,
+                         pol, xi, lambda, epsilonPrime) where {T<:AbstractFloat}
         Msat > 0 || throw(ArgumentError("Msat must be > 0, got $Msat"))
         alpha >= 0 || throw(ArgumentError("alpha must be ≥ 0, got $alpha"))
         u = NTuple{3,T}(anisU)
         n = sqrt(u[1]^2 + u[2]^2 + u[3]^2)
         n > 0 || throw(ArgumentError("anisU must not be the zero vector"))
-        new{T}(T(Msat), T(Aex), T(alpha), T(Ku), u ./ n, T(Dind), T(Dbulk))
+        new{T}(T(Msat), T(Aex), T(alpha), T(Ku), u ./ n, T(Dind), T(Dbulk),
+               T(pol), T(xi), T(lambda), T(epsilonPrime))
     end
 end
 
 function Material(; Msat, Aex, alpha, Ku = nothing, anisU = (0, 0, 1),
-                  Dind = nothing, Dbulk = nothing)
+                  Dind = nothing, Dbulk = nothing,
+                  pol = nothing, xi = nothing, lambda = 1.0, epsilonPrime = nothing)
     # Optional constants default to nothing rather than 0.0 so that leaving one
     # out cannot drag an otherwise-Float32 material up to Float64.
     opt(x) = x === nothing ? Bool : typeof(float(x))
     T = promote_type(typeof(float(Msat)), typeof(float(Aex)), typeof(float(alpha)),
-                     opt(Ku), opt(Dind), opt(Dbulk))
+                     opt(Ku), opt(Dind), opt(Dbulk), opt(pol), opt(xi), opt(epsilonPrime))
     Material{T}(Msat, Aex, alpha, something(Ku, zero(T)), anisU,
-                something(Dind, zero(T)), something(Dbulk, zero(T)))
+                something(Dind, zero(T)), something(Dbulk, zero(T)),
+                something(pol, zero(T)), something(xi, zero(T)),
+                T(lambda), something(epsilonPrime, zero(T)))
 end
 
 Base.eltype(::Material{T}) where {T} = T

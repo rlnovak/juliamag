@@ -29,8 +29,10 @@ Under construction. Roadmap:
 - [x] **5.** LLG torque + adaptive RK45 solver + energy minimizer + OrdinaryDiffEq integration
 - [x] **6.** µMAG standard problem 4 ([`examples/`](examples/stdproblem4.jl))
 - [x] **7.** Energies (exchange, demag, anisotropy, DMI, Zeeman) for convergence checking
-- [ ] Spin-transfer torque (Zhang-Li, Slonczewski)
+- [x] Spin-transfer torque (Zhang-Li, Slonczewski)
+- [ ] Bulk DMI validation, geometries / regions
 - [ ] OVF I/O and output tables
+- [ ] GPU (CuArray) — the dispatch design is ready for it
 
 ## Usage
 
