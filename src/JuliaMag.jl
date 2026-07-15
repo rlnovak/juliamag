@@ -51,5 +51,7 @@ include("llg.jl")
 export torque!, maxtorque
 include("solver.jl")
 export Solver, step!, runtime!, relax!
+include("minimizer.jl")
+export Minimizer, minimizestep!, minimize!
 
 end # module
