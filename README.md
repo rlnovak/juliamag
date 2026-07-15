@@ -26,8 +26,8 @@ Under construction. Roadmap:
 - [x] **2.** Exchange, uniaxial anisotropy, Zeeman fields (+ interfacial & bulk DMI)
 - [x] **3.** Demagnetization kernel (Newell / brute-force integration)
 - [x] **4.** Demagnetization field via FFT convolution
-- [x] **5.** LLG torque + adaptive RK45 solver
-- [ ] **6.** µMAG standard problem 4
+- [x] **5.** LLG torque + adaptive RK45 solver + energy minimizer + OrdinaryDiffEq integration
+- [x] **6.** µMAG standard problem 4 ([`examples/`](examples/stdproblem4.jl))
 - [ ] **7.** OVF I/O and output tables
 
 ## Usage
@@ -43,6 +43,22 @@ mat = Material(Msat = 8.0e5, Aex = 1.3e-11, alpha = 0.02)
 
 m = uniform(mesh, (1, 0, 0))
 average(m)   # (1.0, 0.0, 0.0)
+```
+
+## Standard problem 4
+
+[`examples/stdproblem4.jl`](examples/stdproblem4.jl) runs the µMAG standard
+problem 4: relax a 500 × 125 × 3 nm Permalloy film to its S-state (energy
+minimizer), apply field 1 (−24.6, 4.3, 0 mT), and integrate the switching for
+1 ns. It writes `stdproblem4.txt` (⟨m⟩ vs t) and this figure:
+
+![Standard problem 4](examples/stdproblem4.png)
+
+⟨mx⟩ crosses zero at ~0.14 ns and rings down to −1, ⟨my⟩ peaks near +0.75 —
+matching the published µMAG reference curves.
+
+```
+julia --project=examples examples/stdproblem4.jl
 ```
 
 ## Tests

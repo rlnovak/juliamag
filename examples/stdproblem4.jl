@@ -25,10 +25,10 @@ function relax_sstate(mesh, mat)
     # S while the +y and +z memory of the tilt sets the S's sense.
     m = uniform(mesh, (1, 1, 1))
 
-    # Minimize the energy — much faster than integrating the stiff LLG in time.
+    # Minimize the energy — much faster than integrating the LLG in time.
     world = World(mesh, mat; demag = true)
     println("\nRelaxing to the S-state (energy minimizer)…"); flush(stdout)
-    mn = Minimizer(world, m; stoptorque = 1e-4)
+    mn = Minimizer(world, m; stopdm = 1e-6)
     minimize!(mn; maxsteps = 20_000, verbose = true)
     mx, my, mz = average(mn.m)
     @printf("  relaxed after %d steps, ⟨m⟩ = (%.4f, %.4f, %.4f)\n", mn.step, mx, my, mz)
@@ -39,21 +39,21 @@ end
 # --- Phase 2: apply field 1 and record the switching -----------------------
 function run_switching(mesh, mat, m0; t_total = 1e-9, n_samples = 400)
     world = World(mesh, mat; demag = true, Bext = (-24.6e-3, 4.3e-3, 0.0))
-    solver = Solver(world, m0; dt = 1e-14, maxerr = 1e-5, maxdt = 5e-13)
+    it = Integrator(world, m0; abstol = 1e-6, reltol = 1e-5, dtmax = 5e-13, tend = t_total)
     Δt = t_total / n_samples
 
     ts = Float64[]; mxs = Float64[]; mys = Float64[]; mzs = Float64[]
-    mx, my, mz = average(solver.m)
-    push!(ts, solver.t); push!(mxs, mx); push!(mys, my); push!(mzs, mz)
+    mx, my, mz = average(state(it))
+    push!(ts, currenttime(it)); push!(mxs, mx); push!(mys, my); push!(mzs, mz)
 
-    println("\nIntegrating the switching for 1 ns…"); flush(stdout)
+    println("\nIntegrating the switching for 1 ns (OrdinaryDiffEq/Tsit5)…"); flush(stdout)
     for s in 1:n_samples
-        runtime!(solver, Δt)
-        mx, my, mz = average(solver.m)
-        push!(ts, solver.t); push!(mxs, mx); push!(mys, my); push!(mzs, mz)
+        advance!(it, Δt)
+        mx, my, mz = average(state(it))
+        push!(ts, currenttime(it)); push!(mxs, mx); push!(mys, my); push!(mzs, mz)
         if s % 50 == 0
-            @printf("  t = %.2f ns  ⟨m⟩ = (%.4f, %.4f, %.4f)  [%d steps, %d rejected]\n",
-                    solver.t * 1e9, mx, my, mz, solver.step, solver.nfail)
+            @printf("  t = %.2f ns  ⟨m⟩ = (%.4f, %.4f, %.4f)\n",
+                    currenttime(it) * 1e9, mx, my, mz)
             flush(stdout)
         end
     end
