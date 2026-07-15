@@ -43,4 +43,12 @@ export DemagKernel, demagkernel
 include("demag_field.jl")
 export DemagPlan, demagfield!
 
+# --- Dynamics --------------------------------------------------------------
+include("effective_field.jl")
+export World, setexternalfield!, effectivefield!
+include("llg.jl")
+export torque!, maxtorque
+include("solver.jl")
+export Solver, step!, runtime!, relax!
+
 end # module
