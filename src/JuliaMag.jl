@@ -53,5 +53,7 @@ include("solver.jl")
 export Solver, step!, runtime!, relax!
 include("minimizer.jl")
 export Minimizer, minimizestep!, minimize!
+include("integrator.jl")
+export Integrator, advance!, relaxate!, currenttime, state
 
 end # module

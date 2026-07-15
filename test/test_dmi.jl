@@ -47,15 +47,15 @@
         end
 
         B = similar(m); dmi!(B, m, mesh, mat)
-        pref = 2 * D / (μ0 * Msat)
+        pref = 2 * D / Msat
         for i in 3:Nx-2
             @test B[1, i, 1, 1] ≈ pref * slope rtol = 1e-6      # B_x = pref ∂mz/∂x
         end
     end
 
-    @testset "bulk field equals -(2D/μ0 Msat) ∇×m" begin
+    @testset "bulk field equals -(2D/Msat) ∇×m" begin
         # A helical state m = (cos(qx), sin(qx), 0) has ∇×m = (0, 0, q cos(qx)),
-        # so B = -(2D/μ0Msat)(0,0,q cos qx). Check the z-component in the interior.
+        # so B = -(2D/Msat)(0,0,q cos qx). Check the z-component in the interior.
         Nx = 64
         L = 256e-9
         cx = L / Nx
@@ -73,7 +73,7 @@
         end
 
         B = similar(m); dmi!(B, m, mesh, mat)
-        pref = 2 * D / (μ0 * Msat)
+        pref = 2 * D / Msat
         for i in 4:Nx-3
             x = (i - 0.5) * cx
             expected = -pref * q * cos(q * x)

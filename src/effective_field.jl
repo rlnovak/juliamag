@@ -23,12 +23,14 @@ mutable struct World{T<:AbstractFloat,P}
     material::Material{T}
     demagplan::P                     # DemagPlan{T,...} or nothing
     Bext::NTuple{3,T}
+    _Bbuf::Array{T,4}                # scratch effective-field buffer for integrators
 end
 
 function World(mesh::Mesh, mat::Material{T}; demag::Bool = true,
               Bext = (0, 0, 0), accuracy = 6.0) where {T}
     plan = demag ? DemagPlan(demagkernel(T, mesh; accuracy = accuracy), mesh, mat) : nothing
-    World{T,typeof(plan)}(mesh, mat, plan, NTuple{3,T}(Bext))
+    Bbuf = zeros(T, 3, mesh.size...)
+    World{T,typeof(plan)}(mesh, mat, plan, NTuple{3,T}(Bext), Bbuf)
 end
 
 "Set the uniform applied field [T]."

@@ -3,7 +3,7 @@
 # Energy density  E = Ku (1 - (m·u)²)  is minimized when m is parallel to the
 # easy axis u. The associated effective field is
 #
-#     B_anis = (2 Ku / (μ0 Msat)) (m·u) u
+#     B_anis = (2 Ku / Msat) (m·u) u          (Tesla, no μ0 — mumax3 convention)
 #
 # Ku > 0 gives an easy axis along u; Ku < 0 gives an easy plane perpendicular
 # to u. Unlike an energy, the field does not carry the cell volume — that only
@@ -19,7 +19,7 @@ A no-op when `mat.Ku == 0` and `add=true`; writes zeros when `add=false`.
 function anisotropy!(B::AbstractArray{T,4}, m::AbstractArray{T,4},
                      mesh::Mesh, mat::Material; add::Bool = false) where {T}
     Nx, Ny, Nz = mesh.size
-    pref = T(2 * mat.Ku / (μ0 * mat.Msat))
+    pref = T(2 * mat.Ku / mat.Msat)          # Tesla field, no μ0 (mumax3 convention)
     ux, uy, uz = mat.anisU
 
     if pref == 0 && !add

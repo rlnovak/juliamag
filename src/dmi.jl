@@ -6,11 +6,13 @@
 # Interfacial (Néel), constant D [J/m²], for thin films / multilayers with
 # broken inversion symmetry:
 #
-#     B_dmi = (2 D / (μ0 Msat)) ( ∂mz/∂x, ∂mz/∂y, -∂mx/∂x - ∂my/∂y )
+#     B_dmi = (2 D / Msat) ( ∂mz/∂x, ∂mz/∂y, -∂mx/∂x - ∂my/∂y )
 #
 # Bulk (Bloch), constant D [J/m³], for chiral B20 crystals:
 #
-#     B_dmi = -(2 D / (μ0 Msat)) ∇×m
+#     B_dmi = -(2 D / Msat) ∇×m
+#
+# All in Tesla, no μ0 (mumax3 convention; μ0 enters only demag/Zeeman).
 #
 # Both use central differences for the gradients, with a Neumann (∂m/∂n = 0)
 # condition at free boundaries — the missing neighbour is taken equal to the
@@ -60,7 +62,7 @@ function dmi_interfacial!(B::AbstractArray{T,4}, m::AbstractArray{T,4},
     Nx, Ny, Nz = mesh.size
     cx, cy, cz = mesh.cellsize
     px, py, pz = isperiodic(mesh, 1), isperiodic(mesh, 2), isperiodic(mesh, 3)
-    pref = T(2 * mat.Dind / (μ0 * mat.Msat))
+    pref = T(2 * mat.Dind / mat.Msat)        # Tesla, no μ0 (mumax3 convention)
     i2x = T(1 / (2cx)); i2y = T(1 / (2cy))
 
     @inbounds for k in 1:Nz, j in 1:Ny, i in 1:Nx
@@ -86,7 +88,7 @@ function dmi_bulk!(B::AbstractArray{T,4}, m::AbstractArray{T,4},
     Nx, Ny, Nz = mesh.size
     cx, cy, cz = mesh.cellsize
     px, py, pz = isperiodic(mesh, 1), isperiodic(mesh, 2), isperiodic(mesh, 3)
-    pref = T(2 * mat.Dbulk / (μ0 * mat.Msat))
+    pref = T(2 * mat.Dbulk / mat.Msat)       # Tesla, no μ0 (mumax3 convention)
     i2x = T(1 / (2cx)); i2y = T(1 / (2cy)); i2z = T(1 / (2cz))
 
     @inbounds for k in 1:Nz, j in 1:Ny, i in 1:Nx

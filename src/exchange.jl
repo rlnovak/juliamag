@@ -3,9 +3,11 @@
 # The Heisenberg exchange favours parallel neighbouring moments. In the
 # continuum micromagnetic limit its effective field is
 #
-#     B_exch = (2 A / (μ0 Msat)) ∇²m
+#     B_exch = (2 A / Msat) ∇²m
 #
-# with A the exchange stiffness [J/m]. The Laplacian is discretized with the
+# with A the exchange stiffness [J/m]. This is a genuine Tesla field in the
+# OOMMF/mumax3 convention B_eff = -(1/Msat) δE/δm; no μ0 appears here (it enters
+# only the demag and Zeeman terms). The Laplacian is discretized with the
 # standard 6-neighbour stencil on the finite-difference grid,
 #
 #     ∇²m|_c ≈ Σ_axes (m_left - 2 m_c + m_right) / Δ²
@@ -29,8 +31,11 @@ function exchange!(B::AbstractArray{T,4}, m::AbstractArray{T,4},
     cx, cy, cz = mesh.cellsize
     px, py, pz = isperiodic(mesh, 1), isperiodic(mesh, 2), isperiodic(mesh, 3)
 
-    # Prefactor of the whole field, folding in 1/Δ² per axis.
-    pref = T(2 * mat.Aex / (μ0 * mat.Msat))
+    # Prefactor of the whole field, folding in 1/Δ² per axis. The effective
+    # field is B_eff = -(1/Msat) δE/δm in Tesla (the OOMMF/mumax3 convention),
+    # so the exchange field is 2A/Msat · ∇²m — NO μ0 here. (μ0 enters only the
+    # demag and Zeeman terms, which are genuine B fields.)
+    pref = T(2 * mat.Aex / mat.Msat)
     wx = pref / T(cx^2)
     wy = pref / T(cy^2)
     wz = pref / T(cz^2)

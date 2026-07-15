@@ -33,7 +33,7 @@ using LinearAlgebra: norm
             B = similar(m)
             exchange!(B, m, mesh1, py)
 
-            pref = 2 * py.Aex / (μ0 * py.Msat)
+            pref = 2 * py.Aex / py.Msat        # Tesla field, no μ0 (mumax3 convention)
             # Compare in the interior only; boundaries use the Neumann condition.
             for i in 4:Nx-3, c in (1, 3)
                 expected = -pref * q^2 * m[c, i, 1, 1]
@@ -62,7 +62,7 @@ using LinearAlgebra: norm
             B = similar(m)
             anisotropy!(B, m, mesh, mat)
             # m·u = 1, so B = (2Ku/μ0Msat) u, purely along z.
-            expected = 2 * mat.Ku / (μ0 * mat.Msat)
+            expected = 2 * mat.Ku / mat.Msat
             @test all(B[3, :, :, :] .≈ expected)
             @test maximum(abs, B[1:2, :, :, :]) < 1e-9
         end

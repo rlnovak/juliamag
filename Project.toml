@@ -1,16 +1,28 @@
 name = "JuliaMag"
 uuid = "3f8a1c6e-5b2d-4e91-9a07-6d4c8f2b1e53"
-authors = ["Rafael L. Novak <rlnovak@gmail.com>"]
 version = "0.1.0"
+authors = ["Rafael L. Novak <rlnovak@gmail.com>"]
 
 [deps]
+ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+LinearSolve = "7ed4a6bd-45f5-4d41-b270-4a48e9bafcae"
+OrdinaryDiffEqRosenbrock = "43230ef6-c299-4910-a778-202eb28ce4ce"
+OrdinaryDiffEqSDIRK = "2d112036-d095-4a1e-ab9a-08536f3ecdbf"
+OrdinaryDiffEqTsit5 = "b1df2697-797e-41e3-8120-5422d3b24e4a"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+SciMLBase = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
 
 [compat]
+ADTypes = "1.22.2"
 FFTW = "1"
+LinearSolve = "4.3.0"
+OrdinaryDiffEqRosenbrock = "2.4.1"
+OrdinaryDiffEqSDIRK = "2.8.1"
+OrdinaryDiffEqTsit5 = "2.1.0"
+SciMLBase = "3.36.0"
 julia = "1.9"
 
 [extras]
