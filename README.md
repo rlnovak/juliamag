@@ -23,7 +23,7 @@ Index convention is `(x, y, z)`, 1-based, everywhere.
 Under construction. Roadmap:
 
 - [x] **1.** Package skeleton, `Mesh`, `Material`, magnetization states
-- [x] **2.** Exchange, uniaxial anisotropy, Zeeman fields
+- [x] **2.** Exchange, uniaxial anisotropy, Zeeman fields (+ interfacial & bulk DMI)
 - [x] **3.** Demagnetization kernel (Newell / brute-force integration)
 - [x] **4.** Demagnetization field via FFT convolution
 - [x] **5.** LLG torque + adaptive RK45 solver

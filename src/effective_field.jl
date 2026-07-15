@@ -44,6 +44,9 @@ function effectivefield!(B::AbstractArray{T,4}, m::AbstractArray{T,4}, w::World{
     if w.material.Ku != 0
         anisotropy!(B, m, w.mesh, w.material; add = true)
     end
+    if w.material.Dind != 0 || w.material.Dbulk != 0
+        dmi!(B, m, w.mesh, w.material; add = true)
+    end
     if w.demagplan !== nothing
         demagfield!(B, m, w.demagplan; add = true)
     end

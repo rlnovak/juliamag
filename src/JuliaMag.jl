@@ -34,8 +34,9 @@ export zeromag, uniform, uniform!, randommag, randommag!, vortex, vortex!, norma
 # --- Effective-field terms -------------------------------------------------
 include("exchange.jl")
 include("anisotropy.jl")
+include("dmi.jl")
 include("zeeman.jl")
-export exchange!, anisotropy!, zeeman!
+export exchange!, anisotropy!, dmi!, zeeman!
 
 # --- Demagnetization -------------------------------------------------------
 include("demag_kernel.jl")
