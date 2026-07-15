@@ -36,4 +36,8 @@ include("anisotropy.jl")
 include("zeeman.jl")
 export exchange!, anisotropy!, zeeman!
 
+# --- Demagnetization -------------------------------------------------------
+include("demag_kernel.jl")
+export DemagKernel, demagkernel
+
 end # module
