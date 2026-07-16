@@ -31,13 +31,14 @@ function zhanglitorque!(τ::AbstractArray{T,4}, m::AbstractArray{T,4},
     α  = T(mat.alpha)
     ξ  = T(mat.xi)
 
-    # PREFACTOR = μB / (2 qe γLL);  b = PREFACTOR / (Msat (1+ξ²))
-    b = T(μB / (2 * qe * γLL) / (mat.Msat * (1 + ξ^2)))
+    # mumax3's PREFACTOR = μB/(2 qe γLL) carries a 1/γLL because mumax applies
+    # γLL in the time integrator (dm = γLL·torque·dt). JuliaMag's torque!/RK apply
+    # γLL inside the LLG torque instead, so the STT term must carry γLL explicitly
+    # to sit on the same scale — the γLL here cancels the 1/γLL in PREFACTOR,
+    # leaving b = μB/(2 qe Msat (1+ξ²)).
+    b = T(μB / (2 * qe) / (mat.Msat * (1 + ξ^2)))     # already ×γLL vs mumax
     Jx = T(mat.pol * J[1]); Jy = T(mat.pol * J[2]); Jz = T(mat.pol * J[3])
-    # b/c already folds in the central-difference 1/(2c): mumax uses
-    # deltax = m[i+1]-m[i-1] (span 2 cells) with a b/cx factor, so the effective
-    # derivative is (m[i+1]-m[i-1])/(2 cx) scaled by 2 → b/cx · deltax. We keep
-    # mumax's exact arithmetic: hs += (b/c)·J·(m[nbr+]-m[nbr-]).
+    # mumax's exact arithmetic: hs += (b/c)·J·(m[nbr+]-m[nbr-]) (no 1/2).
     bcx = b / T(cx); bcy = b / T(cy); bcz = b / T(cz)
 
     gfac = T(-1 / (1 + α^2))
@@ -104,7 +105,9 @@ function slonczewskitorque!(τ::AbstractArray{T,4}, m::AbstractArray{T,4},
 
     pn = normalize3(NTuple{3,T}(p))
     px, py, pz = pn
-    β = T((ħ / qe) * Jz / (thickness * mat.Msat))
+    # mumax3: β = (ħ/qe) Jz/(t Ms), with γLL applied in the integrator. JuliaMag
+    # carries γLL inside the torque, so multiply β by γLL to match the LLG scale.
+    β = T(γLL * (ħ / qe) * Jz / (thickness * mat.Msat))
     Λ2 = Λ^2
     gilb = T(1 / (1 + α^2))
 

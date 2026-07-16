@@ -3,6 +3,20 @@ using LinearAlgebra: norm, ⋅, ×
 @testset "Spin-transfer torque" begin
     Msat = 8.0e5
 
+    @testset "Zhang-Li torque is on the LLG scale (γ carried inside)" begin
+        # Regression guard for the γLL bug: the STT must be comparable to the LLG
+        # torque for a realistic current, not ~1e11 times smaller. In a vortex
+        # texture with j = 1e12 A/m², the Zhang-Li torque should reach ~1e9 rad/s
+        # or more — the same order as the LLG torque, so the current actually
+        # moves the texture (std problem 5).
+        mesh = Mesh((32, 32, 4), (100e-9/32, 100e-9/32, 10e-9/4))
+        mat = Material(Msat = Msat, Aex = 1.3e-11, alpha = 0.1, pol = 1.0, xi = 0.05)
+        m = setconfig(mesh, VortexConfig(mesh; circ = 1, pol = 1))
+        τ = zeromag(mesh)
+        zhanglitorque!(τ, m, mesh, mat, (1e12, 0, 0); add = false)
+        @test maxtorque(τ) > 1e8
+    end
+
     @testset "Zhang-Li vanishes without polarization or current, and for uniform m" begin
         mesh = Mesh((16, 4, 1), (4e-9, 4e-9, 4e-9))
         # pol = 0 ⇒ no torque
@@ -103,7 +117,8 @@ using LinearAlgebra: norm, ⋅, ×
         τ = zeromag(mesh)
         slonczewskitorque!(τ, m, mesh, mat, Jz, p, thickness; add = false)
 
-        β = (JuliaMag.ħ / JuliaMag.qe) * Jz / (thickness * Msat)
+        # γLL is carried inside JuliaMag's torque (mumax applies it in the integrator).
+        β = JuliaMag.γLL * (JuliaMag.ħ / JuliaMag.qe) * Jz / (thickness * Msat)
         ε = pol * 1.0 / (2.0 + 0.0)          # Λ=1: ε = pol/2
         A = β * ε
         # α=0, ε'=0 ⇒ τ = A·m×(p×m). |m×(p×m)| = 1 for m⊥p.

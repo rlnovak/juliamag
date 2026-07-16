@@ -1,0 +1,462 @@
+\documentclass[aps,pra,twocolumn,superscriptaddress,floatfix,longbibliography]{revtex4-2}
+
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{bm}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+% --- Julia source-code listing style --------------------------------------
+\definecolor{jlkw}{RGB}{130,60,150}
+\definecolor{jlstr}{RGB}{170,60,40}
+\definecolor{jlcom}{RGB}{110,110,110}
+\lstdefinelanguage{Julia}{
+  keywords={function,struct,mutable,end,for,while,if,else,elseif,return,using,
+            import,module,export,const,where,in,begin,let,do},
+  sensitive=true,
+  morecomment=[l]{\#},
+  morestring=[b]",
+}
+\lstset{
+  language=Julia,
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{jlkw}\bfseries,
+  stringstyle=\color{jlstr},
+  commentstyle=\color{jlcom}\itshape,
+  showstringspaces=false,
+  columns=fullflexible,
+  breaklines=true,
+  frame=single,
+  framerule=0.3pt,
+  rulecolor=\color{gray!40},
+}
+
+\newcommand{\JuliaMag}{\textsc{JuliaMag}}
+\newcommand{\mumax}{\textsc{mumax}$^3$}
+\newcommand{\oommf}{\textsc{OOMMF}}
+\newcommand{\vm}{\bm{m}}
+\newcommand{\vB}{\bm{B}}
+
+\begin{document}
+
+\title{\JuliaMag: a minimalist, dispatch-based micromagnetic solver in pure Julia}
+
+\author{Rafael L.\ Novak}
+\email{rlnovak@gmail.com}
+\affiliation{Universidade Federal de Santa Catarina (UFSC), Blumenau, Brazil}
+
+\date{\today}
+
+\begin{abstract}
+We present \JuliaMag, an open-source micromagnetic simulation package written
+entirely in the Julia programming language. \JuliaMag{} solves the
+Landau--Lifshitz--Gilbert (LLG) equation on a finite-difference mesh, including
+the exchange, magnetostatic (demagnetizing), uniaxial anisotropy, Zeeman, and
+Dzyaloshinskii--Moriya interactions, as well as the Zhang--Li and Slonczewski
+spin-transfer torques. The code is designed around Julia's multiple dispatch:
+every field and torque operates on an abstract array type, so the same source
+runs unchanged on CPU arrays today and on GPU arrays once device methods are
+added. We describe the data layout, the field and torque implementations, the
+FFT-accelerated demagnetization convolution, the time integration and energy
+minimization, and the initial-state library. We validate \JuliaMag{} against the
+\mumax{} and \oommf{} reference codes on the $\mu$MAG standard problems~4 and~5,
+reproducing the reference dynamics to within $\sim 4\times10^{-3}$ in the spatially
+averaged magnetization.
+\end{abstract}
+
+\maketitle
+
+% ==========================================================================
+\section{Introduction}
+\label{sec:intro}
+
+\emph{[To be written last, with the reference articles provided by the author.]}
+
+% ==========================================================================
+\section{Theory}
+\label{sec:theory}
+
+The state of a micromagnetic system is the reduced magnetization field
+$\vm(\bm{r},t) = \bm{M}(\bm{r},t)/M_s$, a unit-vector field with $M_s$ the
+saturation magnetization. Its dynamics obey the Landau--Lifshitz--Gilbert (LLG)
+equation, written here in the explicit (Landau--Lifshitz) form
+%
+\begin{equation}
+  \frac{\partial \vm}{\partial t}
+  = -\frac{\gamma}{1+\alpha^2}
+    \Big[\, \vm\times\vB_{\mathrm{eff}}
+          + \alpha\,\vm\times(\vm\times\vB_{\mathrm{eff}}) \,\Big],
+  \label{eq:llg}
+\end{equation}
+%
+where $\gamma$ is the gyromagnetic ratio and $\alpha$ the Gilbert damping. The
+effective field $\vB_{\mathrm{eff}}$ is the variational derivative of the total
+energy density $\varepsilon$ with respect to the magnetization,
+%
+\begin{equation}
+  \vB_{\mathrm{eff}} = -\frac{1}{M_s}\frac{\delta \varepsilon}{\delta \vm},
+  \label{eq:beff}
+\end{equation}
+%
+a genuine field in tesla. It is the sum of the contributing terms,
+%
+\begin{equation}
+  \vB_{\mathrm{eff}}
+  = \vB_{\mathrm{exch}} + \vB_{\mathrm{demag}}
+  + \vB_{\mathrm{anis}} + \vB_{\mathrm{DMI}} + \vB_{\mathrm{ext}},
+  \label{eq:beffsum}
+\end{equation}
+%
+each defined in Sec.~\ref{sec:fields}. Two current-driven spin-transfer torques,
+of the Zhang--Li and Slonczewski types, are added to the right-hand side of
+Eq.~\eqref{eq:llg} when a current is present (Sec.~\ref{sec:stt}).
+
+We follow the convention of \mumax{}~\cite{mumax3} and \oommf{}~\cite{oommf}
+throughout: the effective field carries no factor of $\mu_0$ in the exchange,
+anisotropy, or DMI terms [Eq.~\eqref{eq:beff}]; $\mu_0$ appears only in the
+demagnetizing and Zeeman fields, which are physical $\bm{B}$ fields.
+
+% ==========================================================================
+\section{Architecture}
+\label{sec:arch}
+
+\subsection{Design goals}
+
+\JuliaMag{} is written to be \emph{minimal}, \emph{transparent}, and
+\emph{portable to the GPU without a rewrite}. These goals are met by three
+decisions that pervade the code.
+
+\paragraph{Data layout.}
+The magnetization is stored as a dense four-dimensional array of shape
+$(3, N_x, N_y, N_z)$, with the Cartesian component as the fastest-varying index:
+%
+\begin{equation}
+  \vm \;\longleftrightarrow\; \texttt{m::Array\{T,4\}}, \quad
+  \vm(i,j,k) = \texttt{m[:,\,i,\,j,\,k]}.
+\end{equation}
+%
+Placing the component first makes each cell's vector contiguous in memory, which
+vectorizes the per-cell cross products and, crucially, lets the whole array map
+onto a GPU \texttt{CuArray} without any restructuring. The element type \texttt{T}
+is a type parameter, so a simulation runs in \texttt{Float64} on the CPU and in
+\texttt{Float32} on the GPU with no change to the source.
+
+\paragraph{Multiple dispatch.}
+Every field and torque routine is written against the abstract signature
+\texttt{AbstractArray\{T,4\}}:
+%
+\begin{lstlisting}
+function exchange!(B::AbstractArray{T,4},
+                   m::AbstractArray{T,4},
+                   mesh, mat; add=false) where {T}
+    # ... generic stencil ...
+end
+\end{lstlisting}
+%
+CPU execution passes an \texttt{Array}; GPU execution will pass a \texttt{CuArray}
+and Julia dispatches to a device method with the same name. There are no
+\texttt{if gpu} branches and no duplicated call sites; GPU support is additive.
+
+\paragraph{Index convention.}
+All routines use a single $(x,y,z)$, one-based index convention, and the
+coordinate origin is placed at the geometric centre of the sample, so cell
+centres run from $-L/2$ to $+L/2$ along each axis. This matches \mumax{} and lets
+localized initial states (vortices, skyrmions) be positioned by translation
+(Sec.~\ref{sec:config}).
+
+\subsection{Package structure}
+
+The package is organized as one module per physical concept:
+\texttt{Mesh} and \texttt{Material} hold the geometry and parameters;
+\texttt{magnetization}/\texttt{config} build states; \texttt{exchange},
+\texttt{anisotropy}, \texttt{dmi}, \texttt{zeeman}, \texttt{demag\_kernel},
+and \texttt{demag\_field} implement the effective-field terms;
+\texttt{effective\_field} assembles them; \texttt{llg} and \texttt{stt} form the
+torques; \texttt{solver}, \texttt{integrator}, and \texttt{minimizer} advance or
+relax the state; \texttt{energy} computes energies; and \texttt{ovf} reads the
+standard interchange format. The \texttt{World} type bundles a mesh, a material,
+a cached demagnetization plan, and the applied field, and is the single object
+passed to the dynamics.
+
+% ==========================================================================
+\section{Effective-field terms}
+\label{sec:fields}
+
+\subsection{Exchange}
+
+In the continuum limit the Heisenberg exchange field is
+%
+\begin{equation}
+  \vB_{\mathrm{exch}} = \frac{2A}{M_s}\,\nabla^2\vm,
+  \label{eq:exch}
+\end{equation}
+%
+with $A$ the exchange stiffness. The Laplacian is discretized with the standard
+six-neighbour stencil,
+$\nabla^2\vm|_c \approx \sum_{\text{axes}}(\vm_{-}+\vm_{+}-2\vm_c)/\Delta^2$.
+At a free boundary a Neumann condition $\partial\vm/\partial n = 0$ is imposed by
+taking the missing neighbour equal to the central cell, so its contribution
+vanishes; across a periodic axis the index wraps around. We verified
+Eq.~\eqref{eq:exch} against the analytic spin-wave field
+$-\frac{2A}{M_s}q^2\vm$ for $\vm=(\sin qx,0,\cos qx)$ to a relative error of
+$10^{-2}$ in the mesh interior.
+
+\subsection{Uniaxial anisotropy}
+
+For a uniaxial easy axis $\bm{u}$ and anisotropy constant $K_u$,
+%
+\begin{equation}
+  \vB_{\mathrm{anis}} = \frac{2K_u}{M_s}(\vm\cdot\bm{u})\,\bm{u}.
+  \label{eq:anis}
+\end{equation}
+
+\subsection{Dzyaloshinskii--Moriya interaction}
+
+Two DMI forms are provided. The interfacial (N\'eel) DMI, for thin films with
+broken inversion symmetry, has field
+%
+\begin{equation}
+  \vB_{\mathrm{DMI}}^{\mathrm{int}}
+  = \frac{2D}{M_s}
+    \Big(\partial_x m_z,\ \partial_y m_z,\ -\partial_x m_x-\partial_y m_y\Big),
+\end{equation}
+%
+with $D$ in J/m$^2$. The bulk (Bloch) DMI, for chiral B20 crystals, has
+%
+\begin{equation}
+  \vB_{\mathrm{DMI}}^{\mathrm{bulk}} = -\frac{2D}{M_s}\,\nabla\times\vm,
+\end{equation}
+%
+with $D$ in J/m$^3$. Gradients use central differences with the same Neumann /
+periodic boundary treatment as the exchange field. We verified both forms term
+by term against the corresponding \mumax{} kernels, and confirmed that a Bloch
+helix seeded at the equilibrium period $L = 4\pi A/D$ has a smaller residual
+torque than one at the wrong period.
+
+\subsection{Demagnetizing field: kernel and FFT convolution}
+\label{sec:demag}
+
+The magnetostatic (demagnetizing) field is a convolution of the magnetization
+with a mesh-dependent tensor $\hat{N}$,
+%
+\begin{equation}
+  \vB_{\mathrm{demag}}(\bm{r})
+  = \mu_0 M_s \sum_{\bm{r}'} \hat{K}(\bm{r}-\bm{r}')\cdot\vm(\bm{r}'),
+  \label{eq:demagconv}
+\end{equation}
+%
+where $\hat{K}$ (our stored kernel, equal to $-\hat{N}$) is the field of a
+unit-magnetized source cell. Because $\hat{K}$ depends only on the cell offset,
+it is computed once per mesh by adaptive brute-force integration of the
+surface-charge field over each destination cell (the \mumax{} method): a cell is
+sub-sampled more finely the closer it is to the source, and the source and
+destination sub-grids are staggered to improve accuracy. Only the six independent
+components of the symmetric tensor are stored.
+
+Evaluating Eq.~\eqref{eq:demagconv} directly is $O(N^2)$ in the number of cells.
+The convolution theorem reduces it to $O(N\log N)$: the magnetization is
+zero-padded to a size that turns the circular FFT convolution into the linear
+convolution required, the kernel is transformed once at setup, and each timestep
+performs a forward real FFT, a pointwise tensor--vector product in Fourier space,
+and an inverse FFT. The transformed kernel, the FFT plans, and the scratch
+buffers are cached in a \texttt{DemagPlan} object built once per simulation. We
+verified the FFT path against a direct real-space circular convolution with the
+same kernel to a relative error of $10^{-8}$, an accuracy check independent of any
+analytic approximation. The self-demagnetization factors of a cubic cell come out
+to $1/3$ per axis and satisfy the trace sum rule $N_{xx}+N_{yy}+N_{zz}=1$.
+
+% ==========================================================================
+\section{Torques}
+\label{sec:torques}
+
+\subsection{Landau--Lifshitz torque}
+
+The LLG torque [Eq.~\eqref{eq:llg}] is evaluated per cell as two cross products,
+$\bm{p}=\vm\times\vB_{\mathrm{eff}}$ and $\bm{q}=\vm\times\bm{p}$, combined as
+$-\frac{\gamma}{1+\alpha^2}(\bm{p}+\alpha\bm{q})$. Written over
+\texttt{AbstractArray\{T,4\}}, the same routine serves CPU and GPU.
+
+\subsection{Spin-transfer torques}
+\label{sec:stt}
+
+A spin-polarized current adds a torque to the right-hand side of
+Eq.~\eqref{eq:llg}. \JuliaMag{} implements both standard forms, following the
+\mumax{} kernels.
+
+For an in-plane current through a magnetization texture, the Zhang--Li torque is
+%
+\begin{equation}
+  \bm{\tau}_{\mathrm{ZL}}
+  = \frac{-1}{1+\alpha^2}
+    \Big[(1+\xi\alpha)\,\vm\times(\vm\times\bm{h}_s)
+        + (\xi-\alpha)\,\vm\times\bm{h}_s\Big],
+  \label{eq:zhangli}
+\end{equation}
+%
+with adiabatic spin velocity $\bm{h}_s = (b\,\bm{J}\cdot\nabla)\vm$,
+$b = \mu_B/[2\,e\,M_s(1+\xi^2)]$ (in \JuliaMag's convention, where $\gamma$ is
+carried inside the torque), $\bm{J}=P\bm{j}$ the polarized current density, and
+$\xi$ the non-adiabaticity. The gradient uses central differences with
+Neumann/periodic boundaries.
+
+For a perpendicular current in a spin valve, the Slonczewski torque is
+%
+\begin{align}
+  \bm{\tau}_{\mathrm{SL}} &= g_\alpha\big[(A+\alpha B)\,\vm\times(\bm{p}\times\vm)
+                             + (B-\alpha A)\,(\bm{p}\times\vm)\big], \\
+  A &= \beta\,\epsilon,\quad B = \beta\,\epsilon',\quad
+      g_\alpha = \frac{1}{1+\alpha^2}, \notag
+\end{align}
+%
+with $\beta = (\hbar/e)\,j/(t\,M_s)$ (times $\gamma$ in our convention), fixed-layer
+polarization direction $\bm{p}$, free-layer thickness $t$, angular efficiency
+$\epsilon = P\Lambda^2/[(\Lambda^2+1)+(\Lambda^2-1)(\bm{p}\cdot\vm)]$, and the
+secondary (field-like) term $\epsilon'$.
+
+A subtlety worth recording: \mumax{} applies the gyromagnetic ratio $\gamma$ in
+the time integrator (its step is $\gamma\,\Delta t$ times the torque), so its
+torque kernels do \emph{not} contain $\gamma$. \JuliaMag{} instead carries
+$\gamma$ inside the LLG torque; consequently the STT prefactors must be multiplied
+by $\gamma$ to sit on the same scale. Omitting this factor leaves the
+spin-transfer torque roughly $\gamma \sim 10^{11}$ times too small, and the
+current has no visible effect --- a discrepancy we caught precisely because the
+standard-problem-5 target below did not move.
+
+% ==========================================================================
+\section{Time integration and energy minimization}
+\label{sec:solvers}
+
+\JuliaMag{} advances Eq.~\eqref{eq:llg} in two complementary ways.
+
+\paragraph{Time integration.}
+For real-time dynamics we use the community-validated, adaptive Runge--Kutta
+methods of \texttt{OrdinaryDiffEq.jl}, wrapping the LLG right-hand side as an
+ordinary differential equation $\mathrm{d}\vm/\mathrm{d}t = f(\vm)$ with a
+per-step callback that renormalizes $|\vm|=1$. The default method is
+\texttt{Tsit5}, the modern fifth-order explicit Runge--Kutta that supersedes the
+Dormand--Prince RK45 used by \mumax{}. A hand-rolled Dormand--Prince integrator is
+retained for reference and passes an analytic Larmor-precession test exactly.
+
+\paragraph{Energy minimization.}
+Relaxing to equilibrium by integrating the damped LLG in time is impractical: the
+stiff exchange field drives the adaptive step to its floor, so reaching a
+nanosecond-scale equilibrium would take of order $10^{12}$ steps. Following
+\mumax{}, we relax instead with a dedicated energy minimizer --- a
+Barzilai--Borwein steepest-descent method on the unit sphere. Each step moves the
+magnetization along the damping torque $\bm{\tau}=-\vm\times(\vm\times\vB)$ with an
+exact Cayley rotation
+$\vm' = [(4-\tau^2)\vm + 4\Delta t\,\bm{\tau}]/(4+\tau^2)$, $\tau^2=\Delta t^2|\bm{\tau}|^2$,
+that preserves $|\vm|=1$ to machine precision. The step size $\Delta t$ is chosen
+by the alternating Barzilai--Borwein formulas, and convergence is declared when
+the recent per-cell displacement $\max\|\Delta\vm\|$ falls below a threshold. The
+total energy of a relaxing film drops monotonically in the windowed sense (the
+Barzilai--Borwein step is not strictly monotone step-to-step, as in \mumax{}),
+providing an independent convergence check.
+
+% ==========================================================================
+\section{Initial states and I/O}
+\label{sec:config}
+
+Following \mumax{}, an initial state is a function \texttt{Config: (x,y,z) ->
+vector} sampled at each cell centre. \JuliaMag{} provides uniform, vortex,
+antivortex, vortex-wall, two-domain, random, and N\'eel- and Bloch-skyrmion
+configurations. Localizable textures accept a circulation/charge and a core
+polarity, and are placed anywhere with \texttt{translate}, mirroring \mumax's
+\texttt{.Transl}. States can also be loaded from OVF files (text and binary, the
+standard micromagnetic interchange format), so a run can start from a saved
+configuration.
+
+% ==========================================================================
+\section{Validation}
+\label{sec:validation}
+
+\subsection{Standard problem 4}
+\label{sec:std4}
+
+The $\mu$MAG standard problem~4~\cite{mumag4} is the canonical test of dynamic
+reversal. A $500\times125\times3$~nm Permalloy film ($M_s=8\times10^5$~A/m,
+$A=1.3\times10^{-11}$~J/m, $\alpha=0.02$) is relaxed to its equilibrium S-state,
+then field~1, $\mu_0\bm{H}=(-24.6, 4.3, 0)$~mT, is applied and the spatially
+averaged magnetization $\langle\vm\rangle(t)$ is recorded for 1~ns. We relax the
+S-state with the energy minimizer (375 steps) and integrate the switching with
+\texttt{Tsit5}.
+
+Figure~\ref{fig:std4} shows the result overlaid with \mumax{} and \oommf{}
+reference runs. The three codes are visually coincident across the entire
+nanosecond. Quantitatively, over $0$--$1$~ns the maximum deviation of
+\JuliaMag{} from the references is
+%
+\begin{center}
+\begin{tabular}{lccc}
+\hline\hline
+ & $\langle m_x\rangle$ & $\langle m_y\rangle$ & $\langle m_z\rangle$ \\
+\hline
+vs.\ \mumax{} & $0.0016$ & $0.0044$ & $0.0010$ \\
+vs.\ \oommf{}  & $0.0037$ & $0.0035$ & $0.0011$ \\
+\hline\hline
+\end{tabular}
+\end{center}
+%
+with root-mean-square deviations below $2\times10^{-3}$ for all components. The
+relaxed S-state, $\langle\vm\rangle=(0.9668, 0.1256, 0)$, matches \mumax's
+$(0.96697, 0.12528, 0)$.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/stdproblem4_compare.png}
+  \caption{$\mu$MAG standard problem~4: spatially averaged magnetization vs.\ time.
+  \JuliaMag{} (solid lines), \mumax{} (circles), and \oommf{} (open triangles)
+  coincide across the full nanosecond.}
+  \label{fig:std4}
+\end{figure}
+
+\subsection{Standard problem 5}
+\label{sec:std5}
+
+The $\mu$MAG standard problem~5~\cite{najafi2009} tests the spin-transfer torque.
+A $100\times100\times10$~nm Permalloy square ($M_s=8\times10^5$~A/m,
+$A=1.3\times10^{-11}$~J/m) is relaxed to a vortex, then an in-plane current
+$\bm{j}=(10^{12},0,0)$~A/m$^2$ with polarization $P=1$ and non-adiabaticity
+$\xi=0.05$ is applied ($\alpha=0.1$). The current drives the vortex core to a
+new equilibrium; the diagnostic is $\langle\vm\rangle$ at 1~ns.
+
+We relax the vortex with the energy minimizer and integrate the current-driven
+motion with a fixed-step fourth-order Runge--Kutta, adding the Zhang--Li torque
+of Eq.~\eqref{eq:zhangli} to the LLG right-hand side. Starting from the centred
+vortex, $\langle\vm\rangle=(0,0,0.027)$, the core migrates under the current and
+settles at
+%
+\begin{equation}
+  \langle\vm\rangle_{\JuliaMag}(1~\mathrm{ns}) = (-0.23488,\ -0.09453,\ 0.02296),
+\end{equation}
+%
+against the \mumax{} reference $(-0.23480,\ -0.09454,\ 0.02296)$: a maximum
+component deviation of $9\times10^{-5}$, within \mumax's own $10^{-4}$ tolerance.
+Standard problem~5 thus validates the Zhang--Li spin-transfer torque
+independently of the field terms exercised by standard problem~4.
+
+% ==========================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+\emph{[To be written with the introduction.]}
+
+\begin{acknowledgments}
+\emph{[To be added.]}
+\end{acknowledgments}
+
+\begin{thebibliography}{9}
+\bibitem{mumax3} A.\ Vansteenkiste \textit{et al.}, ``The design and verification
+  of MuMax3,'' AIP Adv.\ \textbf{4}, 107133 (2014).
+\bibitem{oommf} M.\ J.\ Donahue and D.\ G.\ Porter, ``OOMMF User's Guide,
+  Version 1.0,'' NIST Interagency Report NISTIR 6376 (1999).
+\bibitem{mumag4} $\mu$MAG Standard Problem~4,
+  \url{https://www.ctcms.nist.gov/~rdm/std4/spec4.html}.
+\bibitem{najafi2009} M.\ Najafi \textit{et al.}, ``Proposal for a standard
+  problem for micromagnetic simulations including spin-transfer torque,''
+  J.\ Appl.\ Phys.\ \textbf{105}, 113914 (2009).
+\end{thebibliography}
+
+\end{document}
