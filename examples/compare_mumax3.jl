@@ -1,24 +1,29 @@
-# Compare JuliaMag's standard-problem-4 output against a mumax3 reference run.
-# Reads both tables, interpolates onto common times, reports the max/RMS
-# deviation per component, and overlays the curves.
+# Compare JuliaMag's standard-problem-4 output against mumax3 and OOMMF reference
+# runs. Reads all three tables, interpolates onto common times, reports the
+# max/RMS deviation per component, and overlays the curves (mumax3 as circles,
+# OOMMF as squares, JuliaMag as solid lines).
 #
 # Run:  julia --project=examples examples/compare_mumax3.jl
 
 using Printf
 using Plots
 
-readtable(path) = begin
+# Read a whitespace table, taking t, mx, my, mz from the given 1-based columns.
+function readtable(path; tcol, mxcol, mycol, mzcol)
     t = Float64[]; mx = Float64[]; my = Float64[]; mz = Float64[]
     for line in eachline(path)
-        (isempty(line) || startswith(strip(line), "#")) && continue
-        v = split(line)
-        push!(t, parse(Float64, v[1])); push!(mx, parse(Float64, v[2]))
-        push!(my, parse(Float64, v[3])); push!(mz, parse(Float64, v[4]))
+        s = strip(line)
+        (isempty(s) || startswith(s, "#")) && continue
+        v = split(s)
+        length(v) < max(tcol, mxcol, mycol, mzcol) && continue
+        push!(t,  parse(Float64, v[tcol]))
+        push!(mx, parse(Float64, v[mxcol]))
+        push!(my, parse(Float64, v[mycol]))
+        push!(mz, parse(Float64, v[mzcol]))
     end
     (t, mx, my, mz)
 end
 
-# linear interpolation of y(t) at query point tq
 function interp(t, y, tq)
     tq <= t[1] && return y[1]
     tq >= t[end] && return y[end]
@@ -28,27 +33,56 @@ function interp(t, y, tq)
 end
 
 here = @__DIR__
-jt, jmx, jmy, jmz = readtable(joinpath(here, "stdproblem4.txt"))
-mt, mmx, mmy, mmz = readtable(joinpath(here, "stdproblem4_mumax3.txt"))
+# JuliaMag: t mx my mz
+jt, jmx, jmy, jmz = readtable(joinpath(here, "stdproblem4.txt"); tcol=1, mxcol=2, mycol=3, mzcol=4)
+# mumax3: t mx my mz
+mt, mmx, mmy, mmz = readtable(joinpath(here, "stdproblem4_mumax3.txt"); tcol=1, mxcol=2, mycol=3, mzcol=4)
+# OOMMF .odt: mx/my/mz are columns 15/16/17, simulation time is column 19
+ot, omx, omy, omz = readtable(joinpath(here, "stdprob4a_oommf.odt"); tcol=19, mxcol=15, mycol=16, mzcol=17)
 
-# Compare on the mumax3 sample times (they span the same 0–1 ns).
-dev(jm, mm) = begin
-    d = [interp(jt, jm, mt[i]) - mm[i] for i in eachindex(mt)]
-    (maximum(abs, d), sqrt(sum(abs2, d) / length(d)))
+# Deviation of JuliaMag from a reference, at the reference's times within the
+# range JuliaMag actually simulated (JuliaMag runs to 1 ns; OOMMF runs to 5 ns).
+const TMAX = 1e-9
+function report(refname, rt, rmx, rmy, rmz)
+    idx = findall(t -> t <= jt[end] + 1e-15, rt)
+    println("JuliaMag vs $refname (over 0–$(round(jt[end]*1e9, digits=2)) ns):")
+    for (name, jm, rm) in (("mx", jmx, rmx), ("my", jmy, rmy), ("mz", jmz, rmz))
+        d = [interp(jt, jm, rt[i]) - rm[i] for i in idx]
+        @printf("  ⟨%s⟩:  max |Δ| = %.4f   RMS = %.4f\n", name, maximum(abs, d), sqrt(sum(abs2, d)/length(d)))
+    end
 end
-for (name, jm, mm) in (("mx", jmx, mmx), ("my", jmy, mmy), ("mz", jmz, mmz))
-    mx_, rms_ = dev(jm, mm)
-    @printf("⟨%s⟩:  max |Δ| = %.4f   RMS = %.4f\n", name, mx_, rms_)
+report("mumax3", mt, mmx, mmy, mmz)
+report("OOMMF", ot, omx, omy, omz)
+
+# Keep only points within the plotted window, then subsample so markers are readable.
+function windowsub(t, y, n)
+    keep = findall(τ -> τ <= TMAX + 1e-15, t)
+    t = t[keep]; y = y[keep]
+    step = max(1, length(t) ÷ n)
+    (t[1:step:end], y[1:step:end])
 end
 
 plt = plot(xlabel = "time (ns)", ylabel = "⟨m⟩",
-           title = "Standard Problem 4: JuliaMag vs mumax3", legend = :right)
-plot!(plt, jt .* 1e9, jmx; label = "mx (JuliaMag)", color = :red, lw = 2)
+           title = "Standard Problem 4: JuliaMag vs mumax3 vs OOMMF",
+           legend = :outerright, legendfontsize = 6, xlims = (0, TMAX * 1e9))
+
+# JuliaMag: solid lines.
+plot!(plt, jt .* 1e9, jmx; label = "mx (JuliaMag)", color = :red,   lw = 2)
 plot!(plt, jt .* 1e9, jmy; label = "my (JuliaMag)", color = :green, lw = 2)
-plot!(plt, jt .* 1e9, jmz; label = "mz (JuliaMag)", color = :blue, lw = 2)
-plot!(plt, mt .* 1e9, mmx; label = "mx (mumax3)", color = :red, ls = :dash, lw = 1)
-plot!(plt, mt .* 1e9, mmy; label = "my (mumax3)", color = :green, ls = :dash, lw = 1)
-plot!(plt, mt .* 1e9, mmz; label = "mz (mumax3)", color = :blue, ls = :dash, lw = 1)
+plot!(plt, jt .* 1e9, jmz; label = "mz (JuliaMag)", color = :blue,  lw = 2)
+
+# mumax3: filled circles.
+for (y, col, lab) in ((mmx, :red, "mx"), (mmy, :green, "my"), (mmz, :blue, "mz"))
+    tt, yy = windowsub(mt, y, 40)
+    scatter!(plt, tt .* 1e9, yy; label = "$lab (mumax3)", color = col, marker = :circle, ms = 3.5, msw = 0)
+end
+
+# OOMMF: open squares (white fill, coloured edge).
+for (y, col, lab) in ((omx, :red, "mx"), (omy, :green, "my"), (omz, :blue, "mz"))
+    tt, yy = windowsub(ot, y, 25)
+    scatter!(plt, tt .* 1e9, yy; label = "$lab (OOMMF)", markercolor = :white,
+             markerstrokecolor = col, marker = :square, ms = 4, msw = 1.2)
+end
 
 out = joinpath(here, "stdproblem4_compare.png")
 savefig(plt, out)

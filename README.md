@@ -68,11 +68,12 @@ matching the published µMAG reference curves.
 julia --project=examples examples/stdproblem4.jl
 ```
 
-Compared directly against a mumax3 reference run
+Compared directly against **both** mumax3 and OOMMF reference runs
 ([`compare_mumax3.jl`](examples/compare_mumax3.jl)), the curves coincide to
-within max |Δ| ≈ 0.004 (RMS < 0.002) over the full nanosecond:
+within max |Δ| ≈ 0.004 (RMS ≲ 0.002) for all three components over the full
+nanosecond — JuliaMag as solid lines, mumax3 as circles, OOMMF as open squares:
 
-![JuliaMag vs mumax3](examples/stdproblem4_compare.png)
+![JuliaMag vs mumax3 vs OOMMF](examples/stdproblem4_compare.png)
 
 ## Tests
 
