@@ -402,6 +402,26 @@ the energy minimizer over a wide range of aspect-ratio-driven equilibria.
   \label{fig:std2}
 \end{figure}
 
+The problem also specifies a hysteresis loop with the field applied along
+$[1,1,1]$: the coercive field $H_c$ is the field at which the projection
+$\vm\cdot[1,1,1]/\sqrt{3}$ vanishes, and the switching field $H_s$ marks the
+irreversible reversal jump. We compute both by ramping the field down from
+positive saturation and relaxing at each step with the energy minimizer.
+Figure~\ref{fig:std2hyst} shows $H_c/M_s$ and $H_s/M_s$ against
+$d/\ell_{\mathrm{ex}}$ overlaid on the \oommf{} reference; at
+$d/\ell_{\mathrm{ex}}=5$, for instance, we obtain
+$H_c/M_s = 0.0560$ and $H_s/M_s = 0.0570$ versus the reference $0.0561$ and
+$0.0574$, the small $H_s$ offset set by the field-step resolution.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/stdproblem2_hysteresis.png}
+  \caption{$\mu$MAG standard problem~2: reduced coercive field $H_c/M_s$ and
+  switching field $H_s/M_s$ vs.\ $d/\ell_{\mathrm{ex}}$. \JuliaMag{} (markers) vs.\
+  the \oommf{} reference (lines).}
+  \label{fig:std2hyst}
+\end{figure}
+
 \subsection{Standard problem 4}
 \label{sec:std4}
 
