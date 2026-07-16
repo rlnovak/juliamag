@@ -38,6 +38,10 @@ export Cuboid, Rect, Square, Cylinder, Circle, Ellipsoid, Ellipse, Cone,
        Superball, XRange, YRange, ZRange, Layer, Layers, Universe, Empty
 export shapeunion, shapeintersect, shapediff, shapecomplement
 
+# --- Regions ---------------------------------------------------------------
+include("regions.jl")
+export Regions, defregion!, defregioncell!, regionlist, regionvolume, cellcenter
+
 # --- Initial configurations ------------------------------------------------
 include("config.jl")
 export Config, setconfig, setconfig!
