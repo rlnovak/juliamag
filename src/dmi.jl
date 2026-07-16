@@ -27,12 +27,18 @@ Add (or write) the DMI field of state `m` into `B` [T]. Dispatches on which DMI
 constant is set: interfacial if `mat.Dind ≠ 0`, bulk if `mat.Dbulk ≠ 0`. If both
 are zero this writes zeros (unless `add=true`, when it is a no-op).
 """
+# Which DMI form is active. For a scalar Material these read the struct fields;
+# RegionParams reports true if any region sets the respective constant. The two
+# forms are mutually exclusive in a given simulation (mumax3 likewise picks one).
+hasdind(m::Material) = m.Dind != 0
+hasdbulk(m::Material) = m.Dbulk != 0
+
 function dmi!(B::AbstractArray{T,4}, m::AbstractArray{T,4},
-              mesh::Mesh, mat::Material; add::Bool = false) where {T}
-    if mat.Dind != 0
-        return dmi_interfacial!(B, m, mesh, mat; add = add)
-    elseif mat.Dbulk != 0
-        return dmi_bulk!(B, m, mesh, mat; add = add)
+              mesh::Mesh, params::AbstractParams; add::Bool = false) where {T}
+    if hasdind(params)
+        return dmi_interfacial!(B, m, mesh, params; add = add)
+    elseif hasdbulk(params)
+        return dmi_bulk!(B, m, mesh, params; add = add)
     else
         add || fill!(B, zero(T))
         return B
@@ -58,14 +64,15 @@ end
 end
 
 function dmi_interfacial!(B::AbstractArray{T,4}, m::AbstractArray{T,4},
-                          mesh::Mesh, mat::Material; add::Bool = false) where {T}
+                          mesh::Mesh, params::AbstractParams; add::Bool = false) where {T}
     Nx, Ny, Nz = mesh.size
     cx, cy, cz = mesh.cellsize
     px, py, pz = isperiodic(mesh, 1), isperiodic(mesh, 2), isperiodic(mesh, 3)
-    pref = T(2 * mat.Dind / mat.Msat)        # Tesla, no μ0 (mumax3 convention)
     i2x = T(1 / (2cx)); i2y = T(1 / (2cy))
 
     @inbounds for k in 1:Nz, j in 1:Ny, i in 1:Nx
+        Msc = msat(params, i, j, k)
+        pref = Msc == 0 ? zero(T) : T(2 * dind(params, i, j, k) / Msc)  # Tesla, no μ0
         dmz_dx = _deriv(m, 3, 1, i, j, k, Nx, Ny, Nz, i2x, px, py, pz)
         dmz_dy = _deriv(m, 3, 2, i, j, k, Nx, Ny, Nz, i2y, px, py, pz)
         dmx_dx = _deriv(m, 1, 1, i, j, k, Nx, Ny, Nz, i2x, px, py, pz)
@@ -91,14 +98,15 @@ end
 # rule shared with the exchange field. The two agree in the interior; near a free
 # boundary the fields differ slightly (matters for edge skyrmions).
 function dmi_bulk!(B::AbstractArray{T,4}, m::AbstractArray{T,4},
-                   mesh::Mesh, mat::Material; add::Bool = false) where {T}
+                   mesh::Mesh, params::AbstractParams; add::Bool = false) where {T}
     Nx, Ny, Nz = mesh.size
     cx, cy, cz = mesh.cellsize
     px, py, pz = isperiodic(mesh, 1), isperiodic(mesh, 2), isperiodic(mesh, 3)
-    pref = T(2 * mat.Dbulk / mat.Msat)       # Tesla, no μ0 (mumax3 convention)
     i2x = T(1 / (2cx)); i2y = T(1 / (2cy)); i2z = T(1 / (2cz))
 
     @inbounds for k in 1:Nz, j in 1:Ny, i in 1:Nx
+        Msc = msat(params, i, j, k)
+        pref = Msc == 0 ? zero(T) : T(2 * dbulk(params, i, j, k) / Msc)  # Tesla, no μ0
         # B = -pref * ∇×m
         dmz_dy = _deriv(m, 3, 2, i, j, k, Nx, Ny, Nz, i2y, px, py, pz)
         dmy_dz = Nz > 1 ? _deriv(m, 2, 3, i, j, k, Nx, Ny, Nz, i2z, px, py, pz) : zero(T)

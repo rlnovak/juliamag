@@ -43,10 +43,10 @@ Assemble the total effective field of state `m` into `B` [T].
 """
 function effectivefield!(B::AbstractArray{T,4}, m::AbstractArray{T,4}, w::World{T}) where {T}
     exchange!(B, m, w.mesh, w.material; add = false)      # first term writes
-    if w.material.Ku != 0
+    if hasku(w.material)
         anisotropy!(B, m, w.mesh, w.material; add = true)
     end
-    if w.material.Dind != 0 || w.material.Dbulk != 0
+    if hasdmi(w.material)
         dmi!(B, m, w.mesh, w.material; add = true)
     end
     if w.demagplan !== nothing

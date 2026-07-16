@@ -22,65 +22,70 @@ self-interacting field (`selfterm=true`, the default) or `-1` for an external
 field (`selfterm=false`).
 """
 function fieldenergy(m::AbstractArray{T,4}, B::AbstractArray{T,4},
-                     mesh::Mesh, mat::Material; selfterm::Bool = true) where {T}
-    s = zero(T)
-    @inbounds for I in CartesianIndices(axes(m)[2:4])
-        s += m[1, I]*B[1, I] + m[2, I]*B[2, I] + m[3, I]*B[3, I]
-    end
+                     mesh::Mesh, params::AbstractParams; selfterm::Bool = true) where {T}
     prefactor = selfterm ? T(-0.5) : T(-1)
-    return prefactor * mat.Msat * T(cellvolume(mesh)) * s
+    V = T(cellvolume(mesh))
+    Nx, Ny, Nz = mesh.size
+    s = zero(T)
+    # Msat is per-cell (a region interface may change it), so it stays inside the
+    # sum: E = prefactor · V · Σ Msat[cell] (m·B).
+    @inbounds for k in 1:Nz, j in 1:Ny, i in 1:Nx
+        mb = m[1,i,j,k]*B[1,i,j,k] + m[2,i,j,k]*B[2,i,j,k] + m[3,i,j,k]*B[3,i,j,k]
+        s += msat(params, i, j, k) * mb
+    end
+    return prefactor * V * s
 end
 
 """
-    exchangeenergy(m, mesh, mat) -> E   [J]
+    exchangeenergy(m, mesh, params) -> E   [J]
 """
-function exchangeenergy(m::AbstractArray{T,4}, mesh::Mesh, mat::Material) where {T}
+function exchangeenergy(m::AbstractArray{T,4}, mesh::Mesh, params::AbstractParams) where {T}
     B = similar(m)
-    exchange!(B, m, mesh, mat)
-    return fieldenergy(m, B, mesh, mat; selfterm = true)
+    exchange!(B, m, mesh, params)
+    return fieldenergy(m, B, mesh, params; selfterm = true)
 end
 
 """
-    anisotropyenergy(m, mesh, mat) -> E   [J]
+    anisotropyenergy(m, mesh, params) -> E   [J]
 
-Uniaxial anisotropy energy. Zero when `mat.Ku == 0`.
+Uniaxial anisotropy energy. Zero when no region sets `Ku`.
 """
-function anisotropyenergy(m::AbstractArray{T,4}, mesh::Mesh, mat::Material) where {T}
-    mat.Ku == 0 && return zero(T)
+function anisotropyenergy(m::AbstractArray{T,4}, mesh::Mesh, params::AbstractParams) where {T}
+    hasku(params) || return zero(T)
     B = similar(m)
-    anisotropy!(B, m, mesh, mat)
-    return fieldenergy(m, B, mesh, mat; selfterm = true)
+    anisotropy!(B, m, mesh, params)
+    return fieldenergy(m, B, mesh, params; selfterm = true)
 end
 
 """
-    dmienergy(m, mesh, mat) -> E   [J]
+    dmienergy(m, mesh, params) -> E   [J]
 """
-function dmienergy(m::AbstractArray{T,4}, mesh::Mesh, mat::Material) where {T}
-    (mat.Dind == 0 && mat.Dbulk == 0) && return zero(T)
+function dmienergy(m::AbstractArray{T,4}, mesh::Mesh, params::AbstractParams) where {T}
+    hasdmi(params) || return zero(T)
     B = similar(m)
-    dmi!(B, m, mesh, mat)
-    return fieldenergy(m, B, mesh, mat; selfterm = true)
+    dmi!(B, m, mesh, params)
+    return fieldenergy(m, B, mesh, params; selfterm = true)
 end
 
 """
     demagenergy(m, plan, mesh, mat) -> E   [J]
 """
-function demagenergy(m::AbstractArray{T,4}, plan::DemagPlan, mesh::Mesh, mat::Material) where {T}
+function demagenergy(m::AbstractArray{T,4}, plan::DemagPlan, mesh::Mesh, params::AbstractParams) where {T}
     B = similar(m)
     fill!(B, zero(T))
     demagfield!(B, m, plan)
-    return fieldenergy(m, B, mesh, mat; selfterm = true)
+    return fieldenergy(m, B, mesh, params; selfterm = true)
 end
 
 """
-    zeemanenergy(m, Bext, mesh, mat) -> E   [J]
+    zeemanenergy(m, Bext, mesh, params) -> E   [J]
 
 External-field energy; note the prefactor is -1, not -1/2.
 """
-function zeemanenergy(m::AbstractArray{T,4}, Bext, mesh::Mesh, mat::Material) where {T}
+function zeemanenergy(m::AbstractArray{T,4}, Bext, mesh::Mesh, params::AbstractParams) where {T}
     B = similar(m)
     zeeman!(B, Bext)
-    return fieldenergy(m, B, mesh, mat; selfterm = false)
+    return fieldenergy(m, B, mesh, params; selfterm = false)
 end
 
 """
@@ -91,10 +96,10 @@ quantity that must decrease monotonically as the system relaxes.
 """
 function totalenergy(m::AbstractArray{T,4}, w::World{T}) where {T}
     E = exchangeenergy(m, w.mesh, w.material)
-    if w.material.Ku != 0
+    if hasku(w.material)
         E += anisotropyenergy(m, w.mesh, w.material)
     end
-    if w.material.Dind != 0 || w.material.Dbulk != 0
+    if hasdmi(w.material)
         E += dmienergy(m, w.mesh, w.material)
     end
     if w.demagplan !== nothing

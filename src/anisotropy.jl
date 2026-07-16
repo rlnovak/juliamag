@@ -17,17 +17,18 @@ Add (or write) the uniaxial anisotropy field of state `m` into `B` [T].
 A no-op when `mat.Ku == 0` and `add=true`; writes zeros when `add=false`.
 """
 function anisotropy!(B::AbstractArray{T,4}, m::AbstractArray{T,4},
-                     mesh::Mesh, mat::Material; add::Bool = false) where {T}
+                     mesh::Mesh, params::AbstractParams; add::Bool = false) where {T}
     Nx, Ny, Nz = mesh.size
-    pref = T(2 * mat.Ku / mat.Msat)          # Tesla field, no μ0 (mumax3 convention)
-    ux, uy, uz = mat.anisU
 
-    if pref == 0 && !add
+    if !hasku(params) && !add
         fill!(B, zero(T))
         return B
     end
 
     @inbounds for k in 1:Nz, j in 1:Ny, i in 1:Nx
+        Msc = msat(params, i, j, k)
+        pref = Msc == 0 ? zero(T) : T(2 * ku(params, i, j, k) / Msc)   # Tesla, no μ0
+        ux, uy, uz = anisu(params, i, j, k)
         mu = m[1, i, j, k] * ux + m[2, i, j, k] * uy + m[3, i, j, k] * uz
         a = pref * mu
         bx, by, bz = a * ux, a * uy, a * uz

@@ -21,7 +21,15 @@ Magnetic parameters of a single, uniform material.
 mat = Material(Msat=8.0e5, Aex=1.3e-11, alpha=0.02)
 ```
 """
-struct Material{T<:AbstractFloat}
+# Material parameters come in two flavours that the field routines treat
+# uniformly through the accessor functions at the bottom of this file: a scalar
+# `Material` (one material everywhere) and a per-region `RegionParams` (regions.jl
+# territory). Both are `AbstractParams`; multiple dispatch selects the accessor,
+# so a single-material simulation pays no lookup cost while a multi-region one
+# indexes a table — and the field code is written once against the accessors.
+abstract type AbstractParams end
+
+struct Material{T<:AbstractFloat} <: AbstractParams
     Msat::T
     Aex::T
     alpha::T
@@ -82,3 +90,30 @@ function Base.show(io::IO, ::MIME"text/plain", mat::Material)
     end
     print(io, "  exchange length = ", exchangelength(mat) * 1e9, " nm")
 end
+
+# --- Parameter accessors ---------------------------------------------------
+# The field routines read material parameters through these accessors rather
+# than reaching into a struct field, so the same code serves a scalar Material
+# and a per-region RegionParams (regions.jl). For a Material the cell indices are
+# ignored and the scalar is returned; the compiler inlines this to a plain field
+# read, so single-material simulations pay nothing. The RegionParams methods
+# (defined alongside that type) index a per-region lookup table instead.
+
+@inline msat(m::Material, i, j, k)   = m.Msat
+@inline aex(m::Material, i, j, k)    = m.Aex
+@inline alphaof(m::Material, i, j, k) = m.alpha
+@inline ku(m::Material, i, j, k)     = m.Ku
+@inline anisu(m::Material, i, j, k)  = m.anisU
+@inline dind(m::Material, i, j, k)   = m.Dind
+@inline dbulk(m::Material, i, j, k)  = m.Dbulk
+@inline polof(m::Material, i, j, k)  = m.pol
+@inline xiof(m::Material, i, j, k)   = m.xi
+@inline lambdaof(m::Material, i, j, k) = m.lambda
+@inline epsprime(m::Material, i, j, k) = m.epsilonPrime
+
+# Whether any cell has a nonzero value — lets a field skip work when a term is
+# globally off. For a scalar Material this is just the field; RegionParams scans
+# its table.
+hasku(m::Material)    = m.Ku != 0
+hasdmi(m::Material)   = m.Dind != 0 || m.Dbulk != 0
+hasstt(m::Material)   = m.pol != 0
