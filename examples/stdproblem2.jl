@@ -74,17 +74,16 @@ function main()
 
     odlex, omx, omy = read_oommf(joinpath(here, "stdprob2_oommf.txt"))
 
-    # Overlay JuliaMag (lines+markers) with the OOMMF reference (open symbols).
+    # Overlay JuliaMag (lines) with the OOMMF reference (triangles).
     plt = plot(xlabel = "d / lex", ylabel = "remanent ⟨m⟩",
                title = "Standard Problem 2: remanence vs. size",
-               titlefontsize = 9, legend = :right, legendfontsize = 6,
-               xscale = :log10)
-    plot!(plt, odlex, omx; label = "mx (OOMMF)", color = :red,  lw = 1.5)
-    plot!(plt, odlex, omy; label = "my (OOMMF)", color = :blue, lw = 1.5)
-    scatter!(plt, jdlex, jmx; label = "mx (JuliaMag)", color = :red,
-             marker = :circle, ms = 5, msw = 0)
-    scatter!(plt, jdlex, jmy; label = "my (JuliaMag)", color = :blue,
-             marker = :circle, ms = 5, msw = 0)
+               titlefontsize = 9, legend = :bottomleft, legendfontsize = 6)
+    plot!(plt, jdlex, jmx; label = "mx (JuliaMag)", color = :red,  lw = 2)
+    plot!(plt, jdlex, jmy; label = "my (JuliaMag)", color = :blue, lw = 2)
+    scatter!(plt, odlex, omx; label = "mx (OOMMF)", color = :red,
+             marker = :utriangle, ms = 4, msw = 0)
+    scatter!(plt, odlex, omy; label = "my (OOMMF)", color = :blue,
+             marker = :utriangle, ms = 4, msw = 0)
 
     out = joinpath(here, "stdproblem2_compare.png")
     savefig(plt, out)

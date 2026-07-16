@@ -99,14 +99,13 @@ function main()
 
     plt = plot(xlabel = "d / lex", ylabel = "H / Ms",
                title = "Standard Problem 2: coercive & switching fields",
-               titlefontsize = 9, legend = :right, legendfontsize = 6,
-               xscale = :log10)
-    plot!(plt, od, ohc; label = "Hc/Ms (OOMMF)", color = :red,  lw = 1.5)
-    plot!(plt, od, ohs; label = "Hs/Ms (OOMMF)", color = :blue, lw = 1.5, ls = :dash)
-    scatter!(plt, jd, jhc; label = "Hc/Ms (JuliaMag)", color = :red,
-             marker = :circle, ms = 5, msw = 0)
-    scatter!(plt, jd, jhs; label = "Hs/Ms (JuliaMag)", color = :blue,
-             marker = :utriangle, ms = 5, msw = 0)
+               titlefontsize = 9, legend = :bottomleft, legendfontsize = 6)
+    plot!(plt, jd, jhc; label = "Hc/Ms (JuliaMag)", color = :red,  lw = 2)
+    plot!(plt, jd, jhs; label = "Hs/Ms (JuliaMag)", color = :blue, lw = 2, ls = :dash)
+    scatter!(plt, od, ohc; label = "Hc/Ms (OOMMF)", color = :red,
+             marker = :utriangle, ms = 4, msw = 0)
+    scatter!(plt, od, ohs; label = "Hs/Ms (OOMMF)", color = :blue,
+             marker = :utriangle, ms = 4, msw = 0)
 
     out = joinpath(here, "stdproblem2_hysteresis.png")
     savefig(plt, out)
