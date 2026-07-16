@@ -30,7 +30,8 @@ Under construction. Roadmap:
 - [x] **6.** µMAG standard problem 4 ([`examples/`](examples/stdproblem4.jl))
 - [x] **7.** Energies (exchange, demag, anisotropy, DMI, Zeeman) for convergence checking
 - [x] Spin-transfer torque (Zhang-Li, Slonczewski)
-- [ ] Bulk DMI validation, geometries / regions
+- [x] Bulk DMI validated term-by-term against mumax3
+- [ ] Geometries / regions
 - [ ] OVF I/O and output tables
 - [ ] GPU (CuArray) — the dispatch design is ready for it
 

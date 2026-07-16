@@ -83,6 +83,84 @@
         end
     end
 
+    @testset "bulk field matches mumax3 term by term (interior, 3D state)" begin
+        # mumax3 (cuda/dmibulk.cu):
+        #   H_x = (2D/Msat)(∂z my - ∂y mz)
+        #   H_y = (2D/Msat)(∂x mz - ∂z mx)
+        #   H_z = (2D/Msat)(∂y mx - ∂x my)
+        # Impose an analytic m(x,y,z) and compare central differences directly.
+        Nx = Ny = Nz = 8
+        c = 3e-9
+        mesh = Mesh((Nx, Ny, Nz), (c, c, c); pbc = (1, 1, 1))   # periodic → no boundary terms
+        D = 1.5e-3; Msat = 8e5
+        mat = Material(Msat = Msat, Aex = 1.3e-11, alpha = 0.02, Dbulk = D)
+
+        kx = 2π / (Nx*c); ky = 2π / (Ny*c); kz = 2π / (Nz*c)
+        m = zeromag(mesh)
+        f(i, j, k) = ((i-0.5)*c, (j-0.5)*c, (k-0.5)*c)
+        for k in 1:Nz, j in 1:Ny, i in 1:Nx
+            x, y, z = f(i, j, k)
+            v = (sin(kx*x), sin(ky*y), sin(kz*z))
+            n = sqrt(sum(abs2, v)) + 1e-9
+            m[1,i,j,k], m[2,i,j,k], m[3,i,j,k] = v ./ n
+        end
+
+        B = similar(m); dmi!(B, m, mesh, mat)
+        pref = 2 * D / Msat
+        wrap(a, N) = mod(a - 1, N) + 1
+        dcen(comp, ax, i, j, k) = begin
+            step = (ax == 1, ax == 2, ax == 3)
+            ip = (wrap(i + step[1], Nx), wrap(j + step[2], Ny), wrap(k + step[3], Nz))
+            im = (wrap(i - step[1], Nx), wrap(j - step[2], Ny), wrap(k - step[3], Nz))
+            spacing = 2 * c
+            (m[comp, ip...] - m[comp, im...]) / spacing
+        end
+        for k in 1:Nz, j in 1:Ny, i in 1:Nx
+            Hx = pref * (dcen(2,3,i,j,k) - dcen(3,2,i,j,k))   # ∂z my - ∂y mz
+            Hy = pref * (dcen(3,1,i,j,k) - dcen(1,3,i,j,k))   # ∂x mz - ∂z mx
+            Hz = pref * (dcen(1,2,i,j,k) - dcen(2,1,i,j,k))   # ∂y mx - ∂x my
+            @test B[1,i,j,k] ≈ Hx rtol = 1e-6 atol = 1e-4
+            @test B[2,i,j,k] ≈ Hy rtol = 1e-6 atol = 1e-4
+            @test B[3,i,j,k] ≈ Hz rtol = 1e-6 atol = 1e-4
+        end
+    end
+
+    @testset "helical ground state has near-zero total torque" begin
+        # With exchange + bulk DMI and PBC, the equilibrium is a helix of period
+        # L = 4πA/D. Seeded at that period, the net torque should be small
+        # (exchange and DMI balance) — far smaller than for a wrong period.
+        A = 1.3e-11; D = 3e-3; Msat = 8e5
+        L = 4π * A / D
+        c = L / 32
+        mesh = Mesh((32, 1, 1), (c, 5e-9, 5e-9); pbc = (1, 0, 0))
+        mat = Material(Msat = Msat, Aex = A, alpha = 0.5, Dbulk = D)
+        world = World(mesh, mat; demag = false)
+
+        # Bloch helix in the x-y…z plane: m = (0, sin(qx), cos(qx)), q = 2π/L.
+        q = 2π / L
+        function helix(period)
+            qq = 2π / period
+            m = zeromag(mesh)
+            for i in 1:32
+                x = (i - 0.5) * c
+                m[2, i, 1, 1] = sin(qq * x)
+                m[3, i, 1, 1] = cos(qq * x)
+            end
+            m
+        end
+
+        B = similar(zeromag(mesh)); dm = similar(B)
+        mgood = helix(L)
+        effectivefield!(B, mgood, world); torque!(dm, mgood, B, mat.alpha)
+        tgood = maxtorque(dm)
+
+        mbad = helix(L / 2)          # wrong period
+        effectivefield!(B, mbad, world); torque!(dm, mbad, B, mat.alpha)
+        tbad = maxtorque(dm)
+
+        @test tgood < tbad           # the correct-period helix is closer to equilibrium
+    end
+
     @testset "no DMI ⇒ zero field, and effective field unaffected" begin
         mesh = Mesh((6, 6, 1), (4e-9, 4e-9, 4e-9))
         mat = Material(Msat = 8e5, Aex = 1.3e-11, alpha = 0.02)   # no DMI

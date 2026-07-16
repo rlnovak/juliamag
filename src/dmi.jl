@@ -83,6 +83,13 @@ function dmi_interfacial!(B::AbstractArray{T,4}, m::AbstractArray{T,4},
     return B
 end
 
+# Bulk DMI field. Matches the interior formula of mumax3 (cuda/dmibulk.cu):
+#   H_dmi = (2D/Msat)·(∂z my - ∂y mz, ∂x mz - ∂z mx, ∂y mx - ∂x my) = -(2D/Msat)∇×m
+# verified term by term against that kernel's header. mumax3 additionally uses a
+# chirality-dependent boundary extrapolation (m_C = m_A + (dm/dn)·Δ with the DMI
+# boundary condition D·m + 2A·∂m = 0); here the boundary is the simpler Neumann
+# rule shared with the exchange field. The two agree in the interior; near a free
+# boundary the fields differ slightly (matters for edge skyrmions).
 function dmi_bulk!(B::AbstractArray{T,4}, m::AbstractArray{T,4},
                    mesh::Mesh, mat::Material; add::Bool = false) where {T}
     Nx, Ny, Nz = mesh.size

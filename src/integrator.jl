@@ -11,8 +11,7 @@
 # the efficient modern replacement for Dormand-Prince RK45 (mumax3's method) for
 # non-stiff problems, which micromagnetic LLG dynamics are.
 
-using OrdinaryDiffEqTsit5: ODEProblem, Tsit5, init, solve, step!, DiscreteCallback,
-                           CallbackSet, terminate!, u_modified!, savevalues!
+using OrdinaryDiffEqTsit5: ODEProblem, Tsit5, init, DiscreteCallback, u_modified!
 import OrdinaryDiffEqTsit5 as ODE
 
 # RHS of the LLG equation as an in-place ODE function. `p` carries the World.
