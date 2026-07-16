@@ -72,7 +72,61 @@ averaged magnetization.
 \section{Introduction}
 \label{sec:intro}
 
-\emph{[To be written last, with the reference articles provided by the author.]}
+Micromagnetics is the continuum theory of ferromagnetic materials at the
+sub-micron scale, in which the magnetization is treated as a continuous
+vector field whose evolution is governed by the Landau--Lifshitz--Gilbert (LLG)
+equation~\cite{miltat2007,abert2019}. Because the effective field entering the
+LLG equation couples every part of the sample through the long-ranged
+magnetostatic interaction, and because the exchange interaction imposes a short
+length scale, analytical solutions exist only for the simplest geometries.
+Numerical micromagnetics has therefore become an indispensable tool, from the
+earliest finite-difference computations of domain-wall structure~\cite{labonte1969}
+and the stochastic foundations of thermally activated
+switching~\cite{brown1963} to today's routine simulation of spintronic devices,
+skyrmions, and domain-wall memories.
+
+Two finite-difference codes dominate the field. \oommf~\cite{oommf}, developed at
+NIST, has been the community reference for over two decades. \mumax~\cite{mumax3}
+brought micromagnetics to the graphics processing unit (GPU), achieving order-of-
+magnitude speedups~\cite{lopezdiaz2012} and enabling simulations that were
+previously impractical. Both are highly optimized, but both are also large,
+performance-tuned codebases --- \oommf{} in C\texttt{++} with a Tcl interface,
+\mumax{} in Go with hand-written CUDA kernels --- in which the numerical methods
+are interwoven with low-level implementation detail. For a researcher who wishes
+to read, modify, or extend the core algorithms, or to prototype a new physical
+term or solver, this coupling is a barrier.
+
+The central computational cost in both codes is the magnetostatic
+(demagnetizing) field, a dense convolution of the magnetization with a geometric
+kernel. Evaluated directly it scales as $O(N^2)$ in the number of cells; the
+standard remedy, adopted here, is the fast-Fourier-transform convolution of
+Hayashi \textit{et al.}~\cite{hayashi1996}, which reduces the cost to
+$O(N\log N)$ and remains the workhorse of finite-difference
+micromagnetics~\cite{lepadatu2019}.
+
+We present \JuliaMag, a micromagnetic solver written entirely in the Julia
+programming language~\cite{julia}. Our aim is not to outperform the established
+GPU codes but to provide a \emph{transparent} and \emph{extensible} reference
+implementation in which the numerical methods are expressed directly, at the
+level of the mathematics, and are validated against \oommf{} and \mumax{} to high
+accuracy. Julia is well suited to this goal: it combines a high-level,
+mathematical syntax with performance approaching that of C, and its multiple
+dispatch lets a single generic implementation of each field and torque serve both
+CPU and GPU arrays without duplication. The scientific Julia ecosystem, in
+particular the \texttt{DifferentialEquations.jl} suite~\cite{diffeq}, further
+supplies community-validated adaptive time integrators that we use directly in
+place of a hand-rolled solver.
+
+The remainder of the paper describes the theory (Sec.~\ref{sec:theory}), the
+architecture and data layout (Sec.~\ref{sec:arch}), the effective-field terms and
+the FFT-accelerated demagnetization (Sec.~\ref{sec:fields}), the torques
+including spin-transfer (Sec.~\ref{sec:torques}), the time integration and energy
+minimization (Sec.~\ref{sec:solvers}), and the initial-state and I/O facilities
+(Sec.~\ref{sec:config}). Section~\ref{sec:validation} validates \JuliaMag{}
+against the \mumax{} and \oommf{} reference codes on the $\mu$MAG standard
+problems~2, 4, and~5, which together exercise the static equilibria and
+demagnetizing field, the dynamic magnetization reversal, and the spin-transfer
+torque, respectively.
 
 % ==========================================================================
 \section{Theory}
@@ -488,20 +542,99 @@ Standard problem~5 thus validates the Zhang--Li spin-transfer torque
 independently of the field terms exercised by standard problem~4.
 
 % ==========================================================================
-\section{Conclusion}
+\section{Conclusion and outlook}
 \label{sec:conclusion}
 
-\emph{[To be written with the introduction.]}
+We have presented \JuliaMag, a micromagnetic solver written entirely in Julia,
+and shown that a transparent implementation --- one in which each field, torque,
+and solver is expressed directly at the level of the underlying mathematics ---
+can reproduce the established \oommf{} and \mumax{} reference codes to high
+accuracy. On the $\mu$MAG standard problems the spatially averaged magnetization
+agrees with the references to $\sim 4\times10^{-3}$ (dynamic reversal, standard
+problem~4), to $\sim 10^{-3}$ in the remanence and coercive field across a wide
+range of aspect ratios (static equilibria, standard problem~2), and to
+$9\times10^{-5}$ for the current-driven vortex (spin-transfer torque, standard
+problem~5). Three architectural choices carry the design: a
+component-first $(3,N_x,N_y,N_z)$ data layout, multiple dispatch on an abstract
+array type, and a single $(x,y,z)$ index convention with the origin at the sample
+centre. Together they keep the source small and, crucially, leave GPU support as
+a purely additive step: because every routine already operates on
+\texttt{AbstractArray\{T,4\}}, device execution requires only that the arrays be
+\texttt{CuArray}s and that a handful of inner kernels acquire GPU methods, with no
+change to the call sites --- the natural next stage of development, following the
+path that took \mumax{} to the GPU~\cite{lopezdiaz2012}.
+
+Beyond conventional acceleration, a transparent, dispatch-based, and fully
+differentiable-by-construction Julia implementation is a natural substrate for
+the machine-learning methods now reshaping computational micromagnetics. Two
+directions are especially promising. First, the magnetostatic field --- the
+dominant cost --- is increasingly being approximated or accelerated by neural
+surrogates: physics-informed and physics-aware machine-learning schemes have been
+applied to stray-field computation and to micromagnetic energy minimization,
+replacing or preconditioning the expensive convolution and its associated
+minimization~\cite{schaffer2023,schaffer2025,schaffer2022}. A minimizer and demag
+solver expressed as ordinary Julia functions can be differentiated and composed
+with such surrogates directly, without a foreign-function boundary. Second, the
+LLG dynamics themselves can be learned or extrapolated: neural ordinary
+differential equations have been used to forecast the outcome of spintronic
+experiments~\cite{chen2022}, and the same \texttt{DifferentialEquations.jl}
+ecosystem~\cite{diffeq} that supplies \JuliaMag's time integrator also provides
+the adjoint-sensitivity and neural-ODE machinery on which such approaches are
+built. Positioning \JuliaMag{} within this ecosystem --- rather than as an
+isolated, hand-optimized binary --- is, in our view, its most significant
+long-term advantage.
+
+Immediate development priorities are the completion of GPU support, region-wise
+material parameters and non-rectangular geometries, and finite-temperature
+(stochastic) dynamics in the spirit of Brown~\cite{brown1963}. The code is open
+source and available at \url{https://github.com/rlnovak/juliamag}.
 
 \begin{acknowledgments}
-\emph{[To be added.]}
+\emph{[To be added by the author.]}
 \end{acknowledgments}
 
-\begin{thebibliography}{9}
-\bibitem{mumax3} A.\ Vansteenkiste \textit{et al.}, ``The design and verification
-  of MuMax3,'' AIP Adv.\ \textbf{4}, 107133 (2014).
+\begin{thebibliography}{99}
+
+% --- Reference codes ---
+\bibitem{mumax3} A.\ Vansteenkiste, J.\ Leliaert, M.\ Dvornik, M.\ Helsen,
+  F.\ Garcia-Sanchez, and B.\ Van Waeyenberge, ``The design and verification of
+  MuMax3,'' AIP Adv.\ \textbf{4}, 107133 (2014).
+  \url{https://doi.org/10.1063/1.4899186}.
 \bibitem{oommf} M.\ J.\ Donahue and D.\ G.\ Porter, ``OOMMF User's Guide,
-  Version 1.0,'' NIST Interagency Report NISTIR 6376 (1999).
+  Version 1.0,'' Interagency Report NISTIR 6376, National Institute of Standards
+  and Technology, Gaithersburg, MD (1999).
+
+% --- Numerical micromagnetics ---
+\bibitem{miltat2007} J.\ E.\ Miltat and M.\ J.\ Donahue, ``Numerical
+  Micromagnetics: Finite Difference Methods,'' in \textit{Handbook of Magnetism
+  and Advanced Magnetic Materials}, edited by H.\ Kronm\"uller, S.\ Parkin,
+  J.\ E.\ Miltat, and M.\ R.\ Scheinfein (Wiley, 2007).
+  \url{https://doi.org/10.1002/9780470022184.hmm202}.
+\bibitem{abert2019} C.\ Abert, ``Micromagnetics and spintronics: models and
+  numerical methods,'' Eur.\ Phys.\ J.\ B \textbf{92}, 120 (2019).
+  \url{https://doi.org/10.1140/epjb/e2019-90599-6}.
+\bibitem{labonte1969} A.\ E.\ LaBonte, ``Two-Dimensional Bloch-Type Domain Walls
+  in Ferromagnetic Films,'' J.\ Appl.\ Phys.\ \textbf{40}, 2450 (1969).
+\bibitem{brown1963} W.\ F.\ Brown, Jr., ``Thermal Fluctuations of a Single-Domain
+  Particle,'' Phys.\ Rev.\ \textbf{130}, 1677 (1963).
+  \url{https://doi.org/10.1103/PhysRev.130.1677}.
+
+% --- Demagnetizing field ---
+\bibitem{hayashi1996} N.\ Hayashi, K.\ Saito, and Y.\ Nakatani, ``Calculation of
+  Demagnetizing Field Distribution Based on Fast Fourier Transform of
+  Convolution,'' Jpn.\ J.\ Appl.\ Phys.\ \textbf{35}, 6065 (1996).
+\bibitem{lepadatu2019} S.\ Lepadatu, ``Efficient computation of demagnetizing
+  fields for magnetic multilayers using multilayered convolution,'' J.\ Appl.\
+  Phys.\ \textbf{126}, 103903 (2019). \url{https://doi.org/10.1063/1.5116754}.
+
+% --- GPU micromagnetics ---
+\bibitem{lopezdiaz2012} L.\ Lopez-Diaz, D.\ Aurelio, L.\ Torres, E.\ Martinez,
+  M.\ A.\ Hernandez-Lopez, J.\ Gomez, O.\ Alejos, M.\ Carpentieri, G.\ Finocchio,
+  and G.\ Consolo, ``Micromagnetic simulations using Graphics Processing Units,''
+  J.\ Phys.\ D: Appl.\ Phys.\ \textbf{45}, 323001 (2012).
+  \url{https://doi.org/10.1088/0022-3727/45/32/323001}.
+
+% --- Standard problems ---
 \bibitem{mumag2} $\mu$MAG Standard Problem~2,
   \url{https://www.ctcms.nist.gov/~rdm/std2/spec2.html}.
 \bibitem{mumag4} $\mu$MAG Standard Problem~4,
@@ -509,6 +642,35 @@ independently of the field terms exercised by standard problem~4.
 \bibitem{najafi2009} M.\ Najafi \textit{et al.}, ``Proposal for a standard
   problem for micromagnetic simulations including spin-transfer torque,''
   J.\ Appl.\ Phys.\ \textbf{105}, 113914 (2009).
+
+% --- Machine learning in micromagnetics (perspectives) ---
+\bibitem{schaffer2023} S.\ Schaffer, T.\ Schrefl, H.\ Oezelt, A.\ Kovacs,
+  L.\ Breth, N.\ J.\ Mauser, D.\ Suess, and L.\ Exl, ``Physics-informed machine
+  learning and stray field computation with application to micromagnetic energy
+  minimization,'' J.\ Magn.\ Magn.\ Mater.\ \textbf{576}, 170761 (2023).
+  \url{https://doi.org/10.1016/j.jmmm.2023.170761}.
+\bibitem{schaffer2025} S.\ Schaffer, T.\ Schrefl, H.\ Oezelt, N.\ J.\ Mauser, and
+  L.\ Exl, ``Physics aware machine learning for micromagnetic energy
+  minimization: Recent algorithmic developments,'' Comput.\ Phys.\ Commun.\
+  \textbf{315}, 109719 (2025).
+  \url{https://doi.org/10.1016/j.cpc.2025.109719}.
+\bibitem{schaffer2022} S.\ Schaffer, N.\ J.\ Mauser, T.\ Schrefl, D.\ Suess, and
+  L.\ Exl, ``Machine Learning Methods for the Prediction of Micromagnetic
+  Magnetization Dynamics,'' IEEE Trans.\ Magn.\ \textbf{58}, 1 (2022).
+  \url{https://doi.org/10.1109/TMAG.2021.3095251}.
+\bibitem{chen2022} X.\ Chen, F.\ A.\ Araujo, M.\ Riou, \textit{et al.},
+  ``Forecasting the outcome of spintronic experiments with Neural Ordinary
+  Differential Equations,'' Nat.\ Commun.\ \textbf{13}, 1016 (2022).
+  \url{https://doi.org/10.1038/s41467-022-28571-7}.
+
+% --- Language / ecosystem ---
+\bibitem{julia} J.\ Bezanson, A.\ Edelman, S.\ Karpinski, and V.\ B.\ Shah,
+  ``Julia: A Fresh Approach to Numerical Computing,'' SIAM Rev.\ \textbf{59}, 65
+  (2017).
+\bibitem{diffeq} C.\ Rackauckas and Q.\ Nie, ``DifferentialEquations.jl -- A
+  Performant and Feature-Rich Ecosystem for Solving Differential Equations in
+  Julia,'' J.\ Open Res.\ Softw.\ \textbf{5}, 15 (2017).
+
 \end{thebibliography}
 
 \end{document}
