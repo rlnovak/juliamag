@@ -31,6 +31,8 @@ Under construction. Roadmap:
 - [x] **7.** Energies (exchange, demag, anisotropy, DMI, Zeeman) for convergence checking
 - [x] Spin-transfer torque (Zhang-Li, Slonczewski)
 - [x] Bulk DMI validated term-by-term against mumax3
+- [x] Initial states (uniform, vortex, antivortex, vortex wall, two-domain,
+      random, Néel/Bloch skyrmion) + OVF loading
 - [ ] Geometries / regions
 - [ ] OVF I/O and output tables
 - [ ] GPU (CuArray) — the dispatch design is ready for it

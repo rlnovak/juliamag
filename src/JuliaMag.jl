@@ -31,6 +31,16 @@ export Material, exchangelength
 include("magnetization.jl")
 export zeromag, uniform, uniform!, randommag, randommag!, vortex, vortex!, normalize!, average
 
+# --- Initial configurations ------------------------------------------------
+include("config.jl")
+export Config, setconfig, setconfig!, translate
+export UniformConfig, VortexConfig, AntiVortexConfig, NeelSkyrmionConfig,
+       BlochSkyrmionConfig, VortexWallConfig, TwoDomainConfig, RandomConfig
+
+# --- OVF I/O ---------------------------------------------------------------
+include("ovf.jl")
+export loadovf, meshfromovf
+
 # --- Effective-field terms -------------------------------------------------
 include("exchange.jl")
 include("anisotropy.jl")
