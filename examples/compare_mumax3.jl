@@ -64,7 +64,8 @@ end
 
 plt = plot(xlabel = "time (ns)", ylabel = "⟨m⟩",
            title = "Standard Problem 4: JuliaMag vs mumax3 vs OOMMF",
-           legend = :outerright, legendfontsize = 6, xlims = (0, TMAX * 1e9))
+           titlefontsize = 9, legend = :topright, legendfontsize = 6,
+           xlims = (0, TMAX * 1e9))
 
 # JuliaMag: solid lines.
 plot!(plt, jt .* 1e9, jmx; label = "mx (JuliaMag)", color = :red,   lw = 2)
@@ -77,11 +78,11 @@ for (y, col, lab) in ((mmx, :red, "mx"), (mmy, :green, "my"), (mmz, :blue, "mz")
     scatter!(plt, tt .* 1e9, yy; label = "$lab (mumax3)", color = col, marker = :circle, ms = 3.5, msw = 0)
 end
 
-# OOMMF: open squares (white fill, coloured edge).
+# OOMMF: open triangles (white fill, coloured edge).
 for (y, col, lab) in ((omx, :red, "mx"), (omy, :green, "my"), (omz, :blue, "mz"))
     tt, yy = windowsub(ot, y, 25)
     scatter!(plt, tt .* 1e9, yy; label = "$lab (OOMMF)", markercolor = :white,
-             markerstrokecolor = col, marker = :square, ms = 4, msw = 1.2)
+             markerstrokecolor = col, marker = :utriangle, ms = 4.5, msw = 1.2)
 end
 
 out = joinpath(here, "stdproblem4_compare.png")
