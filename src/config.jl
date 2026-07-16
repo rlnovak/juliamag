@@ -59,13 +59,10 @@ Allocate a magnetization array and fill it from `config`.
 setconfig(::Type{T}, mesh::Mesh, config::Config) where {T} = setconfig!(zeromag(T, mesh), mesh, config)
 setconfig(mesh::Mesh, config::Config) = setconfig(Float64, mesh, config)
 
-"""
-    translate(config, dx, dy, dz) -> Config
-
-Shift a configuration so its origin moves to `(dx, dy, dz)` [m] — used to place a
-vortex/skyrmion core at a chosen location (mumax3's `.Transl`).
-"""
-translate(config::Config, dx, dy, dz) = (x, y, z) -> config(x - dx, y - dy, z - dz)
+# `translate` (and scale/rotz) for both Config and Shape live in shape.jl, since
+# a Config and a Shape are both functions of (x, y, z): shifting either is the
+# same operation. It is used here to place a vortex/skyrmion core at a chosen
+# location (mumax3's `.Transl`).
 
 # Replace a NaN vector (r = 0 at a core) with the pure-polarization vector.
 @inline function _nonan(v, pol)

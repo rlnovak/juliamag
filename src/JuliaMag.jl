@@ -31,9 +31,16 @@ export Material, exchangelength
 include("magnetization.jl")
 export zeromag, uniform, uniform!, randommag, randommag!, vortex, vortex!, normalize!, average
 
+# --- Shapes (geometry) -----------------------------------------------------
+include("shape.jl")
+export Shape, translate, scale, rotz
+export Cuboid, Rect, Square, Cylinder, Circle, Ellipsoid, Ellipse, Cone,
+       Superball, XRange, YRange, ZRange, Layer, Layers, Universe, Empty
+export shapeunion, shapeintersect, shapediff, shapecomplement
+
 # --- Initial configurations ------------------------------------------------
 include("config.jl")
-export Config, setconfig, setconfig!, translate
+export Config, setconfig, setconfig!
 export UniformConfig, VortexConfig, AntiVortexConfig, NeelSkyrmionConfig,
        BlochSkyrmionConfig, VortexWallConfig, TwoDomainConfig, RandomConfig
 
