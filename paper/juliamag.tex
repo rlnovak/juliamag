@@ -372,6 +372,36 @@ configuration.
 \section{Validation}
 \label{sec:validation}
 
+\subsection{Standard problem 2}
+\label{sec:std2}
+
+The $\mu$MAG standard problem~2~\cite{mumag2} tests static equilibrium states and
+the demagnetizing field across a range of particle sizes. A rectangular prism of
+aspect ratio $L:d:t = 5:1:0.1$ is saturated along the body diagonal $[1,1,1]$,
+the field is removed, and the state is relaxed to remanence. The reduced size is
+$d/\ell_{\mathrm{ex}}$, with the magnetostatic exchange length
+$\ell_{\mathrm{ex}} = \sqrt{A/K_m}$ and $K_m = \tfrac12\mu_0 M_s^2$; for our
+Permalloy parameters $\ell_{\mathrm{ex}} = 5.69$~nm. We relax each size with the
+energy minimizer and record the remanent $\langle m_x\rangle$ (along the long
+axis) and $\langle m_y\rangle$ (along $d$).
+
+Figure~\ref{fig:std2} compares a sweep of sizes against the \oommf{} reference
+table. The agreement tracks the reference across the whole range, from the small
+single-domain limit ($\langle m_x\rangle\to 1$, $\langle m_y\rangle\to 0$) to the
+large-particle flower state; for example, at $d/\ell_{\mathrm{ex}}=20$ we obtain
+$(\langle m_x\rangle,\langle m_y\rangle)=(0.9702,0.0817)$ versus the reference
+$(0.9701,0.0819)$. Standard problem~2 thus exercises the demagnetizing field and
+the energy minimizer over a wide range of aspect-ratio-driven equilibria.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/stdproblem2_compare.png}
+  \caption{$\mu$MAG standard problem~2: remanent magnetization vs.\ reduced size
+  $d/\ell_{\mathrm{ex}}$. \JuliaMag{} (markers) follows the \oommf{} reference
+  (lines) from the single-domain limit to the flower state.}
+  \label{fig:std2}
+\end{figure}
+
 \subsection{Standard problem 4}
 \label{sec:std4}
 
@@ -452,6 +482,8 @@ independently of the field terms exercised by standard problem~4.
   of MuMax3,'' AIP Adv.\ \textbf{4}, 107133 (2014).
 \bibitem{oommf} M.\ J.\ Donahue and D.\ G.\ Porter, ``OOMMF User's Guide,
   Version 1.0,'' NIST Interagency Report NISTIR 6376 (1999).
+\bibitem{mumag2} $\mu$MAG Standard Problem~2,
+  \url{https://www.ctcms.nist.gov/~rdm/std2/spec2.html}.
 \bibitem{mumag4} $\mu$MAG Standard Problem~4,
   \url{https://www.ctcms.nist.gov/~rdm/std4/spec4.html}.
 \bibitem{najafi2009} M.\ Najafi \textit{et al.}, ``Proposal for a standard
