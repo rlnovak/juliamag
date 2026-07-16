@@ -117,3 +117,8 @@ end
 hasku(m::Material)    = m.Ku != 0
 hasdmi(m::Material)   = m.Dind != 0 || m.Dbulk != 0
 hasstt(m::Material)   = m.pol != 0
+
+# A representative scalar damping for the LLG torque, which currently takes α as
+# a single value. For a scalar Material this is exact; per-region α in the torque
+# is a later refinement.
+damping(m::Material) = m.alpha

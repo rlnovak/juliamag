@@ -42,6 +42,10 @@ export shapeunion, shapeintersect, shapediff, shapecomplement
 include("regions.jl")
 export Regions, defregion!, defregioncell!, regionlist, regionvolume, cellcenter
 
+# --- Per-region material parameters ----------------------------------------
+include("region_params.jl")
+export RegionParams, setregion!
+
 # --- Initial configurations ------------------------------------------------
 include("config.jl")
 export Config, setconfig, setconfig!

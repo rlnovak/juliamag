@@ -61,7 +61,7 @@ end
 # One derivative evaluation: dm = torque(effectivefield(m)).
 function _rhs!(dm, m, s::Solver)
     effectivefield!(s.B, m, s.world)
-    torque!(dm, m, s.B, s.world.material.alpha)
+    torque!(dm, m, s.B, damping(s.world.material))
     return dm
 end
 

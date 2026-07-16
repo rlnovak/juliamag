@@ -18,20 +18,29 @@ active. The demag plan is built once here and reused for the whole run.
 - `demag`: include the demagnetization field (the expensive term).
 - `Bext`: uniform applied field [T]; can be changed between run segments.
 """
-mutable struct World{T<:AbstractFloat,P}
+mutable struct World{T<:AbstractFloat,P,M<:AbstractParams}
     mesh::Mesh
-    material::Material{T}
-    demagplan::P                     # DemagPlan{T,...} or nothing
+    material::M                       # Material{T} or RegionParams{T}
+    demagplan::P                      # DemagPlan{T,...} or nothing
     Bext::NTuple{3,T}
-    _Bbuf::Array{T,4}                # scratch effective-field buffer for integrators
+    _Bbuf::Array{T,4}                 # scratch effective-field buffer for integrators
 end
 
-function World(mesh::Mesh, mat::Material{T}; demag::Bool = true,
-              Bext = (0, 0, 0), accuracy = 6.0) where {T}
-    plan = demag ? DemagPlan(demagkernel(T, mesh; accuracy = accuracy), mesh, mat) : nothing
+function World(mesh::Mesh, mat::AbstractParams; demag::Bool = true,
+              Bext = (0, 0, 0), accuracy = 6.0)
+    T = eltype(mat)
+    # The demag kernel is purely geometric (independent of Msat); the plan's
+    # μ0·Msat scaling uses a representative Msat here. For a scalar Material that
+    # is exact; region-dependent Msat in the demag is handled in stage 5.
+    Msref = _demag_msat(mat)
+    plan = demag ? DemagPlan(demagkernel(T, mesh; accuracy = accuracy), mesh, Msref) : nothing
     Bbuf = zeros(T, 3, mesh.size...)
-    World{T,typeof(plan)}(mesh, mat, plan, NTuple{3,T}(Bext), Bbuf)
+    World{T,typeof(plan),typeof(mat)}(mesh, mat, plan, NTuple{3,T}(Bext), Bbuf)
 end
+
+# Representative Msat for building the demag plan's μ0·Msat prefactor.
+_demag_msat(m::Material) = m.Msat
+_demag_msat(rp::RegionParams) = maxmsat(rp)
 
 "Set the uniform applied field [T]."
 setexternalfield!(w::World{T}, Bext) where {T} = (w.Bext = NTuple{3,T}(Bext); w)

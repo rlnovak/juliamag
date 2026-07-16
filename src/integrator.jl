@@ -18,7 +18,7 @@ import OrdinaryDiffEqTsit5 as ODE
 function _llg_rhs!(du, u, world::World, t)
     B = world._Bbuf                       # reuse the World's field buffer
     effectivefield!(B, u, world)
-    torque!(du, u, B, world.material.alpha)
+    torque!(du, u, B, damping(world.material))
     return nothing
 end
 
@@ -85,7 +85,7 @@ function relaxate!(it::Integrator{T}; stoptorque = T(1e-3), maxtime = 1e-7,
     while it.integrator.t < t_end
         ODE.step!(it.integrator, checkevery, true)
         effectivefield!(B, state(it), it.world)
-        torque!(dm, state(it), B, it.world.material.alpha)
+        torque!(dm, state(it), B, damping(it.world.material))
         maxtorque(dm) < stoptorque && break
     end
     return it

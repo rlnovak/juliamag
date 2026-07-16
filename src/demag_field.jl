@@ -46,11 +46,14 @@ struct DemagPlan{T<:AbstractFloat,PF,PI}
 end
 
 """
-    DemagPlan(kernel::DemagKernel, mesh, mat) -> DemagPlan
+    DemagPlan(kernel::DemagKernel, mesh, Msat) -> DemagPlan
 
-Precompute FFT plans and the transformed demag kernel for `mesh`/`mat`.
+Precompute FFT plans and the transformed demag kernel for `mesh`. `Msat` sets the
+μ0·Msat prefactor (a scalar Material, or a representative value for a region map).
 """
-function DemagPlan(kernel::DemagKernel{T}, mesh::Mesh, mat::Material) where {T}
+DemagPlan(kernel::DemagKernel, mesh::Mesh, mat::Material) = DemagPlan(kernel, mesh, mat.Msat)
+
+function DemagPlan(kernel::DemagKernel{T}, mesh::Mesh, Msat::Real) where {T}
     psize = kernel.padsize
     @assert psize == padsize(mesh)
 
@@ -69,7 +72,7 @@ function DemagPlan(kernel::DemagKernel{T}, mesh::Mesh, mat::Material) where {T}
     padm = ntuple(_ -> zeros(T, psize...), 3)
     pinv = plan_irfft(mhat[1], psize[1])
 
-    DemagPlan(psize, dataregion(mesh), T(μ0 * mat.Msat),
+    DemagPlan(psize, dataregion(mesh), T(μ0 * Msat),
               Kxx, Kyy, Kzz, Kxy, Kxz, Kyz,
               padm, mhat, bhat, pfor, pinv)
 end
