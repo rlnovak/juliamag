@@ -68,6 +68,12 @@ matching the published µMAG reference curves.
 julia --project=examples examples/stdproblem4.jl
 ```
 
+Compared directly against a mumax3 reference run
+([`compare_mumax3.jl`](examples/compare_mumax3.jl)), the curves coincide to
+within max |Δ| ≈ 0.004 (RMS < 0.002) over the full nanosecond:
+
+![JuliaMag vs mumax3](examples/stdproblem4_compare.png)
+
 ## Tests
 
 ```
