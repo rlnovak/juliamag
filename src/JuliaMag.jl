@@ -102,4 +102,12 @@ export q_time, q_m, q_m_region, q_energy, q_exchangeenergy, q_demagenergy,
        q_skyrmionpos, q_dwpos, q_topocharge
 export average_region
 
+# --- Material library ------------------------------------------------------
+include("materials.jl")
+export material, materialnames
+
+# --- Simulation wrapper ----------------------------------------------------
+include("simulation.jl")
+export Simulation, setmag!, savequantities!, savenow!, run!
+
 end # module

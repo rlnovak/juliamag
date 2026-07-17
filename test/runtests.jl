@@ -18,4 +18,5 @@ using Test
     include("test_config.jl")
     include("test_ovf.jl")
     include("test_output.jl")
+    include("test_simulation.jl")
 end
