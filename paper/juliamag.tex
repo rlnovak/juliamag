@@ -1,4 +1,4 @@
-\documentclass[11pt]{article}
+\documentclass{article}      % arxiv.sty sets its own 10pt-based font sizes
 
 \usepackage{arxiv}          % arxiv-style preprint template (paper/arxiv.sty)
 
@@ -50,6 +50,10 @@
 
 \title{\JuliaMag: a minimalist, dispatch-based micromagnetic solver in pure Julia}
 
+% Short title for the running head (arxiv.sty puts \shorttitle in the header;
+% by default it is the full \@title, which is too long).
+\renewcommand{\shorttitle}{\JuliaMag}
+
 \author{%
   R.~L.~Novak \\
   Universidade Federal de Santa Catarina (UFSC) -- Campus Blumenau \\
@@ -58,7 +62,6 @@
 }
 
 \date{\today}
-\headtitle{JuliaMag}
 
 \begin{document}
 
@@ -85,6 +88,9 @@ demagnetizing field, dynamic magnetization reversal, and current-driven
 spin-transfer torque --- reproducing the references to within
 $\sim 4\times10^{-3}$ in the spatially averaged magnetization.
 \end{abstract}
+
+\keywords{micromagnetics \and Landau--Lifshitz--Gilbert equation \and
+  finite-difference method \and Julia \and multiple dispatch \and GPU computing}
 
 % ==========================================================================
 \section{Introduction}
