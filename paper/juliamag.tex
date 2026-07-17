@@ -57,13 +57,18 @@ the exchange, magnetostatic (demagnetizing), uniaxial anisotropy, Zeeman, and
 Dzyaloshinskii--Moriya interactions, as well as the Zhang--Li and Slonczewski
 spin-transfer torques. The code is designed around Julia's multiple dispatch:
 every field and torque operates on an abstract array type, so the same source
-runs unchanged on CPU arrays today and on GPU arrays once device methods are
-added. We describe the data layout, the field and torque implementations, the
-FFT-accelerated demagnetization convolution, the time integration and energy
-minimization, and the initial-state library. We validate \JuliaMag{} against the
-\mumax{} and \oommf{} reference codes on the $\mu$MAG standard problems~4 and~5,
-reproducing the reference dynamics to within $\sim 4\times10^{-3}$ in the spatially
-averaged magnetization.
+runs unchanged on CPU and GPU arrays, and material parameters are read through
+accessors so that a single-material and a multi-region (multilayer) simulation
+share one implementation with no overhead in the uniform case. We describe the
+data layout, the field and torque implementations, the FFT-accelerated
+demagnetization convolution, the time integration and energy minimization, the
+geometry/region model, the output and simulation interface, and a CUDA package
+extension that adds GPU methods additively through dispatch. We validate
+\JuliaMag{} against the \mumax{} and \oommf{} reference codes on the $\mu$MAG
+standard problems~2, 4, and~5 --- covering static equilibria and the
+demagnetizing field, dynamic magnetization reversal, and current-driven
+spin-transfer torque --- reproducing the references to within
+$\sim 4\times10^{-3}$ in the spatially averaged magnetization.
 \end{abstract}
 
 \maketitle
@@ -121,8 +126,11 @@ The remainder of the paper describes the theory (Sec.~\ref{sec:theory}), the
 architecture and data layout (Sec.~\ref{sec:arch}), the effective-field terms and
 the FFT-accelerated demagnetization (Sec.~\ref{sec:fields}), the torques
 including spin-transfer (Sec.~\ref{sec:torques}), the time integration and energy
-minimization (Sec.~\ref{sec:solvers}), and the initial-state and I/O facilities
-(Sec.~\ref{sec:config}). Section~\ref{sec:validation} validates \JuliaMag{}
+minimization (Sec.~\ref{sec:solvers}), the initial states and I/O
+(Sec.~\ref{sec:config}), the geometry and material-region model
+(Sec.~\ref{sec:regions}), the output and simulation interface
+(Sec.~\ref{sec:interface}), and the GPU package extension
+(Sec.~\ref{sec:gpu}). Section~\ref{sec:validation} validates \JuliaMag{}
 against the \mumax{} and \oommf{} reference codes on the $\mu$MAG standard
 problems~2, 4, and~5, which together exercise the static equilibria and
 demagnetizing field, the dynamic magnetization reversal, and the spin-transfer
@@ -421,6 +429,89 @@ polarity, and are placed anywhere with \texttt{translate}, mirroring \mumax's
 \texttt{.Transl}. States can also be loaded from OVF files (text and binary, the
 standard micromagnetic interchange format), so a run can start from a saved
 configuration.
+
+% ==========================================================================
+\section{Geometry and material regions}
+\label{sec:regions}
+
+Non-trivial geometries and multi-material samples are built with the same
+compositional, function-based style as the initial states. A \emph{shape} is a
+predicate \texttt{Shape: (x,y,z) -> Bool}, true inside the sample, in centred
+coordinates; primitives (cuboid, cylinder, ellipsoid, cone, superball, layer
+slabs) combine through set operations (union, intersection, difference,
+complement) and transforms (translate, scale, rotate). Painting a shape with an
+integer identifier through \texttt{defregion!} assigns cells to material regions.
+
+Material parameters are then either a single \texttt{Material} or a per-region
+\texttt{RegionParams} carrying a lookup table for each parameter
+($M_s$, $A$, $\alpha$, $K_u$, the DMI and spin-torque constants). This is where
+Julia's multiple dispatch does structural work: every field routine reads its
+parameters through accessors (\texttt{msat(params,i,j,k)}, \texttt{aex(...)},
+\ldots). For a scalar \texttt{Material} the accessor ignores the cell index and
+returns the constant, which the compiler inlines to a plain field read, so a
+single-material simulation incurs \emph{no} lookup overhead; for a
+\texttt{RegionParams} the same accessor indexes the region table. The field code
+is written once and serves both. At a region interface the exchange coupling uses
+the harmonic mean of the two stiffnesses (as in \mumax), and cells with
+$M_s = 0$ represent unfilled geometry --- they source no field and, once the
+magnetization there is cleared, feel no torque --- so a disc or a magnetic
+multilayer is expressed by painting material into the desired shape. The
+demagnetizing convolution weights each source cell by its own $M_s$, so a
+multilayer with layer-dependent magnetization is handled correctly.
+
+% ==========================================================================
+\section{Output, materials, and the simulation interface}
+\label{sec:interface}
+
+The user selects what to tabulate from a library of quantities, following
+\mumax's data-table model. Besides the time and the spatially averaged
+magnetization (globally and per region), the table can record the total and
+per-term energies, the maximum torque, the applied field, the topological charge,
+and the tracked positions of a vortex core (peak $|m_z|$ with sub-cell
+interpolation), a skyrmion (centroid of the topological-charge density), and a
+domain wall (zero crossing of the averaged in-plane component). Rows are appended
+on a chosen time interval.
+
+A small library of standard materials (Permalloy, Fe, Co, Ni, CoFeB, YIG) returns
+representative parameter sets by name. A \texttt{Simulation} object bundles the
+geometry, parameters, magnetization, and output table so that a script mirrors
+the \mumax{} workflow:
+%
+\begin{lstlisting}
+sim = Simulation(mesh, material("Permalloy"))
+setmag!(sim, VortexConfig(mesh))
+savequantities!(sim, q_time(), q_m(),
+                q_vortexcore(); every = 10e-12)
+relax!(sim)
+run!(sim, 1e-9)
+writetable(sim.table, "out.txt")
+\end{lstlisting}
+
+% ==========================================================================
+\section{GPU acceleration through multiple dispatch}
+\label{sec:gpu}
+
+The architectural payoff of the design appears at the GPU boundary. Because every
+field, torque, and state operation is written against the abstract signature
+\texttt{AbstractArray\{T,4\}}, and a CUDA device array \texttt{CuArray\{T,4\}} is
+exactly such a type, GPU support is \emph{additive}: it requires neither a
+rewrite of the physics nor any change to user code. Moving the magnetization to
+the device with \texttt{togpu} causes every subsequent field and torque call to
+dispatch, by the array type alone, to a GPU method --- there are no \texttt{if
+gpu} branches and no duplicated call sites.
+
+The GPU methods live in a Julia \emph{package extension} that loads only when
+\texttt{CUDA.jl} is present, so the core package carries no GPU dependency. Each
+method expresses the per-cell stencil with array programming --- shifted views
+and fused broadcast --- rather than a hand-written scalar loop, so the same
+expression compiles to a single GPU kernel on a \texttt{CuArray} and to
+vectorized code on a host \texttt{Array}. The demagnetizing convolution reuses
+the same FFT structure through \texttt{CUDA.CUFFT}. The element type \texttt{T} is
+a type parameter throughout, so a device run in \texttt{Float32} follows from the
+same source that runs in \texttt{Float64} on the CPU. This is the concrete sense
+in which \JuliaMag{} ``explores'' Julia: multiple dispatch and parametric types
+turn CPU/GPU portability and single/multi-material generality from code-
+duplication problems into dispatch problems, resolved by the compiler.
 
 % ==========================================================================
 \section{Validation}
