@@ -36,8 +36,8 @@ function material(name::AbstractString; alpha = nothing, anisU = (0, 0, 1))
     end
 end
 
-"List the known material names."
-materialnames() = sort(collect(values(_MATERIALS_CANON)))
+"List the known material names (canonical, deduplicated across aliases)."
+materialnames() = sort(unique(values(_MATERIALS_CANON)))
 
 # Parameter records: Msat [A/m], Aex [J/m], K1 [J/m³] (uniaxial; 0 if none or
 # cubic-only), α (nominal).
