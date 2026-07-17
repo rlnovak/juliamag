@@ -143,7 +143,10 @@ The table now holds `⟨m⟩(t)`. `⟨mx⟩` starts near 0.97, crosses zero at a
 
 Non-rectangular geometry is expressed by painting material into a shape on a
 rectangular mesh: cells outside the shape are left empty (`Msat = 0`) and take no
-part in the simulation. Here a Permalloy disc holds a magnetic vortex.
+part in the simulation. Here a Permalloy disc holds a magnetic vortex, and we
+trace its **in-plane hysteresis loop** — sweeping a field along `x` displaces the
+vortex core sideways, and the loop shows the core moving and, at high field, the
+vortex annihilating into a saturated state.
 
 **Step 1 — define the disc.** Start from an empty background, then paint a
 cylinder with material.
@@ -152,50 +155,54 @@ cylinder with material.
 using JuliaMag
 using Printf
 
-mesh = Mesh((40, 40, 1), (5e-9, 5e-9, 5e-9))       # 200 × 200 nm mesh
-rp   = RegionParams(mesh, material("Permalloy"))    # region 0 = Permalloy (default)
-setregion!(rp, 0; Msat = 0.0)                       # …but make region 0 empty
-defregion!(rp, 1, Cylinder(180e-9, 1e6))            # paint a 180 nm disc as region 1
+mesh = Mesh((64, 64, 1), (5e-9, 5e-9, 5e-9))        # 320 × 320 nm mesh
+rp   = RegionParams(mesh, material("Permalloy"))     # region 0 = Permalloy (default)
+setregion!(rp, 0; Msat = 0.0)                        # …but make region 0 empty
+defregion!(rp, 1, Cylinder(300e-9, 1e6))             # paint a 300 nm disc as region 1
+sim  = Simulation(mesh, rp; demag = true)
 ```
 
 `Cylinder(diam, height)` is centred at the origin with its axis along z; the
 large height makes it span the single layer. Region 1 keeps the Permalloy
-parameters copied from the default; region 0 (everything outside the disc) has
-`Msat = 0`.
+parameters; region 0 (outside the disc) has `Msat = 0`.
 
-**Step 2 — seed a vortex and relax.** `setmag!` clears the empty cells
-automatically, so only the disc carries magnetization.
-
-```julia
-sim = Simulation(mesh, rp; demag = true)
-setmag!(sim, VortexConfig(mesh; circ = 1, pol = 1))   # circulation +1, core +z
-relax!(sim; stopdm = 1e-6)
-```
-
-**Step 3 — locate the vortex core.**
+**Step 2 — seed a vortex.** Starting the sweep from the vortex state lets the
+minimizer track the vortex continuously as the field changes.
 
 ```julia
-x, y, z, pol = vortexcore(sim.m, mesh)
-@printf("vortex core at (%.1f, %.1f) nm, polarity %.2f\n", x*1e9, y*1e9, pol)
-# core near the disc centre, polarity ≈ +1
+setmag!(sim, VortexConfig(mesh; circ = 1, pol = 1))  # circulation +1, core +z
 ```
 
-You can track the core over time by adding `q_vortexcore()` to the table before a
-`run!`, e.g. to watch it gyrate under a field or current:
+`VortexConfig(mesh; circ, pol)` takes the in-plane circulation `circ = ±1` and
+the core polarity `pol = ±1` (`±z`); place the core off-centre with
+`translate(VortexConfig(mesh), 40e-9, 0, 0)`.
+
+**Step 3 — sweep the in-plane field and record ⟨mx⟩.** Ramp the field along `x`
+from 0 up to `+Bmax`, down to `−Bmax`, and back, relaxing at each step. Starting
+each relaxation from the previous state is what makes it a hysteresis loop.
 
 ```julia
-savequantities!(sim, q_time(), q_m(), q_vortexcore(); every = 20e-12)
-JuliaMag.setexternalfield!(sim.world, (5e-3, 0.0, 0.0))   # small in-plane field
-run!(sim, 2e-9)
+Bmax, dB = 0.08, 0.005                               # tesla
+Bs = vcat(0:dB:Bmax, Bmax:-dB:-Bmax, -Bmax:dB:Bmax)
+
+mxs = Float64[]
+for B in Bs
+    JuliaMag.setexternalfield!(sim.world, (B, 0.0, 0.0))
+    relax!(sim; stopdm = 1e-6)
+    push!(mxs, average(sim.m)[1])
+end
+
+@printf("⟨mx⟩ range [%.3f, %.3f]\n", minimum(mxs), maximum(mxs))
 ```
 
-**Circulation and polarity.** `VortexConfig(mesh; circ, pol)` takes the
-in-plane circulation `circ = ±1` (clockwise/counter-clockwise) and the core
-polarity `pol = ±1` (`±z`). Place the core off-centre with `translate`:
+Plotting `mxs` against `Bs` gives the vortex loop: `⟨mx⟩ = 0` at zero field (the
+centred vortex), rising as the core is pushed to the edge, then an abrupt jump to
+saturation (`⟨mx⟩ ≈ ±0.7`) where the vortex annihilates, and a jump back as it
+renucleates on the return branch. A ready-to-run version with the plot is
+[`examples/disc_hysteresis.jl`](../examples/disc_hysteresis.jl).
 
-```julia
-setmag!(sim, translate(VortexConfig(mesh), 40e-9, 0, 0))  # core at x = +40 nm
-```
+You can also track the core position through the loop by adding `q_vortexcore()`
+to the output table and calling `savenow!(sim)` at each field step.
 
 ---
 

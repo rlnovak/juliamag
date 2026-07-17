@@ -37,6 +37,15 @@ run.
 
 ## Notes
 
+- The QML module for the Julia-provided components (including QMLMakie's
+  `MakieViewport`) is `jlqml` — `main.qml` does `import jlqml`. Earlier QML.jl
+  versions used `org.julialang`; if you see *module "org.julialang" is not
+  installed*, your QML.jl is ≥ 0.11 and the import must be `jlqml` (already fixed
+  here).
+- The Makie `Figure` is handed to QML as the context property `plot`, bound in
+  the QML by `MakieViewport { scene: plot }`. If a QML.jl version rejects a
+  `Figure` as a `loadqml` keyword, pass it instead with
+  `set_context_property(qmlcontext(), "plot", plot)` after `loadqml`.
 - `ENV["QSG_RENDER_LOOP"] = "basic"` is set for stable embedded Makie rendering.
 - The GUI logic (building/relaxing/running a simulation, extracting the image)
   is exercised headlessly, but the **window itself must be run on a machine with

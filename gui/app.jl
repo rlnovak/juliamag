@@ -142,6 +142,9 @@ gui_stop() = (stopflag[] = true; status[] = "Stopping…"; nothing)
 @qmlfunction gui_relax gui_run gui_stop
 
 # --- Launch ----------------------------------------------------------------
+# The Makie Figure and the observables/arrays are exposed to QML as context
+# properties. (The QML module for the Julia-provided components — including
+# QMLMakie's MakieViewport — is `jlqml` in QML.jl ≥ 0.11, imported in main.qml.)
 
 loadqml(joinpath(@__DIR__, "main.qml");
         status = status, materials = materials, plot = plot)

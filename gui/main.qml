@@ -6,7 +6,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import org.julialang
+import jlqml
 
 ApplicationWindow {
     id: win
