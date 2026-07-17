@@ -23,17 +23,42 @@ This dev-installs JuliaMag from the parent directory and adds the GUI packages.
 julia --project=gui gui/app.jl
 ```
 
-A window opens. Set the mesh, pick a material and initial state, then **Relax**
-to reach equilibrium and **Run** to integrate under the applied field. The
-⟨m⟩(t) curves and the top-layer `mz` heatmap update live; **Stop** interrupts a
-run.
+A window opens. Set the mesh (with optional periodic-x and an optional geometry
+shape), pick a material and initial state, then:
+
+- **Build** assembles the `Simulation` from the inputs.
+- **Relax** minimizes to equilibrium.
+- **Run** integrates under the applied field, streaming results live.
+- **Pause** suspends/resumes a run; **Step** advances one `Δt` chunk (when not
+  running); **Stop** ends the run.
+
+Two live panels on the right:
+
+1. **Time series** — a chosen scalar vs. time. The dropdown below selects the
+   y-quantity: `mx/my/mz`, the vortex or skyrmion `x/y` position, or the
+   topological charge. (Switching quantity clears the curve, since the units
+   differ.)
+2. **Field** — an in-plane `(mx,my)` quiver over a colour map of the current
+   state. The dropdowns below choose the mapped component (`mz/mx/my`), the
+   colormap, and the z-layer (for multilayer meshes); the **show** checkbox turns
+   the panel off to save rendering cost. During a run the field is redrawn every
+   few chunks (throttled); it always redraws on pause, step, and completion.
+
+**Drag and drop** a `.jl` script defining a variable `sim::Simulation` onto the
+window to load and visualize it — e.g. any of the `examples/` scripts adapted to
+leave a `sim` in scope. This is the GUI's on-ramp for problems too complex for
+the built-in controls (multi-region geometry, custom materials, currents).
 
 ## Structure
 
-- `main.qml` — the window layout (Qt6 QML): control groups and the `MakieViewport`.
-- `app.jl` — the Julia driver: builds a `Simulation` from the inputs, exposes
-  `gui_relax`/`gui_run`/`gui_stop` to QML via `@qmlfunction`, and streams results
-  into Makie `Observable`s. All simulation work is plain JuliaMag; QML is only UI.
+- `main.qml` — the window layout (Qt6 QML): the control column, a `DropArea`, and
+  the two `MakieViewport`s with their option dropdowns.
+- `app.jl` — the Julia driver: builds a `Simulation` from the inputs (or a dropped
+  script), exposes `gui_build`/`gui_relax`/`gui_run`/`gui_pause`/`gui_step`/
+  `gui_stop`/`gui_loadscript`/`gui_set_ycurve`/`gui_set_field` to QML via
+  `@qmlfunction`, and streams results into Makie `Observable`s. All simulation
+  work is plain JuliaMag; QML is only UI. The GUI never modifies the core package
+  — it is an optional front end over the same file→CLI workflow.
 
 ## Notes
 
