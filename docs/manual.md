@@ -182,34 +182,50 @@ setmag!(sim, VortexConfig(mesh; circ = 1, pol = 1))  # circulation +1, core +z
 the core polarity `pol = ±1` (`±z`); place the core off-centre with
 `translate(VortexConfig(mesh), 40e-9, 0, 0)`.
 
-**Step 3 — sweep the in-plane field and record ⟨mx⟩.** Ramp the field along `x`
-from 0 up to `+Bmax`, down to `−Bmax`, and back, relaxing at each step. Starting
-each relaxation from the previous state is what makes it a hysteresis loop.
+**Step 3 — choose what to save.** Add the applied field to the output table;
+time and ⟨m⟩ are always the first columns, so each row will hold
+`t, mx, my, mz, B_extx, B_exty, B_extz`.
 
 ```julia
-Bmax, dB = 0.06, 0.004                               # tesla
+savequantities!(sim, q_Bext())
+```
+
+**Step 4 — sweep the in-plane field and record it.** Ramp the field along `x`
+from 0 up to `+Bmax`, down to `−Bmax`, and back, relaxing at each step and
+writing one table row per step with `savenow!`. Starting each relaxation from the
+previous state is what makes it a hysteresis loop. We sweep over ±150 mT — well
+past the vortex-annihilation field — so the disc reaches its saturated branch and
+the plateau is flat at both ends.
+
+```julia
+Bmax, dB = 0.15, 0.005                               # tesla
 Bs = vcat(0:dB:Bmax, Bmax:-dB:-Bmax, -Bmax:dB:Bmax)
 
 mxs = Float64[]
 for B in Bs
     JuliaMag.setexternalfield!(sim.world, (B, 0.0, 0.0))
     relax!(sim; stopdm = 1e-6)
+    savenow!(sim)                                    # one row: Bx, mx, my, mz…
     push!(mxs, average(sim.m)[1])
 end
 
+writetable(sim.table, "disc_hysteresis.txt")
 @printf("⟨mx⟩ range [%.3f, %.3f]\n", minimum(mxs), maximum(mxs))
 ```
 
 Plotting `mxs` against `Bs` gives the S-shaped vortex loop: `⟨mx⟩ = 0` at zero
 field (the centred vortex), a nearly linear reversible rise as the core is pushed
-toward the edge, then an abrupt jump to saturation (`⟨mx⟩ ≈ ±0.77`) where the
-vortex annihilates, and a jump back as it renucleates on the return branch. This
-is a sizeable run (~8 minutes: 40k cells over ~80 field steps). A ready-to-run
-version with the plot is
+toward the edge, then an abrupt jump to the saturated branch (`⟨mx⟩ ≈ ±0.78`)
+where the vortex annihilates, and a jump back as it renucleates on the return
+branch. The plateau sits below 1 because a thin disc never magnetizes fully
+in-plane — shape demagnetization keeps the edge spins curled even at 150 mT. The
+`disc_hysteresis.txt` table holds `Bx` alongside `⟨mx,my,mz⟩` for each field
+step. This is a sizeable run (~13 minutes: 40k cells over ~120 field steps). A
+ready-to-run version with the plot is
 [`examples/disc_hysteresis.jl`](../examples/disc_hysteresis.jl).
 
 You can also track the core position through the loop by adding `q_vortexcore()`
-to the output table and calling `savenow!(sim)` at each field step.
+to `savequantities!`.
 
 ---
 
