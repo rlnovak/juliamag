@@ -82,6 +82,32 @@ end
 defregion!(rp::RegionParams, id::Integer, shape::Shape) = (defregion!(rp.regions, id, shape); rp)
 defregioncell!(rp::RegionParams, id::Integer, i, j, k) = (defregioncell!(rp.regions, id, i, j, k); rp)
 
+"""
+    isempty_cell(params, i, j, k) -> Bool
+
+True if the cell carries no material (Msat = 0), i.e. it lies in unfilled
+geometry. A scalar Material is never empty.
+"""
+@inline isempty_cell(m::Material, i, j, k) = false
+@inline isempty_cell(rp::RegionParams, i, j, k) = @inbounds rp.Msat[_rid(rp, i, j, k)] == 0
+
+"""
+    clearempty!(m, params) -> m
+
+Set the magnetization to zero in every cell with no material (Msat = 0). Empty
+cells then produce no torque and no demag source — the way mumax3 represents
+non-rectangular geometry on a rectangular mesh. Call after building an initial
+state on a `RegionParams` with unfilled regions.
+"""
+function clearempty!(m::AbstractArray{T,4}, params::AbstractParams) where {T}
+    @inbounds for k in axes(m, 4), j in axes(m, 3), i in axes(m, 2)
+        if isempty_cell(params, i, j, k)
+            m[1, i, j, k] = 0; m[2, i, j, k] = 0; m[3, i, j, k] = 0
+        end
+    end
+    return m
+end
+
 # --- Accessors: look up the region of the cell, then the per-region table ---
 # The +1 converts the 0-based region id to a 1-based vector index.
 @inline _rid(rp::RegionParams, i, j, k) = rp.regions.id[i, j, k] + 1

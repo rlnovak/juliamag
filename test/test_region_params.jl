@@ -123,6 +123,42 @@ cell_shape() = (x, y, z) -> abs(x) < 3e-9 && abs(y) < 3e-9
         @test abs(bz_top) > abs(bz_bottom)          # higher Msat ⇒ stronger demag
     end
 
+    @testset "unfilled geometry: empty cells carry no material or torque" begin
+        # A disc on a square mesh: region 0 (default) is emptied, the cylinder is
+        # painted region 1 with material. Cells outside the disc are empty.
+        mesh = Mesh((20, 20, 1), (5e-9, 5e-9, 5e-9))   # 100 × 100 nm
+        rp = RegionParams(mesh, py)
+        setregion!(rp, 0; Msat = 0.0)                  # region 0 → empty
+        defregion!(rp, 1, Cylinder(80e-9, 1e6))        # disc → region 1 (material)
+
+        @test JuliaMag.msat(rp, 10, 10, 1) == 8.0e5    # centre is material
+        @test JuliaMag.msat(rp, 1, 1, 1) == 0.0        # corner is empty
+        @test JuliaMag.isempty_cell(rp, 1, 1, 1)
+        @test !JuliaMag.isempty_cell(rp, 10, 10, 1)
+
+        m = uniform(mesh, (1, 0, 0))
+        clearempty!(m, rp)
+        # Magnetization zeroed outside the disc.
+        @test all(iszero, m[:, 1, 1, 1])
+        @test !all(iszero, m[:, 10, 10, 1])
+
+        # Torque is zero in empty cells (no phantom magnetization moves).
+        world = World(mesh, rp; demag = true)
+        B = similar(m); effectivefield!(B, m, world)
+        dm = similar(m); torque!(dm, m, B, 0.02)
+        @test all(iszero, dm[:, 1, 1, 1])              # empty corner
+        @test maximum(abs, dm) > 0                     # material cells feel torque
+        @test all(isfinite, B)
+    end
+
+    @testset "clearempty! is a no-op for a scalar Material" begin
+        mesh = Mesh((4, 4, 1), (5e-9, 5e-9, 5e-9))
+        m = uniform(mesh, (1, 0, 0))
+        m2 = copy(m)
+        clearempty!(m, py)                             # Material is never empty
+        @test m == m2
+    end
+
     @testset "has* predicates scan present regions" begin
         mesh = Mesh((4, 4, 1), (5e-9, 5e-9, 5e-9))
         rp = RegionParams(mesh, py)                 # no Ku, no DMI, no STT
