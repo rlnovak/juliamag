@@ -17,4 +17,5 @@ using Test
     include("test_region_params.jl")
     include("test_config.jl")
     include("test_ovf.jl")
+    include("test_output.jl")
 end

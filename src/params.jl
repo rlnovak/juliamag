@@ -122,3 +122,8 @@ hasstt(m::Material)   = m.pol != 0
 # a single value. For a scalar Material this is exact; per-region α in the torque
 # is a later refinement.
 damping(m::Material) = m.alpha
+
+# A single-material sample is all one region (0); region 0's average is the whole
+# sample, any other region is empty.
+average_region(m::AbstractArray, ::Material, id::Integer) =
+    id == 0 ? average(m) : (eltype(m)(NaN), eltype(m)(NaN), eltype(m)(NaN))

@@ -139,4 +139,21 @@ maxmsat(rp::RegionParams) = maximum(@view rp.Msat[_present(rp)])
 # Representative scalar damping (region 0's) for the global LLG torque.
 damping(rp::RegionParams) = rp.alpha[1]
 
+"""
+    average_region(m, rp, id) -> (mx, my, mz)
+
+Averaged magnetization over the cells assigned to region `id`.
+"""
+function average_region(m::AbstractArray{T,4}, rp::RegionParams, id::Integer) where {T}
+    r = UInt8(id)
+    sx = sy = sz = zero(T); n = 0
+    @inbounds for k in axes(m, 4), j in axes(m, 3), i in axes(m, 2)
+        if rp.regions.id[i, j, k] == r
+            sx += m[1,i,j,k]; sy += m[2,i,j,k]; sz += m[3,i,j,k]; n += 1
+        end
+    end
+    n == 0 && return (T(NaN), T(NaN), T(NaN))
+    return (sx / n, sy / n, sz / n)
+end
+
 Base.size(rp::RegionParams) = size(rp.regions)

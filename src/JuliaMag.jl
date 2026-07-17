@@ -90,4 +90,16 @@ export fieldenergy, exchangeenergy, anisotropyenergy, dmienergy, demagenergy,
 include("stt.jl")
 export zhanglitorque!, slonczewskitorque!
 
+# --- Feature trackers ------------------------------------------------------
+include("trackers.jl")
+export vortexcore, skyrmionpos, domainwallpos, topologicalcharge
+
+# --- Data output -----------------------------------------------------------
+include("output.jl")
+export Quantity, DataTable, tableadd!, tablesave!, writetable, tableheader
+export q_time, q_m, q_m_region, q_energy, q_exchangeenergy, q_demagenergy,
+       q_zeemanenergy, q_anisenergy, q_maxtorque, q_Bext, q_vortexcore,
+       q_skyrmionpos, q_dwpos, q_topocharge
+export average_region
+
 end # module
