@@ -5,6 +5,16 @@
 # the inner kernels get GPU-specific methods later.
 
 """
+    togpu(m)   /   tocpu(m)
+
+Move a magnetization or field array to the GPU (`CuArray`) or back to the host.
+These are implemented by the CUDA package extension; they error with a helpful
+message unless `using CUDA` has loaded it.
+"""
+togpu(x) = error("togpu requires the CUDA extension — do `using CUDA` alongside JuliaMag on a machine with a GPU.")
+tocpu(x) = error("tocpu requires the CUDA extension — do `using CUDA` alongside JuliaMag on a machine with a GPU.")
+
+"""
     zeromag([T=Float64], mesh) -> Array{T,4}
 
 Allocate an uninitialized magnetization field of shape `(3, Nx, Ny, Nz)`, zeroed.

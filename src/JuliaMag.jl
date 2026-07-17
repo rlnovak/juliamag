@@ -30,6 +30,7 @@ export Material, exchangelength
 # --- Magnetization ---------------------------------------------------------
 include("magnetization.jl")
 export zeromag, uniform, uniform!, randommag, randommag!, vortex, vortex!, normalize!, average
+export togpu, tocpu
 
 # --- Shapes (geometry) -----------------------------------------------------
 include("shape.jl")

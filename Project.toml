@@ -15,8 +15,15 @@ Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SciMLBase = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
 
+[weakdeps]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+
+[extensions]
+JuliaMagCUDAExt = "CUDA"
+
 [compat]
 ADTypes = "1.22.2"
+CUDA = "5"
 FFTW = "1"
 LinearSolve = "4.3.0"
 OrdinaryDiffEqRosenbrock = "2.4.1"
