@@ -1,0 +1,69 @@
+% arxiv.sty — the widely used "arxiv-style" preprint template.
+% Source: https://github.com/kourbatov/arxiv-style (MIT-licensed).
+% Vendored here so the paper compiles standalone (Overleaf/local) without needing
+% the style installed system-wide.
+
+\NeedsTeXFormat{LaTeX2e}
+
+\ProcessOptions\relax
+
+% ------------------------------------------------------------------ geometry
+\RequirePackage{geometry}
+\geometry{
+  verbose,
+  tmargin=2.5cm,
+  bmargin=2.5cm,
+  lmargin=2.5cm,
+  rmargin=2.5cm,
+  headheight=12pt,
+  headsep=25pt,
+  footskip=30pt
+}
+
+% ------------------------------------------------------------------ fonts / text
+\RequirePackage{times}
+\renewcommand{\rmdefault}{ptm}
+\RequirePackage[T1]{fontenc}
+
+% ------------------------------------------------------------------ headers
+\RequirePackage{fancyhdr}
+\fancyhf{}
+\pagestyle{fancy}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancyheadoffset{0pt}
+\rhead{\scshape \footnotesize \@ifundefined{@headtitle}{}{\@headtitle}}
+\lhead{\footnotesize \scshape A Preprint}
+\cfoot{\thepage}
+
+% \headtitle sets a short running head; falls back to nothing.
+\newcommand{\headtitle}[1]{\gdef\@headtitle{#1}}
+
+% ------------------------------------------------------------------ title block
+\renewcommand{\maketitle}{%
+  \thispagestyle{empty}
+  \begin{center}
+    {\LARGE\bfseries \@title \par}
+    \vskip 1.5em
+    {\large \@author \par}
+    \vskip 1em
+    {\normalsize \@date \par}
+  \end{center}
+  \vskip 1em
+}
+
+% Author separators used by the template.
+\providecommand{\And}{\hskip 1em plus 0.5em minus 0.5em\relax}
+\providecommand{\AND}{\\[1ex]}
+
+% ------------------------------------------------------------------ abstract
+\renewenvironment{abstract}{%
+  \centerline{\bfseries\large Abstract}%
+  \vspace{0.5em}%
+  \begin{quote}\itshape
+}{%
+  \end{quote}
+}
+
+% ------------------------------------------------------------------ misc
+\RequirePackage{lmodern}
+\endinput

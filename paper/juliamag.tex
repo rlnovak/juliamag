@@ -1,12 +1,21 @@
-\documentclass[aps,pra,twocolumn,superscriptaddress,floatfix,longbibliography]{revtex4-2}
+\documentclass[11pt]{article}
 
-\usepackage{graphicx}
+\usepackage{arxiv}          % arxiv-style preprint template (paper/arxiv.sty)
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
 \usepackage{amsmath}
+\usepackage{amsfonts}       % blackboard math symbols
 \usepackage{amssymb}
 \usepackage{bm}
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{graphicx}
 \usepackage{listings}
 \usepackage{xcolor}
-\usepackage{hyperref}
 
 % --- Julia source-code listing style --------------------------------------
 \definecolor{jlkw}{RGB}{130,60,150}
@@ -39,15 +48,21 @@
 \newcommand{\vm}{\bm{m}}
 \newcommand{\vB}{\bm{B}}
 
-\begin{document}
-
 \title{\JuliaMag: a minimalist, dispatch-based micromagnetic solver in pure Julia}
 
-\author{Rafael L.\ Novak}
-\email{rlnovak@gmail.com}
-\affiliation{Universidade Federal de Santa Catarina (UFSC), Blumenau, Brazil}
+\author{%
+  R.~L.~Novak \\
+  Universidade Federal de Santa Catarina (UFSC) -- Campus Blumenau \\
+  Rua Marechal Rondon 880, 89065-200, Blumenau, Brazil \\
+  \texttt{rafael.novak@ufsc.br}
+}
 
 \date{\today}
+\headtitle{JuliaMag}
+
+\begin{document}
+
+\maketitle
 
 \begin{abstract}
 We present \JuliaMag, an open-source micromagnetic simulation package written
@@ -70,8 +85,6 @@ demagnetizing field, dynamic magnetization reversal, and current-driven
 spin-transfer torque --- reproducing the references to within
 $\sim 4\times10^{-3}$ in the spatially averaged magnetization.
 \end{abstract}
-
-\maketitle
 
 % ==========================================================================
 \section{Introduction}
