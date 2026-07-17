@@ -1,14 +1,20 @@
 # A Permalloy disc: in-plane hysteresis loop of a magnetic vortex.
 #
 # A vortex sits at the centre of a disc in zero field. An in-plane field along x
-# displaces the core sideways, raising ⟨mx⟩; sweeping the field up and down and
-# back traces the characteristic (narrow, nearly reversible) vortex hysteresis
-# loop, with ⟨mx⟩ = 0 at the vortex state and saturating toward ±1 at high field.
+# displaces the core sideways, raising ⟨mx⟩ along a nearly linear reversible
+# branch; at a critical field the vortex annihilates and the disc saturates
+# (⟨mx⟩ ≈ ±0.77). Reducing the field renucleates the vortex on the return branch,
+# giving the characteristic S-shaped vortex hysteresis loop.
+#
+# A well-formed vortex loop needs a disc that is wide and thin: here 500 nm
+# diameter × 20 nm thick (a classic experimental vortex size). A small, thin disc
+# gives a nearly square loop instead — the reversible core-displacement branch is
+# what distinguishes the vortex loop, and it needs room for the core to move.
 #
 # The disc is non-rectangular geometry on a rectangular mesh: cells outside the
 # cylinder are empty (Msat = 0). The loop is computed with the energy minimizer,
 # starting each field step from the previous state so the vortex is tracked
-# continuously.
+# continuously. This is a sizeable run (~8 min: 40k cells × ~80 field steps).
 #
 # Run:  julia --project=examples examples/disc_hysteresis.jl
 
@@ -17,16 +23,16 @@ using Printf
 using Plots
 
 function main()
-    mesh = Mesh((64, 64, 1), (5e-9, 5e-9, 5e-9))       # 320 × 320 nm mesh
+    mesh = Mesh((100, 100, 4), (5e-9, 5e-9, 5e-9))     # 500 × 500 × 20 nm mesh
     rp   = RegionParams(mesh, material("Permalloy"))
     setregion!(rp, 0; Msat = 0.0)                       # background empty
-    defregion!(rp, 1, Cylinder(300e-9, 1e6))           # 300 nm Permalloy disc
+    defregion!(rp, 1, Cylinder(500e-9, 1e6))           # 500 nm Permalloy disc
     sim = Simulation(mesh, rp; demag = true)
 
     setmag!(sim, VortexConfig(mesh; circ = 1, pol = 1))  # seed a vortex
 
     # Field sweep along x: 0 → +Bmax → −Bmax → +Bmax [T].
-    Bmax, dB = 0.08, 0.005
+    Bmax, dB = 0.06, 0.004
     Bs = vcat(0:dB:Bmax, Bmax:-dB:-Bmax, -Bmax:dB:Bmax)
 
     mxs = Float64[]
@@ -43,7 +49,7 @@ function main()
 
     # Hysteresis curve.
     plt = plot(Bs .* 1e3, mxs; xlabel = "µ₀Hx (mT)", ylabel = "⟨mx⟩",
-               title = "Vortex hysteresis in a 300 nm Permalloy disc",
+               title = "Vortex hysteresis in a 500 nm × 20 nm Permalloy disc",
                titlefontsize = 10, legend = false, lw = 2, marker = :circle, ms = 2)
     out = joinpath(@__DIR__, "disc_hysteresis.png")
     savefig(plt, out)

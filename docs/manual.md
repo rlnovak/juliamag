@@ -145,8 +145,13 @@ Non-rectangular geometry is expressed by painting material into a shape on a
 rectangular mesh: cells outside the shape are left empty (`Msat = 0`) and take no
 part in the simulation. Here a Permalloy disc holds a magnetic vortex, and we
 trace its **in-plane hysteresis loop** — sweeping a field along `x` displaces the
-vortex core sideways, and the loop shows the core moving and, at high field, the
-vortex annihilating into a saturated state.
+vortex core sideways along a reversible branch, until at a critical field the
+vortex annihilates and the disc saturates.
+
+A well-formed vortex loop needs a disc that is **wide and thin**: we use 500 nm
+diameter × 20 nm thick, a classic experimental vortex size. (A small, thin disc
+gives a nearly square loop — the reversible core-displacement branch, the
+signature of the vortex loop, needs room for the core to move.)
 
 **Step 1 — define the disc.** Start from an empty background, then paint a
 cylinder with material.
@@ -155,15 +160,15 @@ cylinder with material.
 using JuliaMag
 using Printf
 
-mesh = Mesh((64, 64, 1), (5e-9, 5e-9, 5e-9))        # 320 × 320 nm mesh
-rp   = RegionParams(mesh, material("Permalloy"))     # region 0 = Permalloy (default)
-setregion!(rp, 0; Msat = 0.0)                        # …but make region 0 empty
-defregion!(rp, 1, Cylinder(300e-9, 1e6))             # paint a 300 nm disc as region 1
+mesh = Mesh((100, 100, 4), (5e-9, 5e-9, 5e-9))       # 500 × 500 × 20 nm mesh
+rp   = RegionParams(mesh, material("Permalloy"))      # region 0 = Permalloy (default)
+setregion!(rp, 0; Msat = 0.0)                         # …but make region 0 empty
+defregion!(rp, 1, Cylinder(500e-9, 1e6))              # paint a 500 nm disc as region 1
 sim  = Simulation(mesh, rp; demag = true)
 ```
 
 `Cylinder(diam, height)` is centred at the origin with its axis along z; the
-large height makes it span the single layer. Region 1 keeps the Permalloy
+large height makes it span all four layers. Region 1 keeps the Permalloy
 parameters; region 0 (outside the disc) has `Msat = 0`.
 
 **Step 2 — seed a vortex.** Starting the sweep from the vortex state lets the
@@ -182,7 +187,7 @@ from 0 up to `+Bmax`, down to `−Bmax`, and back, relaxing at each step. Starti
 each relaxation from the previous state is what makes it a hysteresis loop.
 
 ```julia
-Bmax, dB = 0.08, 0.005                               # tesla
+Bmax, dB = 0.06, 0.004                               # tesla
 Bs = vcat(0:dB:Bmax, Bmax:-dB:-Bmax, -Bmax:dB:Bmax)
 
 mxs = Float64[]
@@ -195,10 +200,12 @@ end
 @printf("⟨mx⟩ range [%.3f, %.3f]\n", minimum(mxs), maximum(mxs))
 ```
 
-Plotting `mxs` against `Bs` gives the vortex loop: `⟨mx⟩ = 0` at zero field (the
-centred vortex), rising as the core is pushed to the edge, then an abrupt jump to
-saturation (`⟨mx⟩ ≈ ±0.7`) where the vortex annihilates, and a jump back as it
-renucleates on the return branch. A ready-to-run version with the plot is
+Plotting `mxs` against `Bs` gives the S-shaped vortex loop: `⟨mx⟩ = 0` at zero
+field (the centred vortex), a nearly linear reversible rise as the core is pushed
+toward the edge, then an abrupt jump to saturation (`⟨mx⟩ ≈ ±0.77`) where the
+vortex annihilates, and a jump back as it renucleates on the return branch. This
+is a sizeable run (~8 minutes: 40k cells over ~80 field steps). A ready-to-run
+version with the plot is
 [`examples/disc_hysteresis.jl`](../examples/disc_hysteresis.jl).
 
 You can also track the core position through the loop by adding `q_vortexcore()`
