@@ -50,6 +50,22 @@
         @test sim.table.rows[2][1] ≈ 1e-11 rtol = 1e-6
     end
 
+    @testset "runcurrent! drives a texture and fills the table" begin
+        m = Mesh((60, 30, 1), (2e-9, 2e-9, 1e-9))
+        mat = Material(Msat = 5.8e5, Aex = 1.5e-11, alpha = 0.3,
+                       Ku = 8e5, anisU = (0,0,1), Dind = 3.0e-3, pol = 1.0, xi = 0.2)
+        sim = Simulation(m, mat; demag = true)
+        setmag!(sim, NeelSkyrmionConfig(m; charge = 1, pol = -1))
+        relax!(sim; stopdm = 1e-5)
+        x0, _, _ = skyrmionpos(sim.m, m)
+        savequantities!(sim, q_time(), q_skyrmionpos())
+        runcurrent!(sim, (5e12, 0.0, 0.0), 1e-10; every = 25e-12)
+        x1, _, _ = skyrmionpos(sim.m, m)
+        @test length(sim.table.rows) >= 4          # start + chunks
+        @test abs(x1 - x0) > 1e-9                   # the current moved it
+        @test all(isfinite, sim.table.rows[end])
+    end
+
     @testset "Simulation with a region material runs" begin
         m = Mesh((8, 8, 4), (5e-9, 5e-9, 5e-9))
         rp = RegionParams(m, material("Permalloy"))

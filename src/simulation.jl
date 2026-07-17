@@ -122,6 +122,55 @@ function run!(sim::Simulation{T}, duration::Real; abstol = 1e-6, reltol = 1e-5) 
     return sim
 end
 
+"""
+    runcurrent!(sim, J, duration; every=20e-12, dt=5e-14)
+
+Integrate the LLG with an in-plane Zhang-Li spin-transfer current `J = (Jx,Jy,Jz)`
+[A/m²] for `duration` seconds, appending a table row every `every` seconds. Uses
+a fixed-step fourth-order Runge-Kutta with the current torque added to the LLG
+torque (the STT is a torque, not a field, so it is not set through
+`setexternalfield!`). The material's `pol` and `xi` set the polarization and
+non-adiabaticity.
+
+Use this to drive a domain wall or skyrmion with a current (see the manual's
+skyrmion tutorial and µMAG standard problem 5).
+"""
+function runcurrent!(sim::Simulation{T}, J, duration::Real;
+                     every = 20e-12, dt = 5e-14) where {T}
+    world, msh, mat = sim.world, sim.world.mesh, sim.world.material
+    tbl = sim.table
+    Jt = NTuple{3,T}(J)
+    nchunks = max(1, round(Int, duration / every))
+    substeps = max(1, round(Int, every / dt))
+    tablesave!(tbl, world, sim.m, sim.t)
+    for _ in 1:nchunks
+        _rk4_current!(sim.m, world, msh, mat, Jt, T(dt), substeps)
+        sim.t += T(every)
+        tablesave!(tbl, world, sim.m, sim.t)
+    end
+    return sim
+end
+
+# Fixed-step RK4 of dm/dt = LLG torque + Zhang-Li STT, `nsteps` of size `dt`.
+function _rk4_current!(m::AbstractArray{T,4}, world, mesh::Mesh, mat, J, dt, nsteps) where {T}
+    k1 = similar(m); k2 = similar(m); k3 = similar(m); k4 = similar(m); tmp = similar(m); B = world._Bbuf
+    rhs!(dm, mm) = begin
+        effectivefield!(B, mm, world)
+        torque!(dm, mm, B, damping(mat))
+        zhanglitorque!(dm, mm, mesh, mat, J; add = true)
+        dm
+    end
+    for _ in 1:nsteps
+        rhs!(k1, m)
+        @. tmp = m + (dt/2)*k1; normalize!(tmp); rhs!(k2, tmp)
+        @. tmp = m + (dt/2)*k2; normalize!(tmp); rhs!(k3, tmp)
+        @. tmp = m + dt*k3;     normalize!(tmp); rhs!(k4, tmp)
+        @. m = m + (dt/6)*(k1 + 2k2 + 2k3 + k4)
+        normalize!(m)
+    end
+    return m
+end
+
 "Average magnetization ⟨mx,my,mz⟩ of the current state."
 average(sim::Simulation) = average(sim.m)
 

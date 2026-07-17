@@ -109,6 +109,6 @@ export material, materialnames
 
 # --- Simulation wrapper ----------------------------------------------------
 include("simulation.jl")
-export Simulation, setmag!, savequantities!, savenow!, run!
+export Simulation, setmag!, savequantities!, savenow!, run!, runcurrent!
 
 end # module

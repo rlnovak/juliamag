@@ -1,2 +1,9 @@
 [deps]
+Colors = "5ae59095-9a9b-59fe-a467-6f913c188581"
+GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 JuliaMag = "3f8a1c6e-5b2d-4e91-9a07-6d4c8f2b1e53"
+Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
+Observables = "510215fc-4207-5dde-b226-833fc4488ee2"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+QML = "2db162a6-7e43-52c3-8d84-290c1c42d82a"
+QMLMakie = "08f9cac3-3b11-4f1c-9d88-d0e81c500f64"
