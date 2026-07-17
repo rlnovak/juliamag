@@ -59,10 +59,18 @@ function effectivefield!(B::AbstractArray{T,4}, m::AbstractArray{T,4}, w::World{
         dmi!(B, m, w.mesh, w.material; add = true)
     end
     if w.demagplan !== nothing
-        demagfield!(B, m, w.demagplan; add = true)
+        _demag!(B, m, w; add = true)
     end
     if any(!iszero, w.Bext)
         zeeman!(B, w.Bext; add = true)
     end
     return B
 end
+
+# Demag dispatch on the material type: a scalar Material uses the fast uniform-
+# Msat path (prefactor μ0·Msat, input m); a RegionParams uses the region-aware
+# path (input Msat[cell]·m, prefactor μ0), which is exact for per-region Msat.
+_demag!(B, m, w::World{T,P,<:Material}; add) where {T,P} =
+    demagfield!(B, m, w.demagplan; add = add)
+_demag!(B, m, w::World{T,P,<:RegionParams}; add) where {T,P} =
+    demagfield!(B, m, w.demagplan, w.material, w.mesh; add = add)

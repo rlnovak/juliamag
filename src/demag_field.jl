@@ -81,18 +81,49 @@ end
     demagfield!(B, m, plan; add=false)
 
 Add (or write) the demagnetization field of state `m` into `B` [T], using a
-precomputed [`DemagPlan`](@ref).
+precomputed [`DemagPlan`](@ref). The plan's `prefactor = μ0·Msat` assumes a
+uniform Msat; for a region-dependent Msat use the four-argument method below.
 """
 function demagfield!(B::AbstractArray{T,4}, m::AbstractArray{T,4},
                      plan::DemagPlan{T}; add::Bool = false) where {T}
+    _demagfield!(B, m, plan, plan.prefactor, nothing, add)
+end
+
+"""
+    demagfield!(B, m, plan, params, mesh; add=false)
+
+Region-aware demag field. The convolution acts on the physical magnetization
+`M = Msat[cell]·m`, so a per-region Msat (a magnetic multilayer) is handled
+correctly; the plan's kernel carries only μ0 in this path. Cells with Msat = 0
+contribute nothing (unfilled geometry).
+"""
+function demagfield!(B::AbstractArray{T,4}, m::AbstractArray{T,4}, plan::DemagPlan{T},
+                     params::AbstractParams, mesh::Mesh; add::Bool = false) where {T}
+    # prefactor here is μ0 alone; Msat enters cell by cell when padding.
+    _demagfield!(B, m, plan, T(μ0), (params, mesh), add)
+end
+
+# Shared core. When `msrc === nothing` the input is m scaled by the plan's
+# uniform prefactor (μ0·Msat) at the end; otherwise the input is Msat[cell]·m and
+# the prefactor is μ0.
+function _demagfield!(B::AbstractArray{T,4}, m::AbstractArray{T,4},
+                      plan::DemagPlan{T}, pref::T, msrc, add::Bool) where {T}
     rx, ry, rz = plan.dataregion
 
-    # Zero-pad each component of m into the padded scratch, then forward-transform.
+    # Zero-pad each component of the (possibly Msat-weighted) magnetization, then
+    # forward-transform.
     for c in 1:3
         pc = plan.padm[c]
         fill!(pc, zero(T))
-        @inbounds for (kk, k) in enumerate(rz), (jj, j) in enumerate(ry), (ii, i) in enumerate(rx)
-            pc[ii, jj, kk] = m[c, i, j, k]
+        if msrc === nothing
+            @inbounds for (kk, k) in enumerate(rz), (jj, j) in enumerate(ry), (ii, i) in enumerate(rx)
+                pc[ii, jj, kk] = m[c, i, j, k]
+            end
+        else
+            params, _ = msrc
+            @inbounds for (kk, k) in enumerate(rz), (jj, j) in enumerate(ry), (ii, i) in enumerate(rx)
+                pc[ii, jj, kk] = msat(params, i, j, k) * m[c, i, j, k]
+            end
         end
         mul!(plan.mhat[c], plan.pfor, pc)
     end
@@ -108,9 +139,7 @@ function demagfield!(B::AbstractArray{T,4}, m::AbstractArray{T,4},
         bz[I] = plan.Kxz[I]*Mx + plan.Kyz[I]*My + plan.Kzz[I]*Mz
     end
 
-    # Inverse-transform each field component and copy out the data region,
-    # scaled by μ0·Msat.
-    pref = plan.prefactor
+    # Inverse-transform each field component and copy out the data region.
     for c in 1:3
         mul!(plan.padm[c], plan.pinv, plan.bhat[c])
         pc = plan.padm[c]

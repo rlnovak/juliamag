@@ -91,6 +91,38 @@ cell_shape() = (x, y, z) -> abs(x) < 3e-9 && abs(y) < 3e-9
         @test JuliaMag.msat(rp, 1, 1, 4) == 1.4e6   # top layer
     end
 
+    @testset "region-aware demag matches the uniform path for one material" begin
+        # With a single material everywhere, the Msat[cell]·m input path (prefactor
+        # μ0) must equal the uniform-Msat path (prefactor μ0·Msat, input m).
+        mesh = Mesh((8, 8, 2), (5e-9, 5e-9, 5e-9))
+        rp = RegionParams(mesh, py)
+        plan = DemagPlan(demagkernel(mesh), mesh, py.Msat)
+        m = randommag!(zeromag(mesh))
+
+        Buni = similar(m); demagfield!(Buni, m, plan)
+        Breg = similar(m); demagfield!(Breg, m, plan, rp, mesh)
+        @test Breg ≈ Buni rtol = 1e-10
+    end
+
+    @testset "bilayer Msat: stronger demag in the higher-Msat layer" begin
+        # Two z-layers, both magnetized out of plane; the layer with larger Msat
+        # feels a stronger (more negative) demag field along z.
+        mesh = Mesh((8, 8, 4), (5e-9, 5e-9, 5e-9))
+        rp = RegionParams(mesh, py)
+        defregion!(rp, 1, Layers(mesh, 3, 5))       # top two layers → region 1
+        setregion!(rp, 1; Msat = 1.6e6)             # double Msat
+        plan = DemagPlan(demagkernel(mesh), mesh, JuliaMag.maxmsat(rp))
+
+        m = uniform(mesh, (0, 0, 1))                # out of plane
+        B = similar(m); demagfield!(B, m, plan, rp, mesh)
+        # Demag opposes m (Bz < 0) in both layers, stronger where Msat is larger.
+        bz_bottom = B[3, 4, 4, 1]                   # region 0 (Msat 8e5)
+        bz_top    = B[3, 4, 4, 4]                   # region 1 (Msat 1.6e6)
+        @test bz_bottom < 0
+        @test bz_top < 0
+        @test abs(bz_top) > abs(bz_bottom)          # higher Msat ⇒ stronger demag
+    end
+
     @testset "has* predicates scan present regions" begin
         mesh = Mesh((4, 4, 1), (5e-9, 5e-9, 5e-9))
         rp = RegionParams(mesh, py)                 # no Ku, no DMI, no STT
