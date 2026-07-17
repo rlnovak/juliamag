@@ -86,4 +86,24 @@
         effectivefield!(B, m2, world)
         @test all(isfinite, B)
     end
+
+    @testset "saveovf round-trips through loadovf" begin
+        path = joinpath(dir, "state_saved.ovf")
+        saveovf(path, m, mesh)
+        m2, header = loadovf(path)
+        @test size(m2) == size(m)
+        @test m2 ≈ m rtol = 1e-6
+        mesh2 = meshfromovf(header)
+        @test size(mesh2) == mesh.size
+        @test all(mesh2.cellsize .≈ mesh.cellsize)
+    end
+
+    @testset "saveovf valuemultiplier scales the stored values" begin
+        path = joinpath(dir, "state_scaled.ovf")
+        Msat = 8e5
+        saveovf(path, m, mesh; valuemultiplier = Msat)   # store A/m
+        m2, header = loadovf(path)                        # loadovf re-applies the multiplier
+        @test header["valuemultiplier"] ≈ Msat
+        @test m2 ≈ m rtol = 1e-5                           # net result is the unit field again
+    end
 end

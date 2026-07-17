@@ -84,21 +84,50 @@ end
 
 Skyrmion position as the centroid of the topological charge density, weighted by
 |density|. Returns metres from the sample centre. Uses the first z-layer.
+
+Along a periodic axis the centroid is computed circularly (as a mean angle), so
+the position stays correct when the skyrmion straddles the wrap-around seam of a
+periodic stripe — where a plain linear centroid would jump to the middle.
 """
 function skyrmionpos(m::AbstractArray{T,4}, mesh::Mesh) where {T}
     Nx, Ny, Nz = mesh.size
     cx, cy, cz = mesh.cellsize
     ic2x = T(1 / (2cx)); ic2y = T(1 / (2cy))
+    px, py = isperiodic(mesh, 1), isperiodic(mesh, 2)
+    # Linear accumulators, and circular (cos/sin) accumulators for periodic axes.
     sw = zero(T); sx = zero(T); sy = zero(T)
+    cxs = zero(T); sxs = zero(T); cys = zero(T); sys = zero(T)
+    ax = T(2π / Nx); ay = T(2π / Ny)
     @inbounds for j in 1:Ny, i in 1:Nx
         w = abs(_topo_density(m, i, j, 1, Nx, Ny, ic2x, ic2y))
         sw += w
-        sx += w * (i - (Nx + 1) / 2) * cx
-        sy += w * (j - (Ny + 1) / 2) * cy
+        if px
+            θ = (i - 1) * ax; cxs += w * cos(θ); sxs += w * sin(θ)
+        else
+            sx += w * (i - (Nx + 1) / 2) * cx
+        end
+        if py
+            φ = (j - 1) * ay; cys += w * cos(φ); sys += w * sin(φ)
+        else
+            sy += w * (j - (Ny + 1) / 2) * cy
+        end
     end
     sw == 0 && return (T(NaN), T(NaN), T(NaN))
+    # Circular mean back to a cell index, then to a centred coordinate.
+    x = if px
+        θ = atan(sxs, cxs); θ < 0 && (θ += T(2π))
+        (θ / ax + 1 - (Nx + 1) / 2) * cx
+    else
+        sx / sw
+    end
+    y = if py
+        φ = atan(sys, cys); φ < 0 && (φ += T(2π))
+        (φ / ay + 1 - (Ny + 1) / 2) * cy
+    else
+        sy / sw
+    end
     z = (1 - (Nz + 1) / 2) * cz
-    return (T(sx / sw), T(sy / sw), T(z))
+    return (T(x), T(y), T(z))
 end
 
 """

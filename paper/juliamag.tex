@@ -426,9 +426,11 @@ vector} sampled at each cell centre. \JuliaMag{} provides uniform, vortex,
 antivortex, vortex-wall, two-domain, random, and N\'eel- and Bloch-skyrmion
 configurations. Localizable textures accept a circulation/charge and a core
 polarity, and are placed anywhere with \texttt{translate}, mirroring \mumax's
-\texttt{.Transl}. States can also be loaded from OVF files (text and binary, the
-standard micromagnetic interchange format), so a run can start from a saved
-configuration.
+\texttt{.Transl}. States are read from and written to OVF files (text and binary,
+the standard micromagnetic interchange format), so a run can start from a saved
+configuration and its snapshots can be visualized in OOMMF, \mumax, or ParaView,
+or plotted directly as an out-of-plane colour map with an in-plane vector
+overlay.
 
 % ==========================================================================
 \section{Geometry and material regions}
@@ -633,6 +635,77 @@ Standard problem~5 thus validates the Zhang--Li spin-transfer torque
 independently of the field terms exercised by standard problem~4.
 
 % ==========================================================================
+\section{Applications}
+\label{sec:applications}
+
+Beyond the quantitative benchmarks, two short studies illustrate the kind of
+problem \JuliaMag{} is meant for: nonuniform equilibria on non-rectangular
+geometry, and current-driven topological textures on a periodic wire. Both are
+driven entirely through the user-facing simulation interface of
+Section~\ref{sec:interface}.
+
+\subsection{Vortex hysteresis in a disc}
+\label{sec:vortex}
+
+A magnetic vortex in a thin Permalloy disc traces a characteristic hysteresis
+loop under an in-plane field~\cite{guslienko2002}. We take a
+$500~\mathrm{nm}\times20~\mathrm{nm}$ disc, painted as a cylinder on a
+$100\times100\times4$ mesh with the cells outside the disc left empty
+($M_s=0$; Section~\ref{sec:regions}), and sweep the field along $x$ over
+$\pm150$~mT, relaxing the magnetization with the energy minimizer at each step
+and continuing from the previous state. Figure~\ref{fig:vortex} shows the result.
+At zero field the centred vortex gives $\langle m_x\rangle=0$; the field displaces
+the core along a nearly linear, reversible branch until, at the annihilation
+field, the vortex is expelled and the disc jumps to its saturated branch
+($\langle m_x\rangle\approx0.78$, below unity because shape demagnetization keeps
+the edge spins curled). On the return branch the vortex renucleates, closing the
+$S$-shaped loop. The disc must be wide and thin for the reversible
+core-displacement branch to appear --- the signature that distinguishes a vortex
+loop from a square one --- which is exactly the regime where an accurate
+demagnetizing field matters most.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/vortex_hysteresis.png}
+  \caption{In-plane hysteresis loop of a magnetic vortex in a
+  $500~\mathrm{nm}\times20~\mathrm{nm}$ Permalloy disc. The reversible
+  core-displacement branch, the annihilation jump to the saturated branch, and
+  the renucleation on the return sweep are all resolved.}
+  \label{fig:vortex}
+\end{figure}
+
+\subsection{Current-driven skyrmion on an infinite wire}
+\label{sec:skyrmion}
+
+A N\'eel skyrmion stabilized by interfacial DMI and perpendicular anisotropy is
+driven along a stripe by a Zhang--Li spin current. To model an infinite wire we
+make the mesh periodic along $x$ ($\mathtt{pbc}=(1,0,0)$), so the skyrmion
+re-enters from the far end rather than being pinned or annihilated at an edge; the
+exchange, DMI, demagnetizing, and spin-torque terms all honour the periodic axis.
+On a $300~\mathrm{nm}\times200~\mathrm{nm}\times1~\mathrm{nm}$ stripe
+($M_s=5.8\times10^5$~A/m, $A=1.5\times10^{-11}$~J/m, $K_u=8\times10^5$~J/m$^3$,
+$D=3.0\times10^{-3}$~J/m$^2$, $P=1$, $\xi=0.2$) a current
+$\bm{j}=(2\times10^{12},0,0)$~A/m$^2$ drives the skyrmion against the electron
+flow at a steady $v_x\approx-178$~m/s, with a transverse skyrmion-Hall deflection
+along $y$. Figure~\ref{fig:skyrmion} shows the drift: the recorded position is
+periodic, so it is unwrapped before fitting the velocity, giving a straight
+$x(t)$ across the wrap-around re-entry, and the snapshots confirm the
+hedgehog texture is preserved. The skyrmion position is obtained as the centroid
+of the topological-charge density, computed circularly along the periodic axis so
+that it remains correct when the texture straddles the wrap seam.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/skyrmion_drive.png}
+  \caption{Current-driven N\'eel skyrmion on a stripe made periodic along $x$
+  (an infinite wire). (a)~Unwrapped longitudinal position $x(t)$; the slope gives
+  $v_x\approx-178$~m/s. (b),(c)~$m_z$ colour maps at $t=0$ and $t=3$~ns: the
+  skyrmion has drifted along $-x$ (re-entering through the periodic seam) and
+  deflected along $+y$ by the skyrmion-Hall effect.}
+  \label{fig:skyrmion}
+\end{figure}
+
+% ==========================================================================
 \section{Conclusion and outlook}
 \label{sec:conclusion}
 
@@ -645,7 +718,10 @@ agrees with the references to $\sim 4\times10^{-3}$ (dynamic reversal, standard
 problem~4), to $\sim 10^{-3}$ in the remanence and coercive field across a wide
 range of aspect ratios (static equilibria, standard problem~2), and to
 $9\times10^{-5}$ for the current-driven vortex (spin-transfer torque, standard
-problem~5). Three architectural choices carry the design: a
+problem~5). Beyond the benchmarks, the same interface handles a vortex hysteresis
+loop on a non-rectangular disc and a current-driven skyrmion on a periodic
+infinite wire (Section~\ref{sec:applications}). Three architectural choices carry
+the design: a
 component-first $(3,N_x,N_y,N_z)$ data layout, multiple dispatch on an abstract
 array type, and a single $(x,y,z)$ index convention with the origin at the sample
 centre. Together they keep the source small and, crucially, leave GPU support as
@@ -733,6 +809,13 @@ source and available at \url{https://github.com/rlnovak/juliamag}.
 \bibitem{najafi2009} M.\ Najafi \textit{et al.}, ``Proposal for a standard
   problem for micromagnetic simulations including spin-transfer torque,''
   J.\ Appl.\ Phys.\ \textbf{105}, 113914 (2009).
+
+% --- Magnetization textures ---
+\bibitem{guslienko2002} K.\ Yu.\ Guslienko, V.\ Novosad, Y.\ Otani, H.\ Shima,
+  and K.\ Fukamichi, ``Magnetization reversal due to vortex nucleation,
+  displacement, and annihilation in submicron ferromagnetic dot arrays,''
+  Phys.\ Rev.\ B \textbf{65}, 024414 (2001).
+  \url{https://doi.org/10.1103/PhysRevB.65.024414}.
 
 % --- Machine learning in micromagnetics (perspectives) ---
 \bibitem{schaffer2023} S.\ Schaffer, T.\ Schrefl, H.\ Oezelt, A.\ Kovacs,

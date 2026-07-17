@@ -85,6 +85,51 @@ function _ovf_data!(io::IO, m::AbstractArray{T,4}, header) where {T}
 end
 
 """
+    saveovf(filename, m, mesh; title="JuliaMag", valuemultiplier=1.0)
+
+Write a `(3, Nx, Ny, Nz)` magnetization array to an OVF 2.0 text file, readable
+by OOMMF, mumax3, and ParaView. The cell origin follows the package convention
+(mesh centred on the geometric centre): cell `(i,j,k)` sits at
+`(-L + cellsize)/2 + (i-1)·cellsize`. `valuemultiplier` scales the stored values
+(use `Msat` to write A/m instead of unit vectors).
+"""
+function saveovf(filename::AbstractString, m::AbstractArray{<:Real,4}, mesh::Mesh;
+                 title = "JuliaMag", valuemultiplier = 1.0)
+    nx, ny, nz = mesh.size
+    cx, cy, cz = mesh.cellsize
+    Lx, Ly, Lz = worldsize(mesh)
+    # Cell-centre of the first cell, with the origin at the geometric centre.
+    x0 = (-Lx + cx) / 2; y0 = (-Ly + cy) / 2; z0 = (-Lz + cz) / 2
+    vm = Float64(valuemultiplier)
+    open(filename, "w") do io
+        println(io, "# OOMMF OVF 2.0")
+        println(io, "# Segment count: 1")
+        println(io, "# Begin: Segment")
+        println(io, "# Begin: Header")
+        println(io, "# Title: ", title)
+        println(io, "# meshtype: rectangular")
+        println(io, "# meshunit: m")
+        println(io, "# valueunit: 1")
+        println(io, "# valuemultiplier: ", vm)
+        println(io, "# xmin: ", -Lx / 2, "\n# ymin: ", -Ly / 2, "\n# zmin: ", -Lz / 2)
+        println(io, "# xmax: ",  Lx / 2, "\n# ymax: ",  Ly / 2, "\n# zmax: ",  Lz / 2)
+        println(io, "# valuedim: 3")
+        println(io, "# valuelabels: mx my mz")
+        println(io, "# xbase: ", x0, "\n# ybase: ", y0, "\n# zbase: ", z0)
+        println(io, "# xnodes: ", nx, "\n# ynodes: ", ny, "\n# znodes: ", nz)
+        println(io, "# xstepsize: ", cx, "\n# ystepsize: ", cy, "\n# zstepsize: ", cz)
+        println(io, "# End: Header")
+        println(io, "# Begin: Data Text")
+        for k in 1:nz, j in 1:ny, i in 1:nx
+            println(io, m[1, i, j, k] / vm, " ", m[2, i, j, k] / vm, " ", m[3, i, j, k] / vm)
+        end
+        println(io, "# End: Data Text")
+        println(io, "# End: Segment")
+    end
+    return filename
+end
+
+"""
     meshfromovf(header) -> Mesh
 
 Build a [`Mesh`](@ref) from a parsed OVF header (cell sizes from `*stepsize`,

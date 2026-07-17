@@ -55,7 +55,7 @@ export UniformConfig, VortexConfig, AntiVortexConfig, NeelSkyrmionConfig,
 
 # --- OVF I/O ---------------------------------------------------------------
 include("ovf.jl")
-export loadovf, meshfromovf
+export loadovf, saveovf, meshfromovf
 
 # --- Effective-field terms -------------------------------------------------
 include("exchange.jl")

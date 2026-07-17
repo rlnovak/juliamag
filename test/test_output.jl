@@ -39,6 +39,23 @@
         @test x2 ≈ off atol = 6e-9
     end
 
+    @testset "skyrmion position is circular on a periodic axis" begin
+        # Roll a centred skyrmion by half the stripe so it straddles the x wrap
+        # seam. A linear centroid would report the middle; the circular centroid
+        # on the periodic axis must follow the roll to the seam at ±L/2.
+        Nx, cx = 60, 3e-9
+        L = Nx * cx
+        mesh = Mesh((Nx, 60, 1), (cx, 3e-9, 3e-9); pbc = (1, 0, 0))
+        m0 = setconfig(mesh, NeelSkyrmionConfig(mesh; charge = 1, pol = 1))
+        xc0, _, _ = skyrmionpos(m0, mesh)
+        @test abs(xc0) < 5e-9                       # centred to start
+
+        m = circshift(m0, (0, Nx ÷ 2, 0, 0))        # shift by L/2 along x
+        xc, _, _ = skyrmionpos(m, mesh)
+        # Now at the seam: |xc| ≈ L/2, i.e. near ±L/2, not near 0.
+        @test min(abs(xc - L/2), abs(xc + L/2)) < 4e-9
+    end
+
     @testset "domain-wall position" begin
         mesh = Mesh((80, 8, 1), (4e-9, 4e-9, 4e-9))
         # Head-to-head wall centred: mx = +1 left, -1 right.

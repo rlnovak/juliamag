@@ -233,15 +233,18 @@ to `savequantities!`.
 
 This tutorial combines interfacial DMI (which stabilizes Néel skyrmions),
 perpendicular anisotropy, and a Zhang–Li spin-polarized current that drives the
-skyrmion along the stripe.
+skyrmion along an **infinite wire** — a stripe made periodic along `x`, so the
+skyrmion re-enters from the far end instead of being pinned or annihilated at an
+edge. We save OVF snapshots along the way and measure the drift velocity.
 
-**Step 1 — a material with PMA and interfacial DMI.**
+**Step 1 — a periodic stripe with PMA and interfacial DMI.** `pbc = (1,0,0)`
+makes the mesh periodic along `x` (one periodic image each side).
 
 ```julia
 using JuliaMag
 using Printf
 
-mesh = Mesh((100, 40, 1), (2e-9, 2e-9, 1e-9))      # 200 × 80 × 1 nm stripe
+mesh = Mesh((150, 100, 1), (2e-9, 2e-9, 1e-9); pbc = (1, 0, 0))  # 300 × 200 × 1 nm, periodic x
 mat  = Material(
     Msat  = 5.8e5,     # A/m
     Aex   = 1.5e-11,   # J/m
@@ -255,12 +258,15 @@ mat  = Material(
 sim = Simulation(mesh, mat; demag = true)
 ```
 
+The stripe is wide enough (200 nm) that the transverse skyrmion-Hall deflection
+does not push the skyrmion into a `y` edge over the run. Exchange, DMI, demag and
+the spin torque all honour the periodic axis.
+
 **Step 2 — seed a Néel skyrmion and relax.** `charge` is the topological charge,
 `pol` the core polarity (here the core points `-z` in a `+z` background).
 
 ```julia
 setmag!(sim, NeelSkyrmionConfig(mesh; charge = 1, pol = -1))
-@printf("seed Q = %.2f\n", topologicalcharge(sim.m, mesh))
 relax!(sim; stopdm = 1e-6)
 
 xs, ys, _ = skyrmionpos(sim.m, mesh)
@@ -271,32 +277,70 @@ xs, ys, _ = skyrmionpos(sim.m, mesh)
 
 `topologicalcharge` integrates `m·(∂ₓm × ∂ᵧm)/4π`; it is close to ±1 for a single
 skyrmion (a little below in magnitude because of discretization). `skyrmionpos`
-returns the centroid of the charge density.
+returns the centroid of the charge density — computed *circularly* along a
+periodic axis, so it stays correct when the skyrmion straddles the wrap seam.
 
-**Step 3 — drive it with a current.** Apply an in-plane charge current
-`J = (Jx, 0, 0)` and integrate with the Zhang–Li torque added to the LLG. Track
-the skyrmion position over time.
+**Step 3 — drive it with a current and save OVF snapshots.** Apply an in-plane
+charge current `J = (Jx,0,0)` and integrate with the Zhang–Li torque. We drive in
+three 1-ns intervals, writing an OVF field file at each snapshot (`t = 0,1,2,3`
+ns) with `saveovf`.
 
 ```julia
-savequantities!(sim, q_time(), q_skyrmionpos(), q_topocharge(); every = 20e-12)
+savequantities!(sim, q_skyrmionpos(), q_topocharge())   # columns: t, mx,my,mz, sky x,y,z, Q
 
-J = (5e12, 0.0, 0.0)              # A/m², along +x
-runcurrent!(sim, J, 2e-9; every = 20e-12)
-
+J, tsnap = (2e12, 0.0, 0.0), 1e-9
+saveovf("skyrmion_00.ovf", sim.m, mesh)
+for s in 1:3
+    runcurrent!(sim, J, tsnap; every = 20e-12)
+    saveovf(@sprintf("skyrmion_%02d.ovf", s), sim.m, mesh)
+end
 writetable(sim.table, "skyrmion_track.txt")
 ```
 
 `runcurrent!(sim, J, duration; every)` integrates the LLG with the Zhang–Li
 spin-transfer torque of the current `J` added to the right-hand side, saving a
-row every `every` seconds. (An applied *field* goes through `setexternalfield!`,
-but a spin-transfer *current* is a torque, not a field, so it has its own
-driver.) The material's `pol` and `xi` set the polarization and non-adiabaticity.
+table row every `every` seconds. (An applied *field* goes through
+`setexternalfield!`, but a spin-transfer *current* is a torque, not a field, so
+it has its own driver.) The skyrmion moves *against* the current (electron flow),
+toward `−x`, with a transverse skyrmion-Hall deflection along `y`.
 
-The current pushes the skyrmion along the stripe, with a transverse deflection —
-the skyrmion Hall effect. The table records its trajectory, which you can plot
-from `skyrmion_track.txt`.
+**Step 4 — measure the velocity.** The recorded `x(t)` is periodic (it jumps by
+`Lx` at each re-entry), so unwrap it before fitting the slope:
 
-For a complete current-driven run see the Zhang–Li validation in
+```julia
+Lx = 150 * 2e-9
+function unwrap(xs, L)
+    out = copy(xs)
+    for i in 2:length(out)
+        d = out[i] - out[i-1]
+        d >  L/2 && (out[i:end] .-= L)
+        d < -L/2 && (out[i:end] .+= L)
+    end
+    out
+end
+
+t  = getindex.(sim.table.rows, 1)               # column 1 = time
+xw = unwrap(getindex.(sim.table.rows, 5), Lx)   # column 5 = skyrmion x
+v  = sum((t.-t[1]) .* (xw.-xw[1])) / sum((t.-t[1]).^2)
+@printf("skyrmion velocity vx = %.1f m/s\n", v)   # ≈ −178 m/s for J = 2×10¹² A/m²
+```
+
+The unwrapped `x(t)` is a straight line whose slope is the drift velocity — about
+**−178 m/s** here. The full example is
+[`examples/skyrmion_drive.jl`](../examples/skyrmion_drive.jl).
+
+**Visualizing the OVF snapshots.** `examples/plot_ovf.jl` reads an OVF file and
+draws the `mz` colour map with an in-plane `(mx,my)` quiver overlay:
+
+```
+julia --project=examples examples/plot_ovf.jl skyrmion_00.ovf
+```
+
+or, as a library, `include("examples/plot_ovf.jl"); plotovf("skyrmion_03.ovf")`.
+The snapshots show the Néel hedgehog texture drifting along the wire and
+re-entering through the periodic seam.
+
+For another current-driven run see the Zhang–Li validation in
 [`examples/stdproblem5.jl`](../examples/stdproblem5.jl) (µMAG standard problem 5),
 which drives a vortex with a current and matches mumax3 to 9×10⁻⁵.
 
@@ -342,7 +386,10 @@ tab-separated file with a header line, readable by any plotting tool.
 | `RandomConfig()` | random unit vectors |
 
 Reposition any localizable state with `translate(config, dx, dy, dz)`. Load a
-saved state from an OVF file with `m, header = loadovf("state.ovf")`.
+saved state from an OVF file with `m, header = loadovf("state.ovf")`, and write
+one with `saveovf("state.ovf", sim.m, mesh)` — an OVF 2.0 text file readable by
+OOMMF, mumax3, and ParaView. Visualize a saved field (colour map + in-plane
+quiver) with `examples/plot_ovf.jl` (see Tutorial 3).
 
 ---
 
