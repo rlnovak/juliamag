@@ -74,6 +74,19 @@ function main()
 
     odlex, omx, omy = read_oommf(joinpath(here, "stdprob2_oommf.txt"))
 
+    # Write the JuliaMag results as an ASCII tab-separated table.
+    tblpath = joinpath(here, "stdproblem2.txt")
+    open(tblpath, "w") do io
+        println(io, "# Standard Problem 2 — remanence vs. size (JuliaMag)")
+        println(io, "# lex = ", @sprintf("%.6g", lex), " m; Msat = ", Msat,
+                    " A/m; Aex = ", Aex, " J/m")
+        println(io, "# d/lex\tmx\tmy")
+        for i in eachindex(jdlex)
+            @printf(io, "%.4f\t%.6f\t%.6f\n", jdlex[i], jmx[i], jmy[i])
+        end
+    end
+    println("Wrote data table → ", tblpath)
+
     # Overlay JuliaMag (lines) with the OOMMF reference (triangles).
     plt = plot(xlabel = "d / lex", ylabel = "remanent ⟨m⟩",
                title = "Standard Problem 2: remanence vs. size",

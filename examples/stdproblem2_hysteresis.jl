@@ -97,6 +97,18 @@ function main()
 
     od, ohc, ohs = read_oommf(joinpath(here, "stdprob2_oommf.txt"))
 
+    # Write the JuliaMag results as an ASCII tab-separated table.
+    tblpath = joinpath(here, "stdproblem2_hysteresis.txt")
+    open(tblpath, "w") do io
+        println(io, "# Standard Problem 2 — coercive & switching fields vs. size (JuliaMag)")
+        println(io, "# lex = ", @sprintf("%.6g", lex), " m; field along [1,1,1]")
+        println(io, "# d/lex\tHc/Ms\tHs/Ms")
+        for i in eachindex(jd)
+            @printf(io, "%.4f\t%.6f\t%.6f\n", jd[i], jhc[i], jhs[i])
+        end
+    end
+    println("Wrote data table → ", tblpath)
+
     plt = plot(xlabel = "d / lex", ylabel = "H / Ms",
                title = "Standard Problem 2: coercive & switching fields",
                titlefontsize = 9, legend = :bottomleft, legendfontsize = 6)
