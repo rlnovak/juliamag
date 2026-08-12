@@ -1,0 +1,17 @@
+JuliaMag GPU scaling — exchange! only, 50 calls, labmac04 (Quadro P1000)
+Julia 1.11.9, CUDA.jl. Times in ms (per call). First row's GPU time includes
+kernel compilation (first launch).
+
+cells      CPU(ms)  GPU(ms)  speedup(CPU/GPU)
+4096       0.04     29.81    0.00    (GPU includes first-launch compilation)
+16384      0.17     0.50     0.35
+65536      0.73     1.10     0.66
+262144     2.92     3.54     0.83
+1048576    15.15    19.33    0.78
+1048576*4z 11.50    12.44    0.92
+
+Note: a single memory-bound exchange kernel does not favour this modest GPU
+(640-core Quadro P1000) over the lab CPU; the GPU approaches parity only at ~1M
+cells. Real speedup would need a stronger GPU and/or the full per-step workload
+(all fields + FFT demag), not one isolated kernel. Correctness, however, is exact
+(see gpu_check.txt).

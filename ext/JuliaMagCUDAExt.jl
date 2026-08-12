@@ -22,8 +22,9 @@ module JuliaMagCUDAExt
 using JuliaMag
 using CUDA
 using CUDA.CUFFT
+using LinearAlgebra: mul!
 import JuliaMag: exchange!, anisotropy!, zeeman!, torque!, normalize!, average,
-                 Mesh, Material, isperiodic, μ0, γLL
+                 demagfield!, Mesh, Material, isperiodic, μ0, γLL, DemagPlan, World
 
 const CuField{T} = CuArray{T,4}
 
@@ -172,6 +173,89 @@ end
 function average(m::CuField{T}) where {T}
     n = size(m,2) * size(m,3) * size(m,4)
     (sum(@view m[1,:,:,:]) / n, sum(@view m[2,:,:,:]) / n, sum(@view m[3,:,:,:]) / n)
+end
+
+# --- Demagnetization on the GPU (FFT convolution via CUFFT) -----------------
+#
+# Mirror of the CPU DemagPlan/_demagfield! (src/demag_field.jl), but with every
+# array on the device and the three scalar loops (pad, pointwise tensor·vector,
+# copy-out) replaced by array operations so nothing indexes a CuArray on the CPU.
+# The transformed kernel is uploaded once; each call does pad → rFFT → pointwise
+# → irFFT → crop, all on the GPU.
+struct GpuDemagPlan{T<:AbstractFloat,PF,PI}
+    padsize::NTuple{3,Int}
+    dataregion::NTuple{3,UnitRange{Int}}
+    prefactor::T
+    Kxx::CuArray{Complex{T},3}; Kyy::CuArray{Complex{T},3}; Kzz::CuArray{Complex{T},3}
+    Kxy::CuArray{Complex{T},3}; Kxz::CuArray{Complex{T},3}; Kyz::CuArray{Complex{T},3}
+    padm::NTuple{3,CuArray{T,3}}
+    mhat::NTuple{3,CuArray{Complex{T},3}}
+    bhat::NTuple{3,CuArray{Complex{T},3}}
+    pfor::PF
+    pinv::PI
+end
+
+# Upload a CPU DemagPlan to the GPU: the transformed kernel is already in Fourier
+# space, so it is copied straight over; new CUFFT plans and device scratch are
+# built for the padded size.
+function JuliaMag.togpu(plan::DemagPlan{T}) where {T}
+    psize = plan.padsize
+    scratch = CUDA.zeros(T, psize...)
+    pfor = plan_rfft(scratch)
+    mhat = ntuple(_ -> CuArray(zeros(Complex{T}, size(plan.Kxx))), 3)
+    bhat = ntuple(_ -> CuArray(zeros(Complex{T}, size(plan.Kxx))), 3)
+    padm = ntuple(_ -> CUDA.zeros(T, psize...), 3)
+    pinv = plan_irfft(mhat[1], psize[1])
+    GpuDemagPlan{T,typeof(pfor),typeof(pinv)}(
+        psize, plan.dataregion, plan.prefactor,
+        CuArray(plan.Kxx), CuArray(plan.Kyy), CuArray(plan.Kzz),
+        CuArray(plan.Kxy), CuArray(plan.Kxz), CuArray(plan.Kyz),
+        padm, mhat, bhat, pfor, pinv)
+end
+
+# Uniform-Msat demag field on the GPU. `B` and `m` are (3,Nx,Ny,Nz) CuArrays.
+function demagfield!(B::CuField{T}, m::CuField{T}, plan::GpuDemagPlan{T};
+                     add::Bool = false) where {T}
+    rx, ry, rz = plan.dataregion
+    pref = plan.prefactor
+
+    # Pad each component into the device scratch and forward-transform.
+    for c in 1:3
+        pc = plan.padm[c]
+        fill!(pc, zero(T))
+        @views pc[rx, ry, rz] .= m[c, :, :, :]
+        mul!(plan.mhat[c], plan.pfor, pc)
+    end
+
+    mx, my, mz = plan.mhat
+    bx, by, bz = plan.bhat
+    # Pointwise tensor·vector product in Fourier space (broadcast, one kernel each).
+    @. bx = plan.Kxx*mx + plan.Kxy*my + plan.Kxz*mz
+    @. by = plan.Kxy*mx + plan.Kyy*my + plan.Kyz*mz
+    @. bz = plan.Kxz*mx + plan.Kyz*my + plan.Kzz*mz
+
+    # Inverse-transform and crop the data region back into B.
+    for c in 1:3
+        mul!(plan.padm[c], plan.pinv, plan.bhat[c])
+        cropped = @view plan.padm[c][rx, ry, rz]
+        if add
+            @views B[c, :, :, :] .+= pref .* cropped
+        else
+            @views B[c, :, :, :] .= pref .* cropped
+        end
+    end
+    return B
+end
+
+# Move a whole World to the GPU: upload the demag plan (if any) and the
+# effective-field scratch buffer. The mesh, material, and applied field are
+# unchanged, so effectivefield!(::CuArray, ::CuArray, ::World) then dispatches
+# every term (exchange/anisotropy/demag/zeeman) to a GPU method.
+function JuliaMag.togpu(w::World{T}) where {T}
+    gplan = w.demagplan === nothing ? nothing : togpu(w.demagplan)
+    Bbuf  = CuArray(w._Bbuf)
+    World{T,typeof(gplan),typeof(w.material),typeof(Bbuf)}(
+        w.mesh, w.material, gplan, w.Bext, Bbuf)
 end
 
 end # module

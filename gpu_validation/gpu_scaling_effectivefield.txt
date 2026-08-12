@@ -1,0 +1,14 @@
+JuliaMag GPU scaling — full effective field (exchange+anisotropy+zeeman),
+50 calls, labmac04 (Quadro P1000). Julia 1.11.9, CUDA.jl. Times in ms per call.
+
+cells      CPU(ms)  GPU(ms)  speedup(CPU/GPU)
+16384      0.22     1.46     0.15
+65536      0.95     2.04     0.47
+262144     4.06     6.76     0.60
+524288     10.17    16.37    0.62
+1048576    20.82    37.10    0.56
+
+The array-programming GPU path issues several broadcast kernels per effective
+field (one per term), each with launch overhead, so on this modest GPU it stays
+below the lab CPU. Speedup on this hardware would require fused custom kernels
+and/or a stronger GPU. Correctness is exact regardless (gpu_check.txt).

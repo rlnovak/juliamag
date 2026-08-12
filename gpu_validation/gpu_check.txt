@@ -1,0 +1,18 @@
+JuliaMag GPU validation — labmac04.blumenau.ufsc.br
+Julia 1.11.9, CUDA.jl, NVIDIA Quadro P1000 (compute capability 6.1)
+Repo commit: 5fa93dc
+
+CUDA device: Quadro P1000
+
+Field-by-field CPU vs GPU agreement (mesh 64x64x4):
+  exchange:   max rel diff = 3.47e-16
+  anisotropy: max rel diff = 0.00e+00
+  zeeman:     max rel diff = 0.00e+00
+  torque:     max rel diff = 2.01e-16
+  average:    Δ = 1.47e-17
+  normalize:  max rel diff = 2.22e-16
+
+Every GPU method agrees with the CPU method to floating-point precision:
+the same source runs on Array and CuArray, dispatching by array type alone.
+The Neumann edge handling in the GPU exchange (the term most likely to need a
+fix) is correct — exchange agrees to 3e-16.

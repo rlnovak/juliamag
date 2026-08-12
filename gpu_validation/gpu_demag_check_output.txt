@@ -1,0 +1,17 @@
+Output of examples/gpu_demag_check.jl on labmac04 (Quadro P1000), Julia 1.11.9.
+
+CUDA device: Quadro P1000
+
+Accuracy (max rel diff CPU vs GPU):
+  std4    cells=  2500   demag=8.61e-16   effective field=2.86e-16
+  cube3D  cells= 16384   demag=4.85e-16   effective field=5.20e-16
+  film    cells= 16384   demag=5.85e-16   effective field=4.54e-16
+
+Timing — full effective field with demag (ms/call):
+  cells     CPU(ms)   GPU(ms)   speedup
+      4096     0.52      1.04   0.50x
+     16384     2.69      2.15   1.25x
+     65536    13.73      7.23   1.90x
+    262144    59.73     27.22   2.19x
+    524288   269.59     87.95   3.07x
+   1048576   314.87    115.12   2.74x

@@ -18,12 +18,12 @@ active. The demag plan is built once here and reused for the whole run.
 - `demag`: include the demagnetization field (the expensive term).
 - `Bext`: uniform applied field [T]; can be changed between run segments.
 """
-mutable struct World{T<:AbstractFloat,P,M<:AbstractParams}
+mutable struct World{T<:AbstractFloat,P,M<:AbstractParams,B<:AbstractArray{T,4}}
     mesh::Mesh
     material::M                       # Material{T} or RegionParams{T}
     demagplan::P                      # DemagPlan{T,...} or nothing
     Bext::NTuple{3,T}
-    _Bbuf::Array{T,4}                 # scratch effective-field buffer for integrators
+    _Bbuf::B                          # scratch effective-field buffer for integrators
 end
 
 function World(mesh::Mesh, mat::AbstractParams; demag::Bool = true,
@@ -35,7 +35,7 @@ function World(mesh::Mesh, mat::AbstractParams; demag::Bool = true,
     Msref = _demag_msat(mat)
     plan = demag ? DemagPlan(demagkernel(T, mesh; accuracy = accuracy), mesh, Msref) : nothing
     Bbuf = zeros(T, 3, mesh.size...)
-    World{T,typeof(plan),typeof(mat)}(mesh, mat, plan, NTuple{3,T}(Bext), Bbuf)
+    World{T,typeof(plan),typeof(mat),typeof(Bbuf)}(mesh, mat, plan, NTuple{3,T}(Bext), Bbuf)
 end
 
 # Representative Msat for building the demag plan's μ0·Msat prefactor.
@@ -70,7 +70,7 @@ end
 # Demag dispatch on the material type: a scalar Material uses the fast uniform-
 # Msat path (prefactor μ0·Msat, input m); a RegionParams uses the region-aware
 # path (input Msat[cell]·m, prefactor μ0), which is exact for per-region Msat.
-_demag!(B, m, w::World{T,P,<:Material}; add) where {T,P} =
+_demag!(B, m, w::World{T,P,M}; add) where {T,P,M<:Material,} =
     demagfield!(B, m, w.demagplan; add = add)
-_demag!(B, m, w::World{T,P,<:RegionParams}; add) where {T,P} =
+_demag!(B, m, w::World{T,P,M}; add) where {T,P,M<:RegionParams} =
     demagfield!(B, m, w.demagplan, w.material, w.mesh; add = add)
