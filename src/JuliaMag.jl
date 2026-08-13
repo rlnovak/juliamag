@@ -48,6 +48,10 @@ export Regions, defregion!, defregioncell!, regionlist, regionvolume, cellcenter
 include("region_params.jl")
 export RegionParams, setregion!, setgeometry!, clearempty!
 
+# --- Polycrystalline grains (Voronoi) --------------------------------------
+include("voronoi.jl")
+export voronoi!, randomanisotropy!
+
 # --- Initial configurations ------------------------------------------------
 include("config.jl")
 export Config, setconfig, setconfig!

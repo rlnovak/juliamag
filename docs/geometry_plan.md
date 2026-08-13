@@ -90,7 +90,23 @@ staircase; a half-plane through a cell gives `fill ≈ 0.5`; a disc's edge cells
 intermediate fills and the total moment matches the analytic area to
 `O(1/edgesmooth)`.
 
-### Phase 3 — polycrystalline grains (future, refs noted)
+### Phase 3 — polycrystalline grains — ✅ DONE (2D columnar Voronoi)
+
+Implemented in `src/voronoi.jl`: `voronoi!(rp, grainsize, numregions; seed)`
+tessellates space into columnar grains (tiles of `grainsize·TILE`, TILE=2, with
+Poisson(TILE²) seeds per tile, deterministic per-tile RNG, nearest-seed over a 3×3
+tile neighbourhood — the mumax3 `ext_makegrains.go` algorithm), each grain a random
+region id. `randomanisotropy!(rp, numregions; Ku, seed)` gives each region a
+uniformly-random easy axis — the standard polycrystal setup. Validated:
+reproducible per seed, seed-dependent, columnar through z, ids in range,
+boundary-cell density rises as grains shrink, random axes uniform-on-sphere and
+normalized, and a polycrystal's effective field is finite. Tests: +10.
+
+Still future within Phase 3: 3D grains (`ext_make3dgrains.go`) and grain-boundary
+exchange scaling (a reduced Aex on a reassigned boundary region, per
+`ext_grainboundaries.go`). Original plan below.
+
+### Phase 3 (original plan) — polycrystalline grains (refs noted)
 
 mumax3 builds grains by Voronoi tessellation and assigns each grain a region
 (`ext_makegrains.go`, `ext_make3dgrains.go`) with optional inter-grain exchange

@@ -436,6 +436,17 @@ rp = RegionParams(mesh, material("Permalloy")); setregion!(rp, 0; Msat = 0.0)
 setgeometry!(rp, Cylinder(500e-9, 1e6); id = 1, edgesmooth = 8)   # smooth disc edge
 ```
 
+**Polycrystalline grains.** `voronoi!(rp, grainsize, numregions; seed)` tessellates
+the sample into columnar Voronoi grains, each assigned a random region, and
+`randomanisotropy!(rp, numregions; Ku, seed)` gives each region a random easy
+axis — the standard polycrystal:
+
+```julia
+rp = RegionParams(mesh, material("Cobalt"))
+voronoi!(rp, 30e-9, 200; seed = 1)                 # ~30 nm grains
+randomanisotropy!(rp, 200; Ku = 5e5, seed = 1)     # random easy axis per grain
+```
+
 ---
 
 ## 7. Finite temperature
