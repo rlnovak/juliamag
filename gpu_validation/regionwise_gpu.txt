@@ -1,0 +1,27 @@
+JuliaMag region-wise (multi-material) parameters on GPU — labmac04 (Quadro P1000)
+Julia 1.11.9, CUDA.jl.
+
+Region-wise parameters (RegionParams) now run on the GPU. togpu(::RegionParams)
+materializes each per-region lookup table into a per-cell device array (gather the
+LUT through the cell→region map on the host, then upload), so the field kernels
+become broadcasts over those arrays — exchange (with harmonic-mean stiffness at
+interfaces), anisotropy, DMI, and the region-aware demag (convolution on
+Msat[cell]·m, prefactor μ0). togpu(::World) uploads the materialized params, so a
+multi-material simulation runs on the GPU end-to-end.
+
+=== Correctness: full effective field CPU vs GPU (max rel diff) ===
+bilayer  (48x48x4, top layers Msat=1.4e6/Aex=3e-11/Ku=5.2e5 vs Permalloy):  3.04e-16
+disc+DMI (64x64x1 cylinder, region 1 Dind=2e-3/Ku=6e5, empty background):   3.71e-16
+
+Both match the CPU to floating-point precision, including the harmonic-mean
+exchange coupling across the region interface and the empty (Msat=0) cells.
+
+=== Correctness: relax (minimizer) CPU vs GPU, bilayer ===
+CPU: <m>=(0.80059, 0.42492, 0.00000)  steps=331
+GPU: <m>=(0.80059, 0.42492, 0.00000)  steps=374
+|<m>_CPU - <m>_GPU| = 3.84e-06
+(As with the scalar-material relax, the Barzilai-Borwein step count differs by a
+few due to arithmetic order, but both reach the same equilibrium.)
+
+This closes the GPU port: every material model (scalar Material and multi-region
+RegionParams) and every field/torque/solver/tracker runs on the GPU.

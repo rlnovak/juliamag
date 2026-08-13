@@ -414,19 +414,67 @@ sim = Simulation(mesh, rp)
 
 At a region interface the exchange coupling uses the harmonic mean of the two
 stiffnesses. A region with `Msat = 0` is empty (unfilled geometry). Per-region
-averages come from `q_m_region(id)`.
+averages come from `q_m_region(id)`. Region-wise parameters also run on the GPU
+(§7): `togpu` materializes them to per-cell device arrays.
 
 ---
 
-## 7. Going further
+## 7. Running on the GPU
+
+On a machine with a CUDA GPU, loading `CUDA` alongside JuliaMag activates a
+package extension that adds GPU methods for every field, torque, solver, and
+tracker. Because the whole package dispatches on the array type, the *only*
+change to a simulation is moving the state and the `World` to the device — the
+same source then runs on the GPU.
+
+```julia
+using JuliaMag, CUDA
+@assert CUDA.functional()
+
+mesh = Mesh((256, 256, 1), (4e-9, 4e-9, 4e-9))
+mat  = material("Permalloy")
+
+wg = togpu(World(mesh, mat; demag = true))   # World → device (demag plan included)
+mg = togpu(uniform(mesh, (1, 0, 0)))         # state → device (a CuArray)
+
+mn = Minimizer(wg, mg; stopdm = 1e-6)         # relax on the GPU
+minimize!(mn)
+it = Integrator(wg, mn.m; tend = 1e-9)        # integrate on the GPU
+advance!(it, 1e-9)
+
+println(average(state(it)))                   # reductions run on the device
+```
+
+Everything runs on the device: the effective field (exchange, anisotropy, the
+FFT demagnetization via CUFFT, DMI, Zeeman), the LLG and spin-transfer torques,
+the energy minimizer and the time integrator, and the feature trackers
+(`vortexcore`, `skyrmionpos`, `domainwallpos`, `topologicalcharge`). Region-wise
+(multi-material) parameters work too — `togpu(::World)` materializes a
+`RegionParams` into per-cell device arrays, so a multilayer or a patterned sample
+runs on the GPU unchanged.
+
+The magnetization stays on the device until you bring it back with `tocpu(m)` (or
+`Array(m)`); do that before saving an OVF or feeding a state to a non-GPU tool.
+`Float32` on the GPU follows from building the material in `Float32`.
+
+Verify and benchmark with
+[`examples/gpu_check.jl`](../examples/gpu_check.jl) (field-by-field CPU vs GPU),
+[`examples/gpu_demag_check.jl`](../examples/gpu_demag_check.jl) (demag + full
+effective field + speedup), and
+[`examples/stdproblem4_gpu.jl`](../examples/stdproblem4_gpu.jl) (Standard Problem
+4 run entirely on the GPU). The GPU wins most on the demag FFT, so the speedup
+grows with mesh size and with a more capable GPU.
+
+---
+
+## 8. Going further
 
 - **Standalone examples:** [`examples/`](../examples/) has the standard problems
   2, 4, and 5 with comparison plots against mumax3 and OOMMF.
 - **Desktop GUI:** a dedicated Qt/Makie window — see [`gui/README.md`](../gui/README.md).
   Set it up once with `julia --project=gui gui/setup.jl`, then
   `julia --project=gui gui/app.jl`.
-- **GPU:** on a CUDA machine, `using CUDA` alongside JuliaMag loads GPU methods;
-  move a state to the device with `togpu(m)`. See
-  [`examples/gpu_check.jl`](../examples/gpu_check.jl).
+- **GPU benchmark on Colab:** [`colab/`](../colab/) has a ready notebook (with an
+  Open-in-Colab badge) to run the verification and benchmark on a cloud GPU.
 - **Paper:** [`paper/juliamag.tex`](../paper/juliamag.tex) documents the design
   and validation.

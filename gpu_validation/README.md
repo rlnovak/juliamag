@@ -114,15 +114,34 @@ quantities built by broadcast — no scalar CuArray indexing. Only a handful of
 scalars come back to the host (the argmax cell and its 3×3 neighbourhood for the
 vortex sub-cell interpolation; the `Nx` column averages for the wall crossing).
 
-## Result 6 — extension scope
+## Result 6 — region-wise (multi-material) parameters on the GPU (PASS)
+
+Multi-material simulations (`RegionParams`) run on the GPU too. `togpu(::World)`
+materializes the per-region lookup tables into per-cell device arrays (gathered
+through the cell→region map), so the field kernels become broadcasts over those
+arrays — exchange with harmonic-mean stiffness at interfaces, anisotropy, DMI,
+and the region-aware demag (convolution on Msat[cell]·m, prefactor μ0). See
+`regionwise_gpu.txt`:
+
+| case | CPU vs GPU |
+|------|-----------|
+| bilayer effective field (Msat/Aex/Ku per layer) | 3.04e-16 |
+| disc + region DMI/PMA + empty background | 3.71e-16 |
+| bilayer relax ⟨m⟩ | 3.8e-6 |
+
+Both match to floating-point precision, including the harmonic-mean coupling
+across the region interface and the empty (Msat=0) cells.
+
+## Result 7 — extension scope
 
 The **entire** JuliaMag pipeline now runs on the GPU end-to-end via `togpu`:
 `exchange!`, `anisotropy!`, `dmi!` (interfacial + bulk), `zeeman!`, `demagfield!`,
 the assembled `effectivefield!`, `torque!`, `zhanglitorque!`,
 `slonczewskitorque!`, `normalize!`, `average`, the **`Minimizer` (relax) and
-`Integrator` (run)**, and the **feature trackers** (`vortexcore`, `skyrmionpos`,
-`domainwallpos`, `topologicalcharge`) — a complete micromagnetic simulation with
-its diagnostics, nothing falling back to the CPU.
+`Integrator` (run)**, the **feature trackers** (`vortexcore`, `skyrmionpos`,
+`domainwallpos`, `topologicalcharge`), and both material models (scalar
+`Material` and multi-region `RegionParams`) — a complete micromagnetic simulation
+with its diagnostics, nothing falling back to the CPU.
 
 Core changes were type generalizations only — the `World` scratch buffer and the
 `Minimizer`/`Integrator` state fields from `Array` to `AbstractArray`, and three
@@ -136,6 +155,7 @@ broadcast GPU versions. The CPU logic is unchanged; **all 2299 CPU tests pass**.
 - `solvers_gpu.txt` — relax + run correctness, std4 end-to-end, relax speedup.
 - `dmi_stt_gpu.txt` — DMI + spin-transfer torques accuracy, skyrmion end-to-end, speedup.
 - `trackers_gpu.txt` — vortex/skyrmion/domain-wall/topological-charge, CPU vs GPU.
+- `regionwise_gpu.txt` — multi-material (RegionParams) fields and relax, CPU vs GPU.
 - `std4/` — the Standard Problem 4 GPU run: table, GPU figure, CPU-vs-GPU overlay.
 - `gpu_scaling_exchange.txt`, `gpu_scaling_effectivefield.txt` — isolated-kernel
   timings (Result 1; no demag), for contrast.

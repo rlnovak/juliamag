@@ -24,9 +24,10 @@ using CUDA
 using CUDA.CUFFT
 using LinearAlgebra: mul!
 import JuliaMag: exchange!, anisotropy!, zeeman!, torque!, normalize!, average,
-                 demagfield!, dmi_interfacial!, dmi_bulk!, zhanglitorque!, slonczewskitorque!,
+                 demagfield!, dmi!, dmi_interfacial!, dmi_bulk!, zhanglitorque!, slonczewskitorque!,
                  vortexcore, skyrmionpos, domainwallpos, topologicalcharge, _interp_max,
-                 Mesh, Material, isperiodic, μ0, γLL, μB, qe, ħ, normalize3,
+                 Mesh, Material, RegionParams, isperiodic, μ0, γLL, μB, qe, ħ, normalize3,
+                 hasku, hasdmi, hasdind, hasdbulk, damping, _demag!, AbstractParams,
                  DemagPlan, World, _damping_torque!, _cayley_step!, _bb_sums
 
 const CuField{T} = CuArray{T,4}
@@ -495,15 +496,177 @@ function domainwallpos(m::CuField{T}, mesh::Mesh; comp::Int = 1) where {T}
     return (T(NaN), T(NaN), T(NaN))
 end
 
-# Move a whole World to the GPU: upload the demag plan (if any) and the
-# effective-field scratch buffer. The mesh, material, and applied field are
-# unchanged, so effectivefield!(::CuArray, ::CuArray, ::World) then dispatches
-# every term (exchange/anisotropy/demag/zeeman) to a GPU method.
+# --- Region-wise (multi-material) parameters on the GPU --------------------
+# A RegionParams is a small per-region lookup table plus a cell→region map. For
+# the GPU we materialize each parameter into a per-cell device array once (gather
+# the LUT through the region map on the host, then upload), so the field kernels
+# become broadcasts over those arrays with no per-cell indexing on the device.
+struct GpuRegionParams{T<:AbstractFloat} <: AbstractParams
+    Msat::CuArray{T,4}      # (1,Nx,Ny,Nz)
+    Aex::CuArray{T,4}
+    Ku::CuArray{T,4}
+    ux::CuArray{T,4}; uy::CuArray{T,4}; uz::CuArray{T,4}
+    Dind::CuArray{T,4}
+    Dbulk::CuArray{T,4}
+    alpha0::T               # region-0 damping, the global LLG torque scale
+    hasku::Bool
+    hasdind::Bool
+    hasdbulk::Bool
+end
+Base.eltype(::GpuRegionParams{T}) where {T} = T
+JuliaMag.hasku(p::GpuRegionParams)   = p.hasku
+JuliaMag.hasdind(p::GpuRegionParams) = p.hasdind
+JuliaMag.hasdbulk(p::GpuRegionParams)= p.hasdbulk
+JuliaMag.hasdmi(p::GpuRegionParams)  = p.hasdind || p.hasdbulk
+JuliaMag.damping(p::GpuRegionParams) = p.alpha0
+
+# Gather a per-region LUT into a per-cell (1,Nx,Ny,Nz) array via the region map.
+function _percell(lut::Vector{T}, idmap::Array{UInt8,3}) where {T}
+    Nx, Ny, Nz = size(idmap)
+    a = Array{T}(undef, 1, Nx, Ny, Nz)
+    @inbounds for k in 1:Nz, j in 1:Ny, i in 1:Nx
+        a[1,i,j,k] = lut[idmap[i,j,k] + 1]
+    end
+    return a
+end
+
+function JuliaMag.togpu(rp::RegionParams{T}) where {T}
+    idm = rp.regions.id
+    pc(v) = CuArray(_percell(v, idm))
+    ux = CuArray(_percell([u[1] for u in rp.anisU], idm))
+    uy = CuArray(_percell([u[2] for u in rp.anisU], idm))
+    uz = CuArray(_percell([u[3] for u in rp.anisU], idm))
+    GpuRegionParams{T}(pc(rp.Msat), pc(rp.Aex), pc(rp.Ku), ux, uy, uz,
+                       pc(rp.Dind), pc(rp.Dbulk), T(rp.alpha[1]),
+                       hasku(rp), hasdind(rp), hasdbulk(rp))
+end
+
+# Demag dispatch for a world whose material was materialized to GpuRegionParams:
+# use the region-aware demag (Msat[cell]·m, plan prefactor μ0).
+_demag!(B, m, w::World{T,P,M}; add) where {T,P,M<:GpuRegionParams} =
+    demagfield!(B, m, w.demagplan, w.material, w.mesh; add = add)
+
+# Harmonic mean of two stiffness arrays (0 if either is 0), matching the CPU rule.
+_hmean(a, b) = ifelse.((a .== 0) .| (b .== 0), zero(eltype(a)), 2 .* a .* b ./ (a .+ b))
+
+# Exchange with per-cell Msat/Aex and harmonic-mean interface coupling.
+function exchange!(B::CuField{T}, m::CuField{T}, mesh::Mesh, p::GpuRegionParams{T};
+                   add::Bool = false) where {T}
+    Nx, Ny, Nz = mesh.size; cx, cy, cz = mesh.cellsize
+    px, py, pz = isperiodic(mesh,1), isperiodic(mesh,2), isperiodic(mesh,3)
+    ix2 = T(1/cx^2); iy2 = T(1/cy^2); iz2 = T(1/cz^2)
+    A = p.Aex
+    # Per-neighbour harmonic-mean stiffness (central with each shifted neighbour).
+    axl = _hmean(A, _edgeshift(A,1,-1,px)); axr = _hmean(A, _edgeshift(A,1,+1,px))
+    ayl = _hmean(A, _edgeshift(A,2,-1,py)); ayr = _hmean(A, _edgeshift(A,2,+1,py))
+    nz = Nz > 1
+    azl = nz ? _hmean(A, _edgeshift(A,3,-1,pz)) : A
+    azr = nz ? _hmean(A, _edgeshift(A,3,+1,pz)) : A
+    Msc = p.Msat
+    pref = ifelse.(Msc .== 0, zero(T), T(2) ./ Msc)   # empty cells → 0 field
+    lap = similar(m)
+    @views for c in 1:3
+        mc = m[c:c,:,:,:]
+        f = pref .* ( axl .* (_edgeshift(mc,1,-1,px) .- mc) .* ix2 .+ axr .* (_edgeshift(mc,1,+1,px) .- mc) .* ix2 .+
+                      ayl .* (_edgeshift(mc,2,-1,py) .- mc) .* iy2 .+ ayr .* (_edgeshift(mc,2,+1,py) .- mc) .* iy2 )
+        if nz
+            f = f .+ pref .* ( azl .* (_edgeshift(mc,3,-1,pz) .- mc) .* iz2 .+ azr .* (_edgeshift(mc,3,+1,pz) .- mc) .* iz2 )
+        end
+        lap[c:c,:,:,:] .= f
+    end
+    add ? (B .+= lap) : (B .= lap)
+    return B
+end
+
+function anisotropy!(B::CuField{T}, m::CuField{T}, mesh::Mesh, p::GpuRegionParams{T};
+                     add::Bool = false) where {T}
+    if !p.hasku
+        add || fill!(B, zero(T)); return B
+    end
+    Msc = p.Msat
+    pref = ifelse.(Msc .== 0, zero(T), T(2) .* p.Ku ./ Msc)
+    mx = @view m[1:1,:,:,:]; my = @view m[2:2,:,:,:]; mz = @view m[3:3,:,:,:]
+    mu = p.ux.*mx .+ p.uy.*my .+ p.uz.*mz
+    if add
+        B[1:1,:,:,:] .+= pref.*mu.*p.ux; B[2:2,:,:,:] .+= pref.*mu.*p.uy; B[3:3,:,:,:] .+= pref.*mu.*p.uz
+    else
+        B[1:1,:,:,:] .= pref.*mu.*p.ux; B[2:2,:,:,:] .= pref.*mu.*p.uy; B[3:3,:,:,:] .= pref.*mu.*p.uz
+    end
+    return B
+end
+
+function dmi_interfacial!(B::CuField{T}, m::CuField{T}, mesh::Mesh, p::GpuRegionParams{T};
+                          add::Bool = false) where {T}
+    cx, cy, _ = mesh.cellsize
+    px, py = isperiodic(mesh,1), isperiodic(mesh,2)
+    i2x = T(1/(2cx)); i2y = T(1/(2cy))
+    Msc = p.Msat
+    pref = ifelse.(Msc .== 0, zero(T), T(2) .* p.Dind ./ Msc)
+    mx = @view m[1:1,:,:,:]; my = @view m[2:2,:,:,:]; mz = @view m[3:3,:,:,:]
+    bx = pref .* _dcentral(mz,1,i2x,px)
+    by = pref .* _dcentral(mz,2,i2y,py)
+    bz = pref .* (.-_dcentral(mx,1,i2x,px) .- _dcentral(my,2,i2y,py))
+    if add
+        B[1:1,:,:,:] .+= bx; B[2:2,:,:,:] .+= by; B[3:3,:,:,:] .+= bz
+    else
+        B[1:1,:,:,:] .= bx; B[2:2,:,:,:] .= by; B[3:3,:,:,:] .= bz
+    end
+    return B
+end
+
+function dmi_bulk!(B::CuField{T}, m::CuField{T}, mesh::Mesh, p::GpuRegionParams{T};
+                   add::Bool = false) where {T}
+    Nx, Ny, Nz = mesh.size; cx, cy, cz = mesh.cellsize
+    px, py, pz = isperiodic(mesh,1), isperiodic(mesh,2), isperiodic(mesh,3)
+    i2x = T(1/(2cx)); i2y = T(1/(2cy)); i2z = T(1/(2cz))
+    Msc = p.Msat
+    pref = ifelse.(Msc .== 0, zero(T), T(2) .* p.Dbulk ./ Msc)
+    mx = @view m[1:1,:,:,:]; my = @view m[2:2,:,:,:]; mz = @view m[3:3,:,:,:]
+    z = CUDA.zeros(T,1,Nx,Ny,Nz)
+    dmz_dy=_dcentral(mz,2,i2y,py); dmy_dz=Nz>1 ? _dcentral(my,3,i2z,pz) : z
+    dmx_dz=Nz>1 ? _dcentral(mx,3,i2z,pz) : z; dmz_dx=_dcentral(mz,1,i2x,px)
+    dmy_dx=_dcentral(my,1,i2x,px); dmx_dy=_dcentral(mx,2,i2y,py)
+    bx = .-pref.*(dmz_dy.-dmy_dz); by = .-pref.*(dmx_dz.-dmz_dx); bz = .-pref.*(dmy_dx.-dmx_dy)
+    if add
+        B[1:1,:,:,:] .+= bx; B[2:2,:,:,:] .+= by; B[3:3,:,:,:] .+= bz
+    else
+        B[1:1,:,:,:] .= bx; B[2:2,:,:,:] .= by; B[3:3,:,:,:] .= bz
+    end
+    return B
+end
+
+# dmi! dispatcher for the GPU region params (mirrors the CPU one).
+function dmi!(B::CuField{T}, m::CuField{T}, mesh::Mesh, p::GpuRegionParams{T};
+             add::Bool = false) where {T}
+    if p.hasdind
+        return dmi_interfacial!(B, m, mesh, p; add = add)
+    elseif p.hasdbulk
+        return dmi_bulk!(B, m, mesh, p; add = add)
+    else
+        add || fill!(B, zero(T)); return B
+    end
+end
+
+# Region-aware demag on the GPU: the convolution acts on Msat[cell]·m and the
+# prefactor is μ0 alone (Msat enters per cell, not through the plan's scalar). The
+# uploaded plan's prefactor is μ0·Msref, so we rescale by 1/Msref to get μ0.
+function demagfield!(B::CuField{T}, m::CuField{T}, plan::GpuDemagPlan{T},
+                     p::GpuRegionParams{T}, mesh::Mesh; add::Bool = false) where {T}
+    msref = plan.prefactor / T(μ0)                   # plan.prefactor = μ0·Msref
+    Mm = (p.Msat .* m) ./ msref                       # (Msat[cell]·m)/Msref
+    demagfield!(B, Mm, plan; add = add)              # ·(μ0·Msref) = μ0·Msat[cell]·m
+end
+
+# Move a whole World to the GPU: upload the demag plan (if any), the material
+# (scalar Material stays as-is; RegionParams is materialized to device arrays),
+# and the effective-field scratch buffer. effectivefield!(::CuArray, ::CuArray,
+# ::World) then dispatches every term to a GPU method.
 function JuliaMag.togpu(w::World{T}) where {T}
     gplan = w.demagplan === nothing ? nothing : togpu(w.demagplan)
+    gmat  = w.material isa RegionParams ? togpu(w.material) : w.material
     Bbuf  = CuArray(w._Bbuf)
-    World{T,typeof(gplan),typeof(w.material),typeof(Bbuf)}(
-        w.mesh, w.material, gplan, w.Bext, Bbuf)
+    World{T,typeof(gplan),typeof(gmat),typeof(Bbuf)}(
+        w.mesh, gmat, gplan, w.Bext, Bbuf)
 end
 
 end # module
