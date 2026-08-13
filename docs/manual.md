@@ -420,7 +420,21 @@ sim = Simulation(mesh, rp)
 At a region interface the exchange coupling uses the harmonic mean of the two
 stiffnesses. A region with `Msat = 0` is empty (unfilled geometry). Per-region
 averages come from `q_m_region(id)`. Region-wise parameters also run on the GPU
-(§7): `togpu` materializes them to per-cell device arrays.
+(§8): `togpu` materializes them to per-cell device arrays.
+
+**Anti-aliased edges.** `defregion!` samples the cell centre, giving a staircase
+boundary. For a smooth edge use `setgeometry!(rp, shape; id, edgesmooth)`, which
+sub-samples `edgesmooth^3` points per cell and stores the fraction inside the
+shape as a **fill** `∈ [0,1]`. The fill scales the effective `Msat`
+(`Msat_eff = fill · Msat[region]`), so a boundary cell contributes
+proportionally, and the total moment converges to the true shape area as
+`edgesmooth` grows (`edgesmooth = 0` reproduces the plain staircase). It works on
+the GPU too — the fill folds into the materialized `Msat`.
+
+```julia
+rp = RegionParams(mesh, material("Permalloy")); setregion!(rp, 0; Msat = 0.0)
+setgeometry!(rp, Cylinder(500e-9, 1e6); id = 1, edgesmooth = 8)   # smooth disc edge
+```
 
 ---
 

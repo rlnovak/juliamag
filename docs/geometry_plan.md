@@ -47,7 +47,17 @@ for most (leads, contacts, wedges).
 (a point known inside and one outside, plus a transform round-trip). No change to
 `Regions`/`defregion!`.
 
-### Phase 2 — edge smoothing (fractional fill)
+### Phase 2 — edge smoothing (fractional fill) — ✅ DONE
+
+Implemented: a `fill::Array{T,3}` field on `RegionParams` (default all 1), the
+`setgeometry!(rp, shape; id, edgesmooth)` sampler (`edgesmooth^3` sub-points →
+fill 0..1), and `msat(rp,i,j,k) = Msat[region]·fill[cell]` so every field reads
+the effective Msat with no kernel change. `isempty_cell` treats fill 0 as empty.
+GPU: the fill folds into the materialized Msat in `togpu(::RegionParams)`.
+Validated: `edgesmooth=0` reproduces the staircase exactly; a half-covered cell
+gets fill ≈ 0.5; the disc moment converges to the analytic area (err +1.3% → 0.01%
+from es 0 → 8); GPU effective field matches the CPU to 3.7e-16. Original plan
+below.
 
 Today `defregion!` samples only the **cell centre** (mumax3's `edgeSmooth = 0`,
 staircase). mumax3 optionally sub-samples `edgeSmooth^3` points per cell to get a

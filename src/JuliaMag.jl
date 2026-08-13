@@ -46,7 +46,7 @@ export Regions, defregion!, defregioncell!, regionlist, regionvolume, cellcenter
 
 # --- Per-region material parameters ----------------------------------------
 include("region_params.jl")
-export RegionParams, setregion!, clearempty!
+export RegionParams, setregion!, setgeometry!, clearempty!
 
 # --- Initial configurations ------------------------------------------------
 include("config.jl")

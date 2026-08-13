@@ -534,11 +534,16 @@ end
 
 function JuliaMag.togpu(rp::RegionParams{T}) where {T}
     idm = rp.regions.id
+    Nx, Ny, Nz = size(idm)
     pc(v) = CuArray(_percell(v, idm))
     ux = CuArray(_percell([u[1] for u in rp.anisU], idm))
     uy = CuArray(_percell([u[2] for u in rp.anisU], idm))
     uz = CuArray(_percell([u[3] for u in rp.anisU], idm))
-    GpuRegionParams{T}(pc(rp.Msat), pc(rp.Aex), pc(rp.Ku), ux, uy, uz,
+    # Fold the per-cell fill fraction into the materialized Msat, so every kernel
+    # (exchange, anisotropy, DMI, demag, thermal) reads the effective Msat, exactly
+    # like the CPU accessor msat(rp,i,j,k) = Msat[region]·fill[cell].
+    Msat_eff = CuArray(_percell(rp.Msat, idm) .* reshape(rp.fill, 1, Nx, Ny, Nz))
+    GpuRegionParams{T}(Msat_eff, pc(rp.Aex), pc(rp.Ku), ux, uy, uz,
                        pc(rp.Dind), pc(rp.Dbulk), pc(rp.alpha), T(rp.alpha[1]),
                        hasku(rp), hasdind(rp), hasdbulk(rp))
 end
