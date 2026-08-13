@@ -24,7 +24,8 @@ using CUDA
 using CUDA.CUFFT
 using LinearAlgebra: mul!
 import JuliaMag: exchange!, anisotropy!, zeeman!, torque!, normalize!, average,
-                 demagfield!, Mesh, Material, isperiodic, μ0, γLL, DemagPlan, World
+                 demagfield!, Mesh, Material, isperiodic, μ0, γLL, DemagPlan, World,
+                 _damping_torque!, _cayley_step!, _bb_sums
 
 const CuField{T} = CuArray{T,4}
 
@@ -245,6 +246,46 @@ function demagfield!(B::CuField{T}, m::CuField{T}, plan::GpuDemagPlan{T};
         end
     end
     return B
+end
+
+# --- Energy-minimizer kernels on the GPU -----------------------------------
+# GPU versions of the three helpers factored out of the CPU minimizer step. Each
+# is pure array programming, so the Barzilai-Borwein minimizer runs unchanged on
+# a CuArray state.
+
+# Damping torque τ = -γ m × (m × B).
+function _damping_torque!(τ::CuField{T}, m::CuField{T}, B::CuField{T}, γ) where {T}
+    mx = @view m[1:1,:,:,:]; my = @view m[2:2,:,:,:]; mz = @view m[3:3,:,:,:]
+    bx = @view B[1:1,:,:,:]; by = @view B[2:2,:,:,:]; bz = @view B[3:3,:,:,:]
+    px = my.*bz .- mz.*by; py = mz.*bx .- mx.*bz; pz = mx.*by .- my.*bx  # m × B
+    g = T(γ)
+    τ[1:1,:,:,:] .= .-g .* (my.*pz .- mz.*py)                            # -γ m×(m×B)
+    τ[2:2,:,:,:] .= .-g .* (mz.*px .- mx.*pz)
+    τ[3:3,:,:,:] .= .-g .* (mx.*py .- my.*px)
+    return τ
+end
+
+# Cayley step in place; returns max‖Δm‖² (reduction on the device).
+function _cayley_step!(m::CuField{T}, τ::CuField{T}, dt) where {T}
+    d = T(dt)
+    t2 = d^2 .* (τ[1:1,:,:,:].^2 .+ τ[2:2,:,:,:].^2 .+ τ[3:3,:,:,:].^2)  # per cell
+    inv_d = one(T) ./ (4 .+ t2); f = 4 .- t2
+    mnew = similar(m)
+    for c in 1:3
+        mnew[c:c,:,:,:] .= (f .* m[c:c,:,:,:] .+ 4 .* d .* τ[c:c,:,:,:]) .* inv_d
+    end
+    d2 = (mnew[1:1,:,:,:].-m[1:1,:,:,:]).^2 .+ (mnew[2:2,:,:,:].-m[2:2,:,:,:]).^2 .+
+         (mnew[3:3,:,:,:].-m[3:3,:,:,:]).^2
+    dmmax = maximum(d2)
+    copyto!(m, mnew)
+    return dmmax
+end
+
+# Barzilai-Borwein inner products (ss, sy, yy); s = m - mlast, y = τlast - τ.
+function _bb_sums(m::CuField{T}, mlast::CuField{T}, τlast::CuField{T}, τ::CuField{T}) where {T}
+    s = m .- mlast
+    y = τlast .- τ
+    return (sum(s .* s), sum(s .* y), sum(y .* y))
 end
 
 # Move a whole World to the GPU: upload the demag plan (if any) and the

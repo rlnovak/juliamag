@@ -1,0 +1,34 @@
+JuliaMag solvers on GPU — labmac04 (Quadro P1000), Julia 1.11.9, CUDA.jl.
+
+=== Correctness: relax (minimizer) and run (integrator) CPU vs GPU ===
+Minimizer (relax, 64x32x1, demag on):
+  CPU: <m>=(0.919669, 0.264593, -0.000000)  steps=184
+  GPU: <m>=(0.919669, 0.264593, -0.000000)  steps=181
+  |<m>_CPU - <m>_GPU| = 2.69e-07   state rel diff = 6.08e-07
+  (BB step is arithmetic-order-sensitive, so the step count differs by a few, but
+   both converge to the same equilibrium.)
+
+Integrator (run, LLG switching, 50x25x1, demag on, 0.2 ns):
+  CPU: <m>=(-0.73919, -0.43156, -0.13498)
+  GPU: <m>=(-0.73919, -0.43156, -0.13498)
+  |<m>_CPU - <m>_GPU| = 3.36e-13
+
+=== Full physics: µMAG Standard Problem 4, entirely on the GPU ===
+Relax S-state on GPU:  <m>=(0.9668, 0.1256, -0.0000) after 392 steps
+  (matches mumax3's (0.96697, 0.12528, 0))
+1 ns switching on GPU vs the CPU reference table:
+  max|GPU - CPU| over the run:  mx=7.6e-6  my=9.1e-6  mz=2.4e-6
+See std4/stdproblem4_cpu_vs_gpu.png — CPU (lines) and GPU (dots) coincide.
+
+=== Performance: relax (minimizer step) CPU vs GPU (ms/step) ===
+cells      CPU(ms)  GPU(ms)  speedup(CPU/GPU)
+4096       0.572    1.989    0.29
+16384      2.796    3.849    0.73
+65536      15.166   11.062   1.37
+262144     66.128   43.373   1.52
+262144*4z  111.946  55.825   2.01
+
+Relax crosses over around ~65k cells and reaches ~2x on this modest GPU. The
+minimizer step (Cayley + two BB reductions) has more kernel launches than the
+effective field alone, so its speedup is a bit lower than the ~3x of the field
+evaluation; a stronger GPU (Colab) should improve both.

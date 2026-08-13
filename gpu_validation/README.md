@@ -58,21 +58,42 @@ The demag FFT scales far better on the GPU than the isolated field kernels of
 Result 1 (`gpu_scaling_*.txt`), which stayed below the CPU. A last-generation GPU
 (planned Colab benchmark) should widen this substantially.
 
-## Result 3 — extension scope
+## Result 3 — solvers on the GPU (PASS) + full Standard Problem 4
+
+The energy minimizer (`relax`) and the LLG time integrator (`run`) now run on the
+GPU too, so a **whole simulation** — relax to equilibrium, then integrate the
+dynamics — runs end-to-end on the device via `togpu` (see `solvers_gpu.txt`):
+
+- **Relax vs CPU:** ⟨m⟩ agrees to 2.7e-7 (the Barzilai–Borwein step count differs
+  by a few due to arithmetic order, but both reach the same equilibrium).
+- **Run vs CPU:** ⟨m⟩ agrees to 3.4e-13 after an LLG switching segment.
+- **µMAG Standard Problem 4, entirely on the GPU:** the relaxed S-state is
+  ⟨m⟩=(0.9668, 0.1256, 0) — matching mumax3 — and the 1 ns switching curve agrees
+  with the CPU reference to **~9e-6** across the whole run. CPU (lines) and GPU
+  (dots) coincide: `std4/stdproblem4_cpu_vs_gpu.png`.
+
+Relax performance: crossover at ~65k cells, up to ~2× at 256k on this GPU (the
+minimizer step has more kernel launches than the field alone, so slightly below
+the field's ~3×).
+
+## Result 4 — extension scope
 
 On the GPU end-to-end via `togpu`: `exchange!`, `anisotropy!`, `zeeman!`,
-`torque!`, `normalize!`, `average`, `demagfield!`, and the assembled
-`effectivefield!` (through `togpu(world)`). All validated above.
+`torque!`, `normalize!`, `average`, `demagfield!`, the assembled
+`effectivefield!`, and now the **`Minimizer` (relax) and `Integrator` (run)** —
+i.e. a complete relax + dynamics simulation. Not yet on the GPU: DMI and the
+spin-transfer torques (no `CuArray` methods yet).
 
-Not yet on the GPU: DMI, spin-transfer torques, and the solvers (`Minimizer`,
-`Integrator`) — whose Barzilai–Borwein / Cayley steps still use scalar CPU loops.
-A full relax/run on the GPU is the next extension target. None of this touches
-the tested CPU code; the core change was only to generalize the `World` scratch
-buffer type from `Array` to `AbstractArray` (all 2299 CPU tests still pass).
+Core changes were type generalizations only — the `World` scratch buffer and the
+`Minimizer`/`Integrator` state fields from `Array` to `AbstractArray`, and three
+minimizer inner loops factored into helpers the extension overrides with
+broadcast GPU versions. The CPU logic is unchanged; **all 2299 CPU tests pass**.
 
 ## Files
 
 - `gpu_check.txt` — field/torque kernels, CPU vs GPU agreement.
-- `demag_gpu.txt` — demag + full effective field: accuracy and CPU-vs-GPU speedup.
+- `demag_gpu.txt` — demag + full effective field: accuracy and speedup.
+- `solvers_gpu.txt` — relax + run correctness, std4 end-to-end, relax speedup.
+- `std4/` — the Standard Problem 4 GPU run: table, GPU figure, CPU-vs-GPU overlay.
 - `gpu_scaling_exchange.txt`, `gpu_scaling_effectivefield.txt` — isolated-kernel
   timings (Result 1; no demag), for contrast.
