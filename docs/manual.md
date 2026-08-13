@@ -399,10 +399,14 @@ quiver) with `examples/plot_ovf.jl` (see Tutorial 3).
 Build shapes and combine them:
 
 - Primitives: `Cuboid(sx,sy,sz)`, `Rect(sx,sy)`, `Cylinder(diam,h)`, `Circle(d)`,
-  `Ellipsoid(dx,dy,dz)`, `Cone(diam,h)`, `Superball(diam,p)`.
-- Layers (for multilayers): `Layer(mesh, k)`, `Layers(mesh, k1, k2)`.
-- Transforms: `translate`, `scale`, `rotz`.
-- Set operations: `shapeunion`, `shapeintersect`, `shapediff`, `shapecomplement`.
+  `Ellipsoid(dx,dy,dz)`, `Cone(diam,h)`, `Superball(diam,p)`, `Triangle(x0,y0,…)`,
+  `Line(p1,p2,diam)`, `Line2D(x1,y1,x2,y2,diam)`, `Cell(mesh,i,j,k)`.
+- Layers (for multilayers): `Layer(mesh, k)`, `Layers(mesh, k1, k2)`; slabs
+  `XRange`/`YRange`/`ZRange`.
+- Transforms: `translate`, `scale`, `rotz`, `rotx`, `roty`, `mirror`,
+  `repeat_shape(shape, px, py, pz)` (periodic tiling).
+- Set operations: `shapeunion`, `shapeintersect`, `shapediff`, `shapecomplement`,
+  `shapexor`.
 
 Assign materials to regions with a `RegionParams`:
 

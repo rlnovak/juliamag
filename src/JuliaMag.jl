@@ -34,10 +34,11 @@ export togpu, tocpu
 
 # --- Shapes (geometry) -----------------------------------------------------
 include("shape.jl")
-export Shape, translate, scale, rotz
+export Shape, translate, scale, rotz, rotx, roty, mirror, repeat_shape
 export Cuboid, Rect, Square, Cylinder, Circle, Ellipsoid, Ellipse, Cone,
-       Superball, XRange, YRange, ZRange, Layer, Layers, Universe, Empty
-export shapeunion, shapeintersect, shapediff, shapecomplement
+       Superball, XRange, YRange, ZRange, Layer, Layers, Universe, Empty,
+       Triangle, Line, Line2D, Cell
+export shapeunion, shapeintersect, shapediff, shapecomplement, shapexor
 
 # --- Regions ---------------------------------------------------------------
 include("regions.jl")

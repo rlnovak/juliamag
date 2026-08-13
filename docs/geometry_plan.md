@@ -19,7 +19,11 @@ Work happens on the `geometry-composition` branch.
 
 ## Gaps vs mumax3, and the plan
 
-### Phase 1 — missing shapes and transforms (additive, `src/shape.jl`)
+### Phase 1 — missing shapes and transforms (additive, `src/shape.jl`) — ✅ DONE
+
+Implemented: `Triangle`, `Line`, `Line2D`, `Cell`, `rotx`, `roty`, `mirror`,
+`repeat_shape`, `shapexor` — all exported, all with tests (2319 → 2335). No change
+to `Regions`/`defregion!`. Details below.
 
 Pure predicate functions, no architecture change. Each gets a docstring and tests.
 

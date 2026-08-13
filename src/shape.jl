@@ -85,6 +85,61 @@ function Superball(diam, p)
     return (x, y, z) -> abs(2x/diam)^(2p) + abs(2y/diam)^(2p) + abs(2z/diam)^(2p) <= 1
 end
 
+# --- Triangles and line segments (mirroring engine/shape.go) ---------------
+
+"""
+    Triangle(x0, y0, x1, y1, x2, y2) -> Shape
+
+2D triangle with the three given vertices (metres), infinite along z. A point is
+inside when it lies on the same side of all three edges (via the sign of the 2D
+cross product; orientation-independent).
+"""
+function Triangle(x0, y0, x1, y1, x2, y2)
+    # Signed area of the triangle (p, a, b).
+    edge(px, py, ax, ay, bx, by) = (bx - ax) * (py - ay) - (by - ay) * (px - ax)
+    return (x, y, z) -> begin
+        d1 = edge(x, y, x0, y0, x1, y1)
+        d2 = edge(x, y, x1, y1, x2, y2)
+        d3 = edge(x, y, x2, y2, x0, y0)
+        neg = (d1 < 0) || (d2 < 0) || (d3 < 0)
+        pos = (d1 > 0) || (d2 > 0) || (d3 > 0)
+        !(neg && pos)               # inside if not straddling both signs
+    end
+end
+
+# Squared distance from point p to the segment a—b, clamped to the endpoints.
+@inline function _seg_dist2(px, py, pz, ax, ay, az, bx, by, bz)
+    dx, dy, dz = bx - ax, by - ay, bz - az
+    l2 = dx*dx + dy*dy + dz*dz
+    t = l2 == 0 ? 0.0 : ((px - ax)*dx + (py - ay)*dy + (pz - az)*dz) / l2
+    t = clamp(t, 0.0, 1.0)
+    qx, qy, qz = ax + t*dx, ay + t*dy, az + t*dz
+    return sqr(px - qx) + sqr(py - qy) + sqr(pz - qz)
+end
+
+"""
+    Line(p1, p2, diam) -> Shape
+
+3D line segment (a capsule) from `p1` to `p2` (each a 3-tuple, metres) with
+diameter `diam`: the set of points within `diam/2` of the segment (round caps).
+"""
+function Line(p1, p2, diam)
+    r2 = (diam/2)^2
+    a = NTuple{3,Float64}(p1); b = NTuple{3,Float64}(p2)
+    return (x, y, z) -> _seg_dist2(x, y, z, a[1], a[2], a[3], b[1], b[2], b[3]) <= r2
+end
+
+"""
+    Line2D(x1, y1, x2, y2, diam) -> Shape
+
+2D line segment (capsule) from `(x1,y1)` to `(x2,y2)` with diameter `diam`,
+infinite along z.
+"""
+function Line2D(x1, y1, x2, y2, diam)
+    r2 = (diam/2)^2
+    return (x, y, z) -> _seg_dist2(x, y, 0.0, x1, y1, 0.0, x2, y2, 0.0) <= r2
+end
+
 # --- Slabs and index-based shapes ------------------------------------------
 
 "Half-space slab `x1 ≤ x < x2` (metres)."
@@ -117,6 +172,21 @@ end
 "Single z-layer with cell index `k` (1-based)."
 Layer(mesh::Mesh, k::Int) = Layers(mesh, k, k + 1)
 
+"""
+    Cell(mesh, ix, iy, iz) -> Shape
+
+The single cell at 1-based index `(ix, iy, iz)` — a `Cuboid` the size of one cell
+placed at that cell's centre (mumax3's index-based `Cell`).
+"""
+function Cell(mesh::Mesh, ix::Int, iy::Int, iz::Int)
+    Nx, Ny, Nz = mesh.size
+    cx, cy, cz = mesh.cellsize
+    x0 = (ix - (Nx + 1) / 2) * cx      # cell-centre convention (origin at sample centre)
+    y0 = (iy - (Ny + 1) / 2) * cy
+    z0 = (iz - (Nz + 1) / 2) * cz
+    return (x, y, z) -> (abs(x - x0) < cx/2) && (abs(y - y0) < cy/2) && (abs(z - z0) < cz/2)
+end
+
 # --- Transforms (mirroring Config.Transl / Scale / RotZ) -------------------
 
 """
@@ -143,6 +213,48 @@ function rotz(s::Shape, θ)
     return (x, y, z) -> s(x*c + y*sn, -x*sn + y*c, z)
 end
 
+"""
+    rotx(shape, θ) -> Shape
+
+Rotate a shape by `θ` radians about the x-axis.
+"""
+function rotx(s::Shape, θ)
+    c, sn = cos(θ), sin(θ)
+    return (x, y, z) -> s(x, y*c + z*sn, -y*sn + z*c)
+end
+
+"""
+    roty(shape, θ) -> Shape
+
+Rotate a shape by `θ` radians about the y-axis.
+"""
+function roty(s::Shape, θ)
+    c, sn = cos(θ), sin(θ)
+    return (x, y, z) -> s(x*c - z*sn, y, x*sn + z*c)
+end
+
+"""
+    mirror(shape; x=false, y=false, z=false) -> Shape
+
+Reflect a shape across the chosen coordinate planes (negate the selected axes).
+"""
+function mirror(s::Shape; x::Bool = false, y::Bool = false, z::Bool = false)
+    return (px, py, pz) -> s(x ? -px : px, y ? -py : py, z ? -pz : pz)
+end
+
+"""
+    repeat_shape(shape, px, py, pz) -> Shape
+
+Tile `shape` with periods `px, py, pz` [m]: along each axis with a nonzero
+period the coordinate is wrapped into `[-p/2, p/2)`, giving an infinite periodic
+repetition (mumax3's `Repeat`). A zero period leaves that axis unrepeated. Named
+`repeat_shape` to avoid shadowing `Base.repeat`.
+"""
+function repeat_shape(s::Shape, px, py, pz)
+    wrap(v, p) = p == 0 ? v : (v - p * round(v / p))
+    return (x, y, z) -> s(wrap(x, px), wrap(y, py), wrap(z, pz))
+end
+
 # --- Set operations --------------------------------------------------------
 # Named functions (union/intersect/difference/complement) plus operator forms.
 
@@ -154,3 +266,5 @@ shapeintersect(a::Shape, b::Shape) = (x, y, z) -> a(x, y, z) && b(x, y, z)
 shapediff(a::Shape, b::Shape) = (x, y, z) -> a(x, y, z) && !b(x, y, z)
 "Complement: outside `a`."
 shapecomplement(a::Shape) = (x, y, z) -> !a(x, y, z)
+"Exclusive or: inside exactly one of `a`, `b`."
+shapexor(a::Shape, b::Shape) = (x, y, z) -> a(x, y, z) ⊻ b(x, y, z)
