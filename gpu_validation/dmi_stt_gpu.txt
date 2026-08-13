@@ -1,0 +1,37 @@
+JuliaMag DMI + spin-transfer torques on GPU — labmac04 (Quadro P1000)
+Julia 1.11.9, CUDA.jl.
+
+=== Correctness: DMI, CPU vs GPU (max rel diff) ===
+DMI interfacial, thin film (64x64x1):     0.00e+00  (exact)
+DMI interfacial, periodic-x (80x40x1):    0.00e+00  (exact)
+DMI bulk, 3D (32x32x16):                  0.00e+00  (exact)
+
+=== Correctness: spin-transfer torques, CPU vs GPU ===
+Zhang-Li, Jx  (80x40x1):                  4.39e-16
+Zhang-Li, Jx+Jy periodic-x (64x64x1):     3.67e-16
+Slonczewski (64x64x1):                    2.37e-16
+
+The central-derivative kernels (DMI, Zhang-Li) reuse the exchange field's
+Neumann/periodic edge shift, so they reproduce the CPU one-sided boundary exactly
+(DMI matches to 0). Slonczewski is a local (derivative-free) broadcast.
+
+=== End-to-end: Néel skyrmion (DMI+PMA) driven by Zhang-Li, CPU vs GPU ===
+80x60x1 periodic-x, relax + 0.4 ns RK4 Zhang-Li drive (J=2e12 A/m²):
+  CPU: <m>=(0.00025,-0.00011,0.97738)  sky_x=-70.63 nm  Q=-0.890
+  GPU: <m>=(0.00025,-0.00011,0.97738)  sky_x=-70.63 nm  Q=-0.890
+  |<m>_CPU - <m>_GPU| = 2.79e-13    |sky_x diff| = 6.5e-8 nm
+DMI + STT + demag + minimizer + integrator all on the GPU together give the same
+result as the CPU. (skyrmionpos/topologicalcharge read out on CPU — the feature
+trackers are scalar loops, not yet ported.)
+
+=== Performance: DMI + Zhang-Li combined, CPU vs GPU (ms/call) ===
+cells      CPU(ms)  GPU(ms)  speedup(CPU/GPU)
+16384      0.277    1.179    0.24
+65536      1.098    2.209    0.50
+262144     4.762    7.601    0.63
+1048576    18.959   25.059   0.76
+
+Like the isolated field kernels, the derivative-based DMI/STT (memory-bound, one
+broadcast per term, no FFT) do not beat this modest GPU on their own. The speedup
+comes when the demag FFT is in the loop (the full effective field reaches ~3x);
+in a real current-driven run the demag dominates, so the GPU wins at large meshes.

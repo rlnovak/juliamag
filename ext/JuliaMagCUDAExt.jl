@@ -24,8 +24,9 @@ using CUDA
 using CUDA.CUFFT
 using LinearAlgebra: mul!
 import JuliaMag: exchange!, anisotropy!, zeeman!, torque!, normalize!, average,
-                 demagfield!, Mesh, Material, isperiodic, μ0, γLL, DemagPlan, World,
-                 _damping_torque!, _cayley_step!, _bb_sums
+                 demagfield!, dmi_interfacial!, dmi_bulk!, zhanglitorque!, slonczewskitorque!,
+                 Mesh, Material, isperiodic, μ0, γLL, μB, qe, ħ, normalize3,
+                 DemagPlan, World, _damping_torque!, _cayley_step!, _bb_sums
 
 const CuField{T} = CuArray{T,4}
 
@@ -128,6 +129,118 @@ function anisotropy!(B::CuField{T}, m::CuField{T}, mesh::Mesh, mat::Material;
         B[3:3,:,:,:] .= pref .* mu .* uz
     end
     return B
+end
+
+# --- DMI (uniform Material) ------------------------------------------------
+# Central derivative ∂(component c)/∂(axis) on the GPU, reusing the Neumann/
+# periodic edge shift of the exchange field. comp is a (1,Nx,Ny,Nz) view.
+# circshift(+1) puts m[i-1] at i and circshift(-1) puts m[i+1] at i, so the
+# forward neighbour m[i+1] is _edgeshift(...,-1) and m[i-1] is _edgeshift(...,+1);
+# the central difference (m[i+1]-m[i-1]) is therefore edgeshift(-1) - edgeshift(+1).
+_dcentral(comp, axis, inv2c, periodic) =
+    (_edgeshift(comp, axis, -1, periodic) .- _edgeshift(comp, axis, +1, periodic)) .* inv2c
+
+function dmi_interfacial!(B::CuField{T}, m::CuField{T}, mesh::Mesh, mat::Material;
+                          add::Bool = false) where {T}
+    Nx, Ny, Nz = mesh.size
+    cx, cy, cz = mesh.cellsize
+    px, py, pz = isperiodic(mesh,1), isperiodic(mesh,2), isperiodic(mesh,3)
+    i2x = T(1/(2cx)); i2y = T(1/(2cy))
+    pref = T(2 * mat.Dind / mat.Msat)
+    mx = @view m[1:1,:,:,:]; my = @view m[2:2,:,:,:]; mz = @view m[3:3,:,:,:]
+    bx = pref .* _dcentral(mz, 1, i2x, px)                              # ∂mz/∂x
+    by = pref .* _dcentral(mz, 2, i2y, py)                              # ∂mz/∂y
+    bz = pref .* (.-_dcentral(mx, 1, i2x, px) .- _dcentral(my, 2, i2y, py))  # -∂mx/∂x - ∂my/∂y
+    if add
+        B[1:1,:,:,:] .+= bx; B[2:2,:,:,:] .+= by; B[3:3,:,:,:] .+= bz
+    else
+        B[1:1,:,:,:] .= bx; B[2:2,:,:,:] .= by; B[3:3,:,:,:] .= bz
+    end
+    return B
+end
+
+function dmi_bulk!(B::CuField{T}, m::CuField{T}, mesh::Mesh, mat::Material;
+                   add::Bool = false) where {T}
+    Nx, Ny, Nz = mesh.size
+    cx, cy, cz = mesh.cellsize
+    px, py, pz = isperiodic(mesh,1), isperiodic(mesh,2), isperiodic(mesh,3)
+    i2x = T(1/(2cx)); i2y = T(1/(2cy)); i2z = T(1/(2cz))
+    pref = T(2 * mat.Dbulk / mat.Msat)
+    mx = @view m[1:1,:,:,:]; my = @view m[2:2,:,:,:]; mz = @view m[3:3,:,:,:]
+    z = CUDA.zeros(T, 1, Nx, Ny, Nz)
+    dmz_dy = _dcentral(mz, 2, i2y, py); dmy_dz = Nz > 1 ? _dcentral(my, 3, i2z, pz) : z
+    dmx_dz = Nz > 1 ? _dcentral(mx, 3, i2z, pz) : z; dmz_dx = _dcentral(mz, 1, i2x, px)
+    dmy_dx = _dcentral(my, 1, i2x, px); dmx_dy = _dcentral(mx, 2, i2y, py)
+    bx = .-pref .* (dmz_dy .- dmy_dz)                                   # -pref·(∇×m)_x
+    by = .-pref .* (dmx_dz .- dmz_dx)
+    bz = .-pref .* (dmy_dx .- dmx_dy)
+    if add
+        B[1:1,:,:,:] .+= bx; B[2:2,:,:,:] .+= by; B[3:3,:,:,:] .+= bz
+    else
+        B[1:1,:,:,:] .= bx; B[2:2,:,:,:] .= by; B[3:3,:,:,:] .= bz
+    end
+    return B
+end
+
+# --- Spin-transfer torques (uniform Material) ------------------------------
+
+function zhanglitorque!(τ::CuField{T}, m::CuField{T}, mesh::Mesh, mat::Material, J;
+                        add::Bool = true) where {T}
+    mat.pol == 0 && return τ
+    Nx, Ny, Nz = mesh.size
+    cx, cy, cz = mesh.cellsize
+    px, py, pz = isperiodic(mesh,1), isperiodic(mesh,2), isperiodic(mesh,3)
+    α = T(mat.alpha); ξ = T(mat.xi)
+    b = T(μB / (2 * qe) / (mat.Msat * (1 + ξ^2)))                       # ×γLL vs mumax (see CPU)
+    Jx = T(mat.pol*J[1]); Jy = T(mat.pol*J[2]); Jz = T(mat.pol*J[3])
+    mx = @view m[1:1,:,:,:]; my = @view m[2:2,:,:,:]; mz = @view m[3:3,:,:,:]
+    # hs = (b/c)·J·(m[nbr+] - m[nbr-]) summed over active current axes (no 1/2).
+    Z = CUDA.zeros(T, 1, Nx, Ny, Nz)
+    # m[nbr+] - m[nbr-] = m[i+1] - m[i-1] = edgeshift(-1) - edgeshift(+1) (see _dcentral).
+    diff(comp, ax, per) = _edgeshift(comp, ax, -1, per) .- _edgeshift(comp, ax, +1, per)
+    hx = copy(Z); hy = copy(Z); hz = copy(Z)
+    if Jx != 0
+        w = b*Jx/T(cx); hx = hx .+ w.*diff(mx,1,px); hy = hy .+ w.*diff(my,1,px); hz = hz .+ w.*diff(mz,1,px)
+    end
+    if Jy != 0
+        w = b*Jy/T(cy); hx = hx .+ w.*diff(mx,2,py); hy = hy .+ w.*diff(my,2,py); hz = hz .+ w.*diff(mz,2,py)
+    end
+    if Jz != 0 && Nz > 1
+        w = b*Jz/T(cz); hx = hx .+ w.*diff(mx,3,pz); hy = hy .+ w.*diff(my,3,pz); hz = hz .+ w.*diff(mz,3,pz)
+    end
+    gfac = T(-1/(1+α^2)); c1 = T(1+ξ*α); c2 = T(ξ-α)
+    p1x = my.*hz .- mz.*hy; p1y = mz.*hx .- mx.*hz; p1z = mx.*hy .- my.*hx   # m × hs
+    qx = my.*p1z .- mz.*p1y; qy = mz.*p1x .- mx.*p1z; qz = mx.*p1y .- my.*p1x  # m×(m×hs)
+    tx = gfac.*(c1.*qx .+ c2.*p1x); ty = gfac.*(c1.*qy .+ c2.*p1y); tz = gfac.*(c1.*qz .+ c2.*p1z)
+    if add
+        τ[1:1,:,:,:] .+= tx; τ[2:2,:,:,:] .+= ty; τ[3:3,:,:,:] .+= tz
+    else
+        τ[1:1,:,:,:] .= tx; τ[2:2,:,:,:] .= ty; τ[3:3,:,:,:] .= tz
+    end
+    return τ
+end
+
+function slonczewskitorque!(τ::CuField{T}, m::CuField{T}, mesh::Mesh, mat::Material,
+                            Jz::Real, p, thickness::Real; add::Bool = true) where {T}
+    (mat.pol == 0 || Jz == 0) && return τ
+    α = T(mat.alpha); Λ = T(mat.lambda); εp = T(mat.epsilonPrime)
+    pn = normalize3(NTuple{3,T}(p)); ppx, ppy, ppz = pn
+    β = T(γLL * (ħ/qe) * Jz / (thickness * mat.Msat))                  # ×γLL (see CPU)
+    Λ2 = Λ^2; gilb = T(1/(1+α^2))
+    mx = @view m[1:1,:,:,:]; my = @view m[2:2,:,:,:]; mz = @view m[3:3,:,:,:]
+    pm = ppx.*mx .+ ppy.*my .+ ppz.*mz
+    ε  = T(mat.pol) .* Λ2 ./ ((Λ2 + 1) .+ (Λ2 - 1).*pm)
+    A = β .* ε; Bc = β * εp
+    f1 = gilb .* (A .+ α.*Bc); f2 = gilb .* (Bc .- α.*A)
+    pxm_x = ppy.*mz .- ppz.*my; pxm_y = ppz.*mx .- ppx.*mz; pxm_z = ppx.*my .- ppy.*mx  # p × m
+    mxpxm_x = my.*pxm_z .- mz.*pxm_y; mxpxm_y = mz.*pxm_x .- mx.*pxm_z; mxpxm_z = mx.*pxm_y .- my.*pxm_x
+    tx = f1.*mxpxm_x .+ f2.*pxm_x; ty = f1.*mxpxm_y .+ f2.*pxm_y; tz = f1.*mxpxm_z .+ f2.*pxm_z
+    if add
+        τ[1:1,:,:,:] .+= tx; τ[2:2,:,:,:] .+= ty; τ[3:3,:,:,:] .+= tz
+    else
+        τ[1:1,:,:,:] .= tx; τ[2:2,:,:,:] .= ty; τ[3:3,:,:,:] .= tz
+    end
+    return τ
 end
 
 # --- Zeeman ----------------------------------------------------------------

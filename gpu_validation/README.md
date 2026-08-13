@@ -76,13 +76,37 @@ Relax performance: crossover at ~65k cells, up to ~2× at 256k on this GPU (the
 minimizer step has more kernel launches than the field alone, so slightly below
 the field's ~3×).
 
-## Result 4 — extension scope
+## Result 4 — DMI and spin-transfer torques on the GPU (PASS)
 
-On the GPU end-to-end via `togpu`: `exchange!`, `anisotropy!`, `zeeman!`,
-`torque!`, `normalize!`, `average`, `demagfield!`, the assembled
-`effectivefield!`, and now the **`Minimizer` (relax) and `Integrator` (run)** —
-i.e. a complete relax + dynamics simulation. Not yet on the GPU: DMI and the
-spin-transfer torques (no `CuArray` methods yet).
+The interfacial and bulk DMI fields and the Zhang–Li and Slonczewski
+spin-transfer torques now run on the GPU (see `dmi_stt_gpu.txt`):
+
+| term | geometry | max rel diff CPU vs GPU |
+|------|----------|--------------------------|
+| DMI interfacial | film / periodic-x | 0 (exact) |
+| DMI bulk | 3D | 0 (exact) |
+| Zhang–Li STT | Jx / Jx+Jy periodic | 4.4e-16 / 3.7e-16 |
+| Slonczewski STT | film | 2.4e-16 |
+
+DMI matches to **exactly zero** — the central-derivative kernels reuse the
+exchange field's Neumann/periodic edge shift, reproducing the CPU one-sided
+boundary exactly. **End-to-end**, a Néel skyrmion (DMI + PMA) relaxed and then
+driven by a Zhang–Li current — DMI + STT + demag + minimizer + integrator all on
+the GPU — matches the CPU to 2.8e-13 in ⟨m⟩ and to 6.5e-8 nm in position.
+
+The whole physics pipeline now runs on the GPU. On this modest GPU the
+derivative-based DMI/STT do not beat the CPU on their own (0.2–0.8×, like the
+other isolated kernels); the speedup comes from the demag FFT in the full loop.
+
+## Result 5 — extension scope
+
+Everything runs on the GPU end-to-end via `togpu`: `exchange!`, `anisotropy!`,
+`dmi!` (interfacial + bulk), `zeeman!`, `demagfield!`, the assembled
+`effectivefield!`, `torque!`, `zhanglitorque!`, `slonczewskitorque!`,
+`normalize!`, `average`, and the **`Minimizer` (relax) and `Integrator` (run)** —
+a complete micromagnetic simulation. Only the feature trackers (vortex/skyrmion/
+domain-wall position, topological charge) remain scalar CPU loops; read them out
+with `Array(m)` after a GPU run.
 
 Core changes were type generalizations only — the `World` scratch buffer and the
 `Minimizer`/`Integrator` state fields from `Array` to `AbstractArray`, and three
@@ -94,6 +118,7 @@ broadcast GPU versions. The CPU logic is unchanged; **all 2299 CPU tests pass**.
 - `gpu_check.txt` — field/torque kernels, CPU vs GPU agreement.
 - `demag_gpu.txt` — demag + full effective field: accuracy and speedup.
 - `solvers_gpu.txt` — relax + run correctness, std4 end-to-end, relax speedup.
+- `dmi_stt_gpu.txt` — DMI + spin-transfer torques accuracy, skyrmion end-to-end, speedup.
 - `std4/` — the Standard Problem 4 GPU run: table, GPU figure, CPU-vs-GPU overlay.
 - `gpu_scaling_exchange.txt`, `gpu_scaling_effectivefield.txt` — isolated-kernel
   timings (Result 1; no demag), for contrast.
