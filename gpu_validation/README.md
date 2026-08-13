@@ -98,15 +98,31 @@ The whole physics pipeline now runs on the GPU. On this modest GPU the
 derivative-based DMI/STT do not beat the CPU on their own (0.2–0.8×, like the
 other isolated kernels); the speedup comes from the demag FFT in the full loop.
 
-## Result 5 — extension scope
+## Result 5 — feature trackers on the GPU (PASS)
 
-Everything runs on the GPU end-to-end via `togpu`: `exchange!`, `anisotropy!`,
-`dmi!` (interfacial + bulk), `zeeman!`, `demagfield!`, the assembled
-`effectivefield!`, `torque!`, `zhanglitorque!`, `slonczewskitorque!`,
-`normalize!`, `average`, and the **`Minimizer` (relax) and `Integrator` (run)** —
-a complete micromagnetic simulation. Only the feature trackers (vortex/skyrmion/
-domain-wall position, topological charge) remain scalar CPU loops; read them out
-with `Array(m)` after a GPU run.
+All four trackers now run on the GPU too (see `trackers_gpu.txt`):
+
+| tracker | CPU vs GPU |
+|---------|-----------|
+| vortex core (x, y, polarity) | 0 (exact) |
+| topological charge Q | 2.6e-15 |
+| skyrmion position (open / periodic-x) | ~1e-13 nm |
+| domain-wall position | 0 (exact) |
+
+Each locates a feature by a device reduction (`sum` / `findmax`) over per-cell
+quantities built by broadcast — no scalar CuArray indexing. Only a handful of
+scalars come back to the host (the argmax cell and its 3×3 neighbourhood for the
+vortex sub-cell interpolation; the `Nx` column averages for the wall crossing).
+
+## Result 6 — extension scope
+
+The **entire** JuliaMag pipeline now runs on the GPU end-to-end via `togpu`:
+`exchange!`, `anisotropy!`, `dmi!` (interfacial + bulk), `zeeman!`, `demagfield!`,
+the assembled `effectivefield!`, `torque!`, `zhanglitorque!`,
+`slonczewskitorque!`, `normalize!`, `average`, the **`Minimizer` (relax) and
+`Integrator` (run)**, and the **feature trackers** (`vortexcore`, `skyrmionpos`,
+`domainwallpos`, `topologicalcharge`) — a complete micromagnetic simulation with
+its diagnostics, nothing falling back to the CPU.
 
 Core changes were type generalizations only — the `World` scratch buffer and the
 `Minimizer`/`Integrator` state fields from `Array` to `AbstractArray`, and three
@@ -119,6 +135,7 @@ broadcast GPU versions. The CPU logic is unchanged; **all 2299 CPU tests pass**.
 - `demag_gpu.txt` — demag + full effective field: accuracy and speedup.
 - `solvers_gpu.txt` — relax + run correctness, std4 end-to-end, relax speedup.
 - `dmi_stt_gpu.txt` — DMI + spin-transfer torques accuracy, skyrmion end-to-end, speedup.
+- `trackers_gpu.txt` — vortex/skyrmion/domain-wall/topological-charge, CPU vs GPU.
 - `std4/` — the Standard Problem 4 GPU run: table, GPU figure, CPU-vs-GPU overlay.
 - `gpu_scaling_exchange.txt`, `gpu_scaling_effectivefield.txt` — isolated-kernel
   timings (Result 1; no demag), for contrast.

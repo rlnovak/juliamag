@@ -1,0 +1,21 @@
+JuliaMag feature trackers on GPU — labmac04 (Quadro P1000), Julia 1.11.9, CUDA.jl.
+
+All four trackers now run on the GPU, agreeing with the CPU to machine precision.
+Each locates a feature by a device reduction (sum / findmax) over per-cell
+quantities built by broadcast — no scalar CuArray indexing. A few scalars come
+back to the host: the argmax cell and its 3×3 neighbourhood for the vortex
+sub-cell interpolation, and the Nx column averages for the wall zero-crossing.
+
+vortexcore  CPU=(-1.445,1.445) pol=0.738  GPU=(-1.445,1.445) pol=0.738  d=0.00e+00 nm
+[open]  Q CPU=-0.97261 GPU=-0.97261 d=2.55e-15 | skyrmion (30.00,0.00) both, d=1.5e-13 nm
+[pbc-x] Q CPU=-0.97261 GPU=-0.97261 d=2.55e-15 | skyrmion (30.00,0.00) both, d=2.7e-14 nm
+dwpos   CPU=0.0000 nm  GPU=0.0000 nm  d=0.00e+00 nm
+
+- vortexcore: exact (argmax + parabolic sub-cell interpolation).
+- topologicalcharge: 2.6e-15 (density via the same central-difference edge shift).
+- skyrmionpos: ~1e-13 nm, open and periodic-x (circular centroid on the periodic axis).
+- domainwallpos: exact (column average reduction + host-side zero crossing).
+
+The whole JuliaMag pipeline now runs on the GPU: fields (exchange/anisotropy/
+demag CUFFT/DMI/Zeeman), torques (LLG/Zhang-Li/Slonczewski), solvers (minimizer/
+integrator), and the feature trackers.

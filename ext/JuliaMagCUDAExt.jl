@@ -25,6 +25,7 @@ using CUDA.CUFFT
 using LinearAlgebra: mul!
 import JuliaMag: exchange!, anisotropy!, zeeman!, torque!, normalize!, average,
                  demagfield!, dmi_interfacial!, dmi_bulk!, zhanglitorque!, slonczewskitorque!,
+                 vortexcore, skyrmionpos, domainwallpos, topologicalcharge, _interp_max,
                  Mesh, Material, isperiodic, μ0, γLL, μB, qe, ħ, normalize3,
                  DemagPlan, World, _damping_torque!, _cayley_step!, _bb_sums
 
@@ -399,6 +400,99 @@ function _bb_sums(m::CuField{T}, mlast::CuField{T}, τlast::CuField{T}, τ::CuFi
     s = m .- mlast
     y = τlast .- τ
     return (sum(s .* s), sum(s .* y), sum(y .* y))
+end
+
+# --- Feature trackers on the GPU -------------------------------------------
+# All four locate a feature by a reduction over the magnetization; the reductions
+# run on the device (sum / findmax) with the per-cell quantities built by
+# broadcast, so no scalar CuArray indexing. A handful of scalars (the argmax cell
+# and its 3×3 neighbourhood for the vortex sub-cell interpolation; the Nx column
+# averages for the wall crossing) come back to the host, which is cheap.
+
+# Topological-charge density q = m·(∂ₓm × ∂ᵧm) over the first z-layer, as a
+# (1,Nx,Ny,1) CuArray. Central differences with clamped (Neumann) boundaries,
+# matching the CPU _topo_density (reuses the exchange edge shift, which reproduces
+# the CPU clamp exactly).
+function _topo_density_gpu(m::CuField{T}, mesh::Mesh) where {T}
+    Nx, Ny, _ = mesh.size
+    cx, cy, _ = mesh.cellsize
+    ic2x = T(1/(2cx)); ic2y = T(1/(2cy))
+    m1 = @view m[:, :, :, 1:1]                       # first z-layer, keep 4D
+    mx = @view m1[1:1,:,:,:]; my = @view m1[2:2,:,:,:]; mz = @view m1[3:3,:,:,:]
+    dxx = _dcentral(mx,1,ic2x,false); dxy = _dcentral(my,1,ic2x,false); dxz = _dcentral(mz,1,ic2x,false)
+    dyx = _dcentral(mx,2,ic2y,false); dyy = _dcentral(my,2,ic2y,false); dyz = _dcentral(mz,2,ic2y,false)
+    cxo = dxy.*dyz .- dxz.*dyy                        # ∂ₓm × ∂ᵧm
+    cyo = dxz.*dyx .- dxx.*dyz
+    czo = dxx.*dyy .- dxy.*dyx
+    return mx.*cxo .+ my.*cyo .+ mz.*czo             # (1,Nx,Ny,1)
+end
+
+function topologicalcharge(m::CuField{T}, mesh::Mesh) where {T}
+    Nx, Ny, _ = mesh.size
+    cx, cy, _ = mesh.cellsize
+    return sum(_topo_density_gpu(m, mesh)) * T(cx * cy / (4π))
+end
+
+function skyrmionpos(m::CuField{T}, mesh::Mesh) where {T}
+    Nx, Ny, Nz = mesh.size
+    cx, cy, cz = mesh.cellsize
+    px, py = isperiodic(mesh,1), isperiodic(mesh,2)
+    q = _topo_density_gpu(m, mesh)                   # (1,Nx,Ny,1)
+    w = abs.(q)
+    sw = sum(w)
+    sw == 0 && return (T(NaN), T(NaN), T(NaN))
+    # Broadcast the cell-index grids along x and y (shape (1,Nx,1,1)/(1,1,Ny,1)).
+    ix = CuArray(reshape(T.(1:Nx), 1, Nx, 1, 1))
+    iy = CuArray(reshape(T.(1:Ny), 1, 1, Ny, 1))
+    x = if px
+        ax = T(2π/Nx); θ = atan(sum(w .* sin.((ix.-1).*ax)), sum(w .* cos.((ix.-1).*ax)))
+        θ < 0 && (θ += T(2π)); (θ/ax + 1 - (Nx+1)/2) * cx
+    else
+        (sum(w .* ix) / sw - (Nx+1)/2) * cx
+    end
+    y = if py
+        ay = T(2π/Ny); φ = atan(sum(w .* sin.((iy.-1).*ay)), sum(w .* cos.((iy.-1).*ay)))
+        φ < 0 && (φ += T(2π)); (φ/ay + 1 - (Ny+1)/2) * cy
+    else
+        (sum(w .* iy) / sw - (Ny+1)/2) * cy
+    end
+    z = (1 - (Nz+1)/2) * cz
+    return (T(x), T(y), T(z))
+end
+
+function vortexcore(m::CuField{T}, mesh::Mesh) where {T}
+    Nx, Ny, Nz = mesh.size
+    cx, cy, cz = mesh.cellsize
+    # Argmax of |mz| over the interior of the first layer, found on the device.
+    absmz = abs.(@view m[3, 2:Nx-1, 2:Ny-1, 1])
+    isempty(absmz) && return (T(NaN), T(NaN), T(NaN), zero(T))
+    _, idx = findmax(absmz)                          # index into the interior block
+    maxi = idx[1] + 1; maxj = idx[2] + 1             # back to full-array indices
+    # Pull the 3×3 neighbourhood to the host for the sub-cell interpolation.
+    nb = Array(@view m[3, maxi-1:maxi+1, maxj-1:maxj+1, 1])
+    a(i,j) = abs(nb[i,j])
+    dx = _interp_max(a(2,2), a(1,2), a(3,2))
+    dy = _interp_max(a(2,2), a(2,1), a(2,3))
+    pol = nb[2,2]
+    x = (maxi + dx - (Nx+1)/2) * cx
+    y = (maxj + dy - (Ny+1)/2) * cy
+    z = (1 - (Nz+1)/2) * cz
+    return (T(x), T(y), T(z), T(pol))
+end
+
+function domainwallpos(m::CuField{T}, mesh::Mesh; comp::Int = 1) where {T}
+    Nx, Ny, Nz = mesh.size
+    cx, cy, cz = mesh.cellsize
+    # Column averages over y of the chosen component (device reduction), to host.
+    col = Array(vec(sum(@view m[comp, :, :, 1]; dims = 2))) ./ Ny   # length Nx
+    @inbounds for i in 2:Nx
+        if (col[i-1] > 0) != (col[i] > 0)
+            frac = col[i-1] / (col[i-1] - col[i])
+            x = ((i - 1) + frac - (Nx+1)/2) * cx
+            return (T(x), T(0), T((1 - (Nz+1)/2) * cz))
+        end
+    end
+    return (T(NaN), T(NaN), T(NaN))
 end
 
 # Move a whole World to the GPU: upload the demag plan (if any) and the
