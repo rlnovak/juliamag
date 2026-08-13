@@ -19,4 +19,5 @@ using Test
     include("test_ovf.jl")
     include("test_output.jl")
     include("test_simulation.jl")
+    include("test_thermal.jl")
 end

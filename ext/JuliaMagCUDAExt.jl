@@ -26,7 +26,8 @@ using LinearAlgebra: mul!
 import JuliaMag: exchange!, anisotropy!, zeeman!, torque!, normalize!, average,
                  demagfield!, dmi!, dmi_interfacial!, dmi_bulk!, zhanglitorque!, slonczewskitorque!,
                  vortexcore, skyrmionpos, domainwallpos, topologicalcharge, _interp_max,
-                 Mesh, Material, RegionParams, isperiodic, μ0, γLL, μB, qe, ħ, normalize3,
+                 thermalfield!, cellvolume,
+                 Mesh, Material, RegionParams, isperiodic, μ0, γLL, kB, μB, qe, ħ, normalize3,
                  hasku, hasdmi, hasdind, hasdbulk, damping, _demag!, AbstractParams,
                  DemagPlan, World, _damping_torque!, _cayley_step!, _bb_sums
 
@@ -508,6 +509,7 @@ struct GpuRegionParams{T<:AbstractFloat} <: AbstractParams
     ux::CuArray{T,4}; uy::CuArray{T,4}; uz::CuArray{T,4}
     Dind::CuArray{T,4}
     Dbulk::CuArray{T,4}
+    alpha::CuArray{T,4}     # per-cell damping (for the thermal field)
     alpha0::T               # region-0 damping, the global LLG torque scale
     hasku::Bool
     hasdind::Bool
@@ -537,7 +539,7 @@ function JuliaMag.togpu(rp::RegionParams{T}) where {T}
     uy = CuArray(_percell([u[2] for u in rp.anisU], idm))
     uz = CuArray(_percell([u[3] for u in rp.anisU], idm))
     GpuRegionParams{T}(pc(rp.Msat), pc(rp.Aex), pc(rp.Ku), ux, uy, uz,
-                       pc(rp.Dind), pc(rp.Dbulk), T(rp.alpha[1]),
+                       pc(rp.Dind), pc(rp.Dbulk), pc(rp.alpha), T(rp.alpha[1]),
                        hasku(rp), hasdind(rp), hasdbulk(rp))
 end
 
@@ -655,6 +657,35 @@ function demagfield!(B::CuField{T}, m::CuField{T}, plan::GpuDemagPlan{T},
     msref = plan.prefactor / T(μ0)                   # plan.prefactor = μ0·Msref
     Mm = (p.Msat .* m) ./ msref                       # (Msat[cell]·m)/Msref
     demagfield!(B, Mm, plan; add = add)              # ·(μ0·Msref) = μ0·Msat[cell]·m
+end
+
+# --- Thermal (Langevin) field on the GPU -----------------------------------
+# Same fluctuation-dissipation field as the CPU: B = η·sqrt(2 α kB T/(γ Msat V Δt)).
+# The unit normals are drawn on the device with CUDA.randn! and scaled in place.
+function thermalfield!(Btherm::CuField{T2}, mesh::Mesh, mat::Material,
+                       temp::Real, dt::Real; rng = nothing) where {T2}
+    CUDA.randn!(Btherm)
+    if temp <= 0 || mat.Msat == 0
+        fill!(Btherm, zero(T2)); return Btherm
+    end
+    V = cellvolume(mesh)
+    s = sqrt(T2(2 * kB * temp * mat.alpha / (γLL * mat.Msat * V * dt)))
+    Btherm .*= s
+    return Btherm
+end
+
+function thermalfield!(Btherm::CuField{T2}, mesh::Mesh, p::GpuRegionParams,
+                       temp::Real, dt::Real; rng = nothing) where {T2}
+    CUDA.randn!(Btherm)
+    if temp <= 0
+        fill!(Btherm, zero(T2)); return Btherm
+    end
+    V = cellvolume(mesh)
+    kfac = T2(2 * kB * temp / (γLL * V * dt))        # per-cell: ·α/Msat, 0 if Msat=0
+    α = p.alpha; Ms = p.Msat
+    s = ifelse.(Ms .== 0, zero(T2), sqrt.(kfac .* α ./ Ms))
+    Btherm .*= s
+    return Btherm
 end
 
 # Move a whole World to the GPU: upload the demag plan (if any), the material

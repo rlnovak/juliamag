@@ -4,8 +4,9 @@
 JuliaMag is a micromagnetic simulator written entirely in Julia. It solves the
 Landau–Lifshitz–Gilbert (LLG) equation on a finite-difference mesh, with the
 exchange, demagnetizing, anisotropy, Dzyaloshinskii–Moriya, and Zeeman fields,
-and the Zhang–Li and Slonczewski spin-transfer torques. It reproduces the µMAG
-standard problems against mumax3 and OOMMF.
+the Zhang–Li and Slonczewski spin-transfer torques, and finite-temperature
+(Langevin) dynamics. It reproduces the µMAG standard problems against mumax3 and
+OOMMF, and runs the whole pipeline on a CUDA GPU.
 
 This manual covers installation, the core concepts, and three worked tutorials:
 
@@ -419,7 +420,45 @@ averages come from `q_m_region(id)`. Region-wise parameters also run on the GPU
 
 ---
 
-## 7. Running on the GPU
+## 7. Finite temperature
+
+Thermal fluctuations are modelled by Brown's method: a random field is added to
+the effective field, with statistics fixed by the fluctuation–dissipation
+theorem. Per cell and component the thermal field is
+
+```
+B_therm = η · sqrt( 2 α kB T / (γ Msat V Δt) )
+```
+
+where `η` is a standard normal drawn fresh every step, `α` the damping, `T` the
+temperature [K], `V` the cell volume, and `Δt` the step. The `1/Δt` makes this a
+white-noise increment, so a finite-temperature run needs a **fixed step**;
+`runthermal!` integrates the LLG–Langevin equation with a fixed-step stochastic
+Heun scheme.
+
+```julia
+mesh = Mesh((1, 1, 1), (5e-9, 5e-9, 5e-9))       # a single-domain nanodot
+mat  = Material(Msat = 8e5, Aex = 1.3e-11, alpha = 0.5, Ku = 4e5, anisU = (0, 0, 1))
+sim  = Simulation(mesh, mat; demag = false)
+setmag!(sim, UniformConfig(0, 0, 1))
+
+savequantities!(sim, q_time(), q_m())
+runthermal!(sim, 1e-9, 300.0; dt = 2e-15, every = 1e-11)   # 1 ns at 300 K
+writetable(sim.table, "thermal.txt")
+```
+
+`runthermal!(sim, duration, T; dt, every)` needs a small step — `dt` around
+1e-15–1e-14 s — because the thermal kick per step must stay modest; a strongly
+damped material equilibrates faster. Region-wise temperatures use each region's
+own `α` and `Msat`. `thermalfield!(B, mesh, params, T, dt)` exposes the field
+itself if you want to build a custom integrator. Average diagnostics like ⟨mz⟩(T)
+follow from time-averaging over a thermalized run — see
+[`examples/thermal_demagnetization.jl`](../examples/thermal_demagnetization.jl),
+which traces a nanodot's ⟨mz⟩ falling from 1 toward 0 as the temperature rises.
+
+---
+
+## 8. Running on the GPU
 
 On a machine with a CUDA GPU, loading `CUDA` alongside JuliaMag activates a
 package extension that adds GPU methods for every field, torque, solver, and
@@ -447,8 +486,9 @@ println(average(state(it)))                   # reductions run on the device
 
 Everything runs on the device: the effective field (exchange, anisotropy, the
 FFT demagnetization via CUFFT, DMI, Zeeman), the LLG and spin-transfer torques,
-the energy minimizer and the time integrator, and the feature trackers
-(`vortexcore`, `skyrmionpos`, `domainwallpos`, `topologicalcharge`). Region-wise
+the energy minimizer and the time integrator, the finite-temperature thermal
+field and `runthermal!`, and the feature trackers (`vortexcore`, `skyrmionpos`,
+`domainwallpos`, `topologicalcharge`). Region-wise
 (multi-material) parameters work too — `togpu(::World)` materializes a
 `RegionParams` into per-cell device arrays, so a multilayer or a patterned sample
 runs on the GPU unchanged.
@@ -467,7 +507,7 @@ grows with mesh size and with a more capable GPU.
 
 ---
 
-## 8. Going further
+## 9. Going further
 
 - **Standalone examples:** [`examples/`](../examples/) has the standard problems
   2, 4, and 5 with comparison plots against mumax3 and OOMMF.

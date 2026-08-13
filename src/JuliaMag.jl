@@ -111,4 +111,8 @@ export material, materialnames
 include("simulation.jl")
 export Simulation, setmag!, savequantities!, savenow!, run!, runcurrent!
 
+# --- Finite-temperature (Langevin) dynamics --------------------------------
+include("thermal.jl")
+export thermalfield!, runthermal!
+
 end # module
