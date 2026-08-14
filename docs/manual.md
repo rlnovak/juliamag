@@ -523,8 +523,16 @@ field and `runthermal!`, and the feature trackers (`vortexcore`, `skyrmionpos`,
 runs on the GPU unchanged.
 
 The magnetization stays on the device until you bring it back with `tocpu(m)` (or
-`Array(m)`); do that before saving an OVF or feeding a state to a non-GPU tool.
-`Float32` on the GPU follows from building the material in `Float32`.
+`Array(m)`); do that before saving an OVF, computing an energy, or feeding a state
+to a non-GPU tool (the energy functions and `clearempty!` are CPU-only — call them
+on `Array(m)`). `Float32` on the GPU follows from building the material in
+`Float32`.
+
+For a geometry with empty cells (`Msat = 0`, or a partially filled edge), clear
+the state's empty cells **before** moving it to the device: `clearempty!(m, rp)`
+then `togpu(m)`. `setmag!` on a `Simulation` already does this, so the normal
+workflow is safe; only a hand-built `setconfig` array needs the explicit clear.
+Empty cells left nonzero on the GPU would seed a spurious moment there.
 
 Verify and benchmark with
 [`examples/gpu_check.jl`](../examples/gpu_check.jl) (field-by-field CPU vs GPU),
