@@ -34,8 +34,6 @@ micromagnetic + atomistic simulator. What it has that JuliaMag does not:
 | **Monte Carlo** (finite-T equilibrium sampling) | ✅ | LLG-Langevin only |
 | **NEB / GNEB** (minimum-energy paths, energy barriers, saddle search) | ✅ | ✗ |
 | **Eigenmodes** (linearized-LLG normal modes, FMR spectra) | ✅ | ✗ |
-| **FEM** (finite elements, not just finite differences) | ✅ | FDM only |
-| **LTEM** (Lorentz-TEM image simulation) | ✅ | plot_ovf (colour map + quiver) only |
 | **Transition tooling** (Hessian, minimum-mode, symmetry) | ✅ | ✗ |
 | Several Cayley/GPSM integrators | ✅ | Tsit5 + RK4 + BB minimizer |
 | Web-based live GUI | ✅ | QML desktop GUI |
@@ -75,10 +73,6 @@ Ordered roughly by value-to-effort:
    (`src/atomistic/`).
 5. **Monte Carlo** for finite-T equilibrium — complements the LLG-Langevin
    dynamics with faster equilibrium sampling (`src/mc/`).
-6. **LTEM image simulation** — turn an OVF state into a simulated Lorentz-TEM
-   image, useful for comparing with experiment (`src/tools/ltem.jl`).
-7. **FEM backend** — finite elements for curved/irregular geometries without the
-   staircase/edge-smoothing tradeoff; the largest architectural addition.
 
 ## Feature backlog (also from the stage-2 magnum.np review)
 
