@@ -399,10 +399,14 @@ quiver) with `examples/plot_ovf.jl` (see Tutorial 3).
 Build shapes and combine them:
 
 - Primitives: `Cuboid(sx,sy,sz)`, `Rect(sx,sy)`, `Cylinder(diam,h)`, `Circle(d)`,
-  `Ellipsoid(dx,dy,dz)`, `Cone(diam,h)`, `Superball(diam,p)`.
-- Layers (for multilayers): `Layer(mesh, k)`, `Layers(mesh, k1, k2)`.
-- Transforms: `translate`, `scale`, `rotz`.
-- Set operations: `shapeunion`, `shapeintersect`, `shapediff`, `shapecomplement`.
+  `Ellipsoid(dx,dy,dz)`, `Cone(diam,h)`, `Superball(diam,p)`, `Triangle(x0,y0,…)`,
+  `Line(p1,p2,diam)`, `Line2D(x1,y1,x2,y2,diam)`, `Cell(mesh,i,j,k)`.
+- Layers (for multilayers): `Layer(mesh, k)`, `Layers(mesh, k1, k2)`; slabs
+  `XRange`/`YRange`/`ZRange`.
+- Transforms: `translate`, `scale`, `rotz`, `rotx`, `roty`, `mirror`,
+  `repeat_shape(shape, px, py, pz)` (periodic tiling).
+- Set operations: `shapeunion`, `shapeintersect`, `shapediff`, `shapecomplement`,
+  `shapexor`.
 
 Assign materials to regions with a `RegionParams`:
 
@@ -416,7 +420,32 @@ sim = Simulation(mesh, rp)
 At a region interface the exchange coupling uses the harmonic mean of the two
 stiffnesses. A region with `Msat = 0` is empty (unfilled geometry). Per-region
 averages come from `q_m_region(id)`. Region-wise parameters also run on the GPU
-(§7): `togpu` materializes them to per-cell device arrays.
+(§8): `togpu` materializes them to per-cell device arrays.
+
+**Anti-aliased edges.** `defregion!` samples the cell centre, giving a staircase
+boundary. For a smooth edge use `setgeometry!(rp, shape; id, edgesmooth)`, which
+sub-samples `edgesmooth^3` points per cell and stores the fraction inside the
+shape as a **fill** `∈ [0,1]`. The fill scales the effective `Msat`
+(`Msat_eff = fill · Msat[region]`), so a boundary cell contributes
+proportionally, and the total moment converges to the true shape area as
+`edgesmooth` grows (`edgesmooth = 0` reproduces the plain staircase). It works on
+the GPU too — the fill folds into the materialized `Msat`.
+
+```julia
+rp = RegionParams(mesh, material("Permalloy")); setregion!(rp, 0; Msat = 0.0)
+setgeometry!(rp, Cylinder(500e-9, 1e6); id = 1, edgesmooth = 8)   # smooth disc edge
+```
+
+**Polycrystalline grains.** `voronoi!(rp, grainsize, numregions; seed)` tessellates
+the sample into columnar Voronoi grains, each assigned a random region, and
+`randomanisotropy!(rp, numregions; Ku, seed)` gives each region a random easy
+axis — the standard polycrystal:
+
+```julia
+rp = RegionParams(mesh, material("Cobalt"))
+voronoi!(rp, 30e-9, 200; seed = 1)                 # ~30 nm grains
+randomanisotropy!(rp, 200; Ku = 5e5, seed = 1)     # random easy axis per grain
+```
 
 ---
 
@@ -494,8 +523,16 @@ field and `runthermal!`, and the feature trackers (`vortexcore`, `skyrmionpos`,
 runs on the GPU unchanged.
 
 The magnetization stays on the device until you bring it back with `tocpu(m)` (or
-`Array(m)`); do that before saving an OVF or feeding a state to a non-GPU tool.
-`Float32` on the GPU follows from building the material in `Float32`.
+`Array(m)`); do that before saving an OVF, computing an energy, or feeding a state
+to a non-GPU tool (the energy functions and `clearempty!` are CPU-only — call them
+on `Array(m)`). `Float32` on the GPU follows from building the material in
+`Float32`.
+
+For a geometry with empty cells (`Msat = 0`, or a partially filled edge), clear
+the state's empty cells **before** moving it to the device: `clearempty!(m, rp)`
+then `togpu(m)`. `setmag!` on a `Simulation` already does this, so the normal
+workflow is safe; only a hand-built `setconfig` array needs the explicit clear.
+Empty cells left nonzero on the GPU would seed a spurious moment there.
 
 Verify and benchmark with
 [`examples/gpu_check.jl`](../examples/gpu_check.jl) (field-by-field CPU vs GPU),

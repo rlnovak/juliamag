@@ -171,4 +171,54 @@ cell_shape() = (x, y, z) -> abs(x) < 3e-9 && abs(y) < 3e-9
         defregion!(rp, 1, cell_shape())             # paint one cell region 1
         @test JuliaMag.hasku(rp)
     end
+
+    @testset "edge smoothing (fractional fill)" begin
+        py = material("Permalloy")
+
+        @testset "edgesmooth=0 reproduces the staircase" begin
+            mesh = Mesh((48, 48, 1), (4e-9, 4e-9, 4e-9))
+            a = RegionParams(mesh, py); setregion!(a, 0; Msat = 0.0)
+            defregion!(a, 1, Cylinder(120e-9, 1e6))
+            b = RegionParams(mesh, py); setregion!(b, 0; Msat = 0.0)
+            setgeometry!(b, Cylinder(120e-9, 1e6); id = 1, edgesmooth = 0)
+            # identical region map and identical effective Msat everywhere
+            @test a.regions.id == b.regions.id
+            @test all(b.fill .== 1)                  # no fractional cells
+            for k in 1:1, j in 1:48, i in 1:48
+                @test JuliaMag.msat(a, i, j, k) == JuliaMag.msat(b, i, j, k)
+            end
+        end
+
+        @testset "a half-covered cell gets fill ≈ 0.5" begin
+            mesh = Mesh((9, 9, 1), (4e-9, 4e-9, 4e-9))
+            rp = RegionParams(mesh, py); setregion!(rp, 0; Msat = 0.0)
+            setgeometry!(rp, YRange(0.0, 1e9); id = 1, edgesmooth = 8)  # y ≥ 0 half-plane
+            @test isapprox(rp.fill[5, 5, 1], 0.5; atol = 0.02)          # centre row on the edge
+            @test rp.fill[5, 9, 1] == 1                                  # fully inside (large y)
+        end
+
+        @testset "total moment converges to the analytic area" begin
+            mesh = Mesh((64, 64, 1), (4e-9, 4e-9, 4e-9))
+            area = π * (60e-9)^2 / (4e-9)^2          # disc area in cells
+            filled(es) = begin
+                rp = RegionParams(mesh, py); setregion!(rp, 0; Msat = 0.0)
+                setgeometry!(rp, Cylinder(120e-9, 1e6); id = 1, edgesmooth = es)
+                sum(rp.fill[i, j, 1] for i in 1:64, j in 1:64 if rp.regions.id[i, j, 1] == 1)
+            end
+            # Smoothing brings the filled area much closer to the analytic value.
+            @test abs(filled(8) - area) < abs(filled(0) - area)
+            @test isapprox(filled(8), area; rtol = 0.01)
+        end
+
+        @testset "fill = 0 makes a cell empty" begin
+            mesh = Mesh((16, 16, 1), (4e-9, 4e-9, 4e-9))   # 64 nm across
+            rp = RegionParams(mesh, py); setregion!(rp, 0; Msat = 0.0)
+            setgeometry!(rp, Cylinder(40e-9, 1e6); id = 1, edgesmooth = 4)  # 20 nm radius
+            # a far corner cell is well outside the disc: region 0, empty
+            @test JuliaMag.isempty_cell(rp, 1, 1, 1)
+            # the central cells are inside: not empty, full Msat
+            @test !JuliaMag.isempty_cell(rp, 8, 8, 1)
+            @test JuliaMag.msat(rp, 8, 8, 1) == py.Msat
+        end
+    end
 end

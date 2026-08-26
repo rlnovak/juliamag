@@ -15,6 +15,7 @@ using Test
     include("test_shape.jl")
     include("test_regions.jl")
     include("test_region_params.jl")
+    include("test_voronoi.jl")
     include("test_config.jl")
     include("test_ovf.jl")
     include("test_output.jl")

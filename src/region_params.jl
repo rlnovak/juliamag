@@ -32,6 +32,11 @@ struct RegionParams{T<:AbstractFloat} <: AbstractParams
     xi::Vector{T}
     lambda::Vector{T}
     epsilonPrime::Vector{T}
+    # Per-cell fill fraction in [0,1]: 1 = fully inside the geometry, <1 = a
+    # boundary cell partially covered (edge smoothing), 0 = empty. The effective
+    # Msat a field sees is fill[cell] · Msat[region]. All ones by default, so a
+    # geometry painted with defregion! (centre sampling) behaves exactly as before.
+    fill::Array{T,3}
 end
 
 function RegionParams(mesh::Mesh, default::Material{T}) where {T}
@@ -42,7 +47,8 @@ function RegionParams(mesh::Mesh, default::Material{T}) where {T}
                     fill_(default.Ku), fill_(default.anisU),
                     fill_(default.Dind), fill_(default.Dbulk),
                     fill_(default.pol), fill_(default.xi),
-                    fill_(default.lambda), fill_(default.epsilonPrime))
+                    fill_(default.lambda), fill_(default.epsilonPrime),
+                    ones(T, mesh.size...))
 end
 
 Base.eltype(::RegionParams{T}) where {T} = T
@@ -83,13 +89,54 @@ defregion!(rp::RegionParams, id::Integer, shape::Shape) = (defregion!(rp.regions
 defregioncell!(rp::RegionParams, id::Integer, i, j, k) = (defregioncell!(rp.regions, id, i, j, k); rp)
 
 """
+    setgeometry!(rp, shape; id=1, edgesmooth=0) -> rp
+
+Paint `shape` as region `id` with an anti-aliased edge. Each cell is sampled at
+`edgesmooth^3` sub-points (mumax3's edge smoothing); the fraction inside `shape`
+becomes the cell's fill (0..1), which scales the effective Msat. A boundary cell
+half-covered gets `fill ≈ 0.5`; a fully covered cell gets 1. `edgesmooth = 0` (or
+1) samples the cell centre only — the plain staircase geometry, identical to
+`defregion!`.
+
+Cells with fill `> 0` are assigned region `id`; cells fully outside keep their
+current region and get fill 0 there (so they are empty unless another region
+fills them). Build a geometry by painting from the background outward.
+"""
+function setgeometry!(rp::RegionParams{T}, shape::Shape;
+                      id::Integer = 1, edgesmooth::Integer = 0) where {T}
+    0 <= id < MAXREGIONS || throw(ArgumentError("region id must be 0–$(MAXREGIONS-1), got $id"))
+    mesh = rp.regions.mesh
+    Nx, Ny, Nz = mesh.size
+    cx, cy, cz = mesh.cellsize
+    S = max(1, Int(edgesmooth))                 # sub-samples per axis (1 = centre only)
+    invS3 = one(T) / T(S^3)
+    # Sub-sample offsets within a cell: -c/2 + c/(2S) + (c/S)·d, d = 0..S-1.
+    offx = ntuple(d -> (-cx/2 + cx/(2S) + (cx/S)*(d-1)), S)
+    offy = ntuple(d -> (-cy/2 + cy/(2S) + (cy/S)*(d-1)), S)
+    offz = ntuple(d -> (-cz/2 + cz/(2S) + (cz/S)*(d-1)), S)
+    @inbounds for k in 1:Nz, j in 1:Ny, i in 1:Nx
+        x0, y0, z0 = cellcenter(mesh, i, j, k)
+        inside = 0
+        for dz in 1:S, dy in 1:S, dx in 1:S
+            shape(x0 + offx[dx], y0 + offy[dy], z0 + offz[dz]) && (inside += 1)
+        end
+        if inside > 0
+            rp.regions.id[i, j, k] = UInt8(id)
+            rp.fill[i, j, k] = inside * invS3
+        end
+    end
+    return rp
+end
+
+"""
     isempty_cell(params, i, j, k) -> Bool
 
 True if the cell carries no material (Msat = 0), i.e. it lies in unfilled
 geometry. A scalar Material is never empty.
 """
 @inline isempty_cell(m::Material, i, j, k) = false
-@inline isempty_cell(rp::RegionParams, i, j, k) = @inbounds rp.Msat[_rid(rp, i, j, k)] == 0
+@inline isempty_cell(rp::RegionParams, i, j, k) =
+    @inbounds rp.Msat[_rid(rp, i, j, k)] == 0 || rp.fill[i, j, k] == 0
 
 """
     clearempty!(m, params) -> m
@@ -111,7 +158,10 @@ end
 # --- Accessors: look up the region of the cell, then the per-region table ---
 # The +1 converts the 0-based region id to a 1-based vector index.
 @inline _rid(rp::RegionParams, i, j, k) = rp.regions.id[i, j, k] + 1
-@inline msat(rp::RegionParams, i, j, k)     = @inbounds rp.Msat[_rid(rp, i, j, k)]
+# Effective Msat is the region's Msat scaled by the cell's fill fraction, so a
+# partially-covered boundary cell contributes proportionally (edge smoothing) and
+# an empty cell (fill 0 or Msat 0) contributes nothing.
+@inline msat(rp::RegionParams, i, j, k)     = @inbounds rp.Msat[_rid(rp, i, j, k)] * rp.fill[i, j, k]
 @inline aex(rp::RegionParams, i, j, k)      = @inbounds rp.Aex[_rid(rp, i, j, k)]
 @inline alphaof(rp::RegionParams, i, j, k)  = @inbounds rp.alpha[_rid(rp, i, j, k)]
 @inline ku(rp::RegionParams, i, j, k)       = @inbounds rp.Ku[_rid(rp, i, j, k)]
