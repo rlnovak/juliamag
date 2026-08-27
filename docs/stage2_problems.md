@@ -10,7 +10,7 @@ the "Stage 2" section of `colab/juliamag_gpu_benchmark.ipynb`.
 
 ## How to run
 
-**Locally** (from the repo root; the `examples` environment has Plots):
+**Locally** (from the repo root; the `examples` environment has CairoMakie):
 
 ```
 julia --project=examples examples/stage2_local.jl
@@ -25,7 +25,7 @@ cd ~/mumag
 ```
 
 (The `examples` env is not set up on the remote; run under `--project=.`, which
-already has Plots/DelimitedFiles from the GPU work.)
+already has CairoMakie/DelimitedFiles from the GPU work.)
 
 **On Colab**: run the notebook's "Stage 2" section (it calls the same script).
 

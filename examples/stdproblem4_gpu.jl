@@ -16,9 +16,13 @@ using Printf
 using DelimitedFiles
 
 # Plotting is optional: the table is always written; the figure is drawn only if
-# Plots is available in the active environment (it is not a dependency of the
-# core project, which carries CUDA). Run under an env that has both to get the plot.
-const HAVE_PLOTS = try; @eval using Plots; true; catch; false; end
+# CairoMakie is available in the active environment (the shim in makie_shim.jl
+# provides the Plots-style API). Run under an env that has it to get the plot.
+const HAVE_PLOTS = try
+    @eval include(joinpath(@__DIR__, "makie_shim.jl")); true
+catch
+    false
+end
 
 CUDA.functional() || error("No functional CUDA GPU found.")
 println("CUDA device: ", CUDA.name(CUDA.device()))
@@ -73,18 +77,18 @@ function main()
         @printf("Max |GPU - CPU| over the run: mx=%.2e my=%.2e mz=%.2e\n", dmx, dmy, dmz)
     end
 
-    # --- Plot (only if Plots is available) ---
+    # --- Plot (only if CairoMakie is available) ---
     if HAVE_PLOTS
         gr(); tns = ts .* 1e9
-        plt = Plots.plot(tns, mxs; label = "⟨mx⟩", lw = 2, color = :red, xlabel = "time (ns)",
+        plt = plot(tns, mxs; label = "⟨mx⟩", lw = 2, color = :red, xlabel = "time (ns)",
                    ylabel = "⟨m⟩", title = "µMAG Standard Problem 4 — GPU", legend = :right)
-        Plots.plot!(plt, tns, mys; label = "⟨my⟩", lw = 2, color = :green)
-        Plots.plot!(plt, tns, mzs; label = "⟨mz⟩", lw = 2, color = :blue)
-        Plots.hline!(plt, [0]; color = :gray, ls = :dash, label = "")
+        plot!(plt, tns, mys; label = "⟨my⟩", lw = 2, color = :green)
+        plot!(plt, tns, mzs; label = "⟨mz⟩", lw = 2, color = :blue)
+        hline!(plt, [0]; color = :gray, ls = :dash, label = "")
         png = joinpath(@__DIR__, "stdproblem4_gpu.png")
-        Plots.savefig(plt, png); println("Wrote figure → ", png)
+        savefig(plt, png); println("Wrote figure → ", png)
     else
-        println("(Plots not in this environment — table written, figure skipped.)")
+        println("(CairoMakie not in this environment — table written, figure skipped.)")
     end
 end
 

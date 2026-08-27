@@ -15,7 +15,7 @@
 
 using JuliaMag
 using Printf
-using Plots
+include(joinpath(@__DIR__, "makie_shim.jl"))
 
 const Msat = 8.0e5
 const Aex  = 1.3e-11

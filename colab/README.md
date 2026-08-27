@@ -11,9 +11,25 @@ download the results.
 
 1. Open the notebook in Colab:
    [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/rlnovak/juliamag/blob/main/colab/juliamag_gpu_benchmark.ipynb)
-2. **Runtime → Change runtime type → GPU** (T4/L4/A100 if available).
+2. **Runtime → Change runtime type**: set **Runtime type = Python 3** and
+   **Hardware accelerator = GPU** (T4/L4/A100 if available). The notebook is a
+   Python notebook that shells out to Julia — on a Julia kernel the very first
+   cell (`!nvidia-smi`) fails with `UndefVarError: nvidia not defined`.
 3. **Runtime → Run all.** The first two install cells take a few minutes
    (Julia download + CUDA.jl artifacts + precompilation).
+
+### Plotting note
+
+The figures are drawn with **CairoMakie**, not Plots.jl. Colab's NVIDIA driver
+ships a `libglapi` without `_glapi_tls_Current`, which breaks the
+`Libglvnd_jll → GLFW_jll → GR_jll` chain that Plots.jl loads unconditionally
+(`Plots.load_default_backend()` hardcodes `:gr`, so no preference or environment
+variable avoids it). CairoMakie is pure Cairo and touches no OpenGL.
+
+`examples/makie_shim.jl` provides the small Plots-compatible API the drivers use
+(`plot`, `plot!`, `scatter!`, `hline!`, `vline!`, `savefig`), so the driver
+scripts read the same as before. It keeps CairoMakie inside a module because
+CairoMakie exports `Mesh`, which would otherwise collide with JuliaMag's `Mesh`.
 
 ## What to expect
 

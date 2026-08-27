@@ -8,7 +8,7 @@
 using JuliaMag
 using Printf
 using Statistics
-using Plots
+include(joinpath(@__DIR__, "makie_shim.jl"))
 gr()
 
 const OUT = @__DIR__

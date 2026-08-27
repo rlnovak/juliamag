@@ -14,7 +14,7 @@
 
 using JuliaMag
 using Printf
-using Plots
+include(joinpath(@__DIR__, "makie_shim.jl"))
 
 # --- Phase 1: relax to the S-state -----------------------------------------
 function relax_sstate(mesh, mat)
