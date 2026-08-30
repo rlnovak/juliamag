@@ -100,9 +100,43 @@ low-to-medium effort — these make the package usable like mumax3 for productio
    end of a run (and the elapsed) so long runs are timestamped.
 5. **Log the device** — print whether the run is on CPU or GPU and, if GPU, which
    device (name + compute capability), at the start of every run.
+6. **High-level result-logging API in the problem script**, mumax3-style. Every
+   custom script currently hand-writes its own `logrow!`/table code (open a file,
+   format columns, average, track the core, snapshot). Provide the mumax3 verbs
+   directly on the `Simulation`:
+   - `save(sim, t)` / `save_ovf(sim; prefix)` — write one OVF snapshot of `m` now.
+   - `table_add!(sim, quantity)` and `table_autosave!(sim, interval)` — declare the
+     table columns once (mx/my/mz, maxTorque, energies, `ext_corepos`, …) and let the
+     run loop append a row every `interval`, mirroring mumax3's `TableAdd` +
+     `tableautosave`. Subsumes the OVF-autosave hook in item 3.
+   The averaging quantity **must default to `average_region` over the filled geometry**,
+   not `sum / (Nx·Ny·Nz)` over the whole box — see the normalization bug below.
 
 Items 4 and 5 are trivial and should land first (a small `runinfo`/logging helper
-the drivers call); 1–3 are the substantial driver refactor.
+the drivers call); 1–3 and 6 are the substantial driver refactor (6 is the
+table/OVF-autosave layer that removes the per-script boilerplate).
+
+### Validation follow-up: single-disk STT vortex frequency
+
+From comparing the labmac04 single-disk Slonczewski run against the mumax3
+reference (`disk_d1=128nm_t=16nm_40mA`), two separate discrepancies were found —
+one a script bug (fixed), one a physics item still open:
+
+- **Table normalization (fixed in the driver scripts).** The scripts averaged `⟨m⟩`
+  by dividing by `Nx·Ny·Nz` (the whole box) instead of the filled disk cells, diluting
+  every component by the disk area fraction (π/4 ≈ 0.785). This alone made the JuliaMag
+  curves ~0.76× the mumax ones. Fixed by switching to `average_region(m, rp, 1)`, the
+  analogue of mumax3's `TableAdd(m)`. The high-level table API (item 6) must default to
+  this so future scripts don't repeat the mistake.
+- **Gyrotropic frequency +5.4% vs mumax3 (open).** The vortex gyration is 975 MHz in
+  JuliaMag vs 925 MHz in mumax3 — identical ratio (1.0541) across mx/my/mz, so it is a
+  frequency offset, not an amplitude one, and it accumulates a growing phase lag over
+  the 40 ns run. The **Slonczewski torque itself is not the cause** — `slonczewskitorque!`
+  is line-for-line identical to `cuda/slonczewski2.cu` and all parameters match the mumax3
+  `log.txt`. The gyration frequency comes from demag + exchange + edge confinement, so the
+  likely source is a difference in **edge-fill handling in the demag/exchange fields** vs
+  mumax3's fractional-cell geometry. Worth a focused check: compare the effective field at
+  the disk boundary (cell-fill weighting in demag and exchange) between the two codes.
 
 ## Feature backlog (also from the stage-2 magnum.np review)
 
