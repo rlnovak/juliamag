@@ -74,6 +74,36 @@ Ordered roughly by value-to-effort:
 5. **Monte Carlo** for finite-T equilibrium — complements the LLG-Langevin
    dynamics with faster equilibrium sampling (`src/mc/`).
 
+## Driver ergonomics & run tooling (from real runs on labmac04)
+
+Requested after running the single-disk STT problem on labmac04, where the
+hand-written fixed-step RK4 driver made a 40 ns run very slow. High value,
+low-to-medium effort — these make the package usable like mumax3 for production runs.
+
+1. **Adaptive time stepping with spin-transfer torque (and thermal) in the built-in
+   integrator.** The adaptive `Integrator` (Tsit5) already exists, but STT and the
+   thermal field are only wired into fixed-step drivers (`runcurrent!`,
+   `runthermal!`, and the hand-written scripts). Extend the `World`/RHS so a
+   current (Zhang-Li / Slonczewski) — and, where meaningful, temperature — are part
+   of the effective RHS the adaptive integrator sees, so `run!` picks the step
+   automatically instead of a tiny fixed `dt`. (A stochastic thermal run still needs
+   a fixed step or an SDE solver; adaptive applies to the deterministic STT case.)
+2. **Solver selection by name**, mumax3-style. Let a script say
+   `run!(sim, T; solver = :tsit5 | :rk4 | :heun | :euler)` (and set a current/temperature
+   on the `Simulation`) instead of defining `rhs!`/`rk4!` by hand. The driver builds
+   the RHS from the world's active terms + current + temperature and dispatches to
+   the chosen integrator. Removes the boilerplate that every custom script now repeats.
+3. **OVF autosave during a run** — `autosave_ovf!(sim, interval; prefix)` (mumax3's
+   `autosave(m, dt)`), writing `prefix_000123.ovf` snapshots on a schedule. The
+   writer (`saveovf`) exists; this is the scheduling hook in the run loop.
+4. **Wall-clock start/end time in the log** — print the system time at the start and
+   end of a run (and the elapsed) so long runs are timestamped.
+5. **Log the device** — print whether the run is on CPU or GPU and, if GPU, which
+   device (name + compute capability), at the start of every run.
+
+Items 4 and 5 are trivial and should land first (a small `runinfo`/logging helper
+the drivers call); 1–3 are the substantial driver refactor.
+
 ## Feature backlog (also from the stage-2 magnum.np review)
 
 - Spin-orbit torque with separate damping-like / field-like terms (η_damp/η_field).
@@ -85,6 +115,9 @@ Ordered roughly by value-to-effort:
 
 ## Near-term priorities
 
-The **KernelAbstractions migration** (multi-backend GPU) and **NEB** are the two
-that most broaden JuliaMag's reach for the least architectural disruption; both
-have a clean reference in MicroMagnetic.jl.
+The **driver ergonomics group above** (adaptive stepping with STT, named solvers,
+OVF autosave, run logging) is now the top near-term priority — it came directly
+from a real production run and removes the biggest friction in using JuliaMag for
+actual experiments. After that, the **KernelAbstractions migration** (multi-backend
+GPU) and **NEB** most broaden JuliaMag's reach for the least architectural
+disruption; both have a clean reference in MicroMagnetic.jl.
