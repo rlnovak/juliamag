@@ -13,7 +13,7 @@ comps = [("mx",1),("my",2),("mz",3)]
 
 fig, axes = plt.subplots(3,1, figsize=(8,9), sharex=True)
 for ax,(name,c) in zip(axes,comps):
-    ax.plot(tM, M[:,c], lw=4, alpha=0.4, color="red",  label="mumax3 (ref)")
+    ax.plot(tM, M[:,c], lw=3, alpha=0.4, color="red",  label="mumax3 (ref)")
     ax.plot(tJ, J[:,c], lw=1,            color="blue", label="JuliaMag")
     ax.set_ylabel(f"⟨{name}⟩"); ax.grid(alpha=0.3); ax.legend(loc="best", fontsize=8)
 axes[-1].set_xlabel("t (ns)")
