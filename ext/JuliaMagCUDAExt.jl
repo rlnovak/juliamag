@@ -503,7 +503,9 @@ end
 # the LUT through the region map on the host, then upload), so the field kernels
 # become broadcasts over those arrays with no per-cell indexing on the device.
 struct GpuRegionParams{T<:AbstractFloat} <: AbstractParams
-    Msat::CuArray{T,4}      # (1,Nx,Ny,Nz)
+    Msat::CuArray{T,4}      # (1,Nx,Ny,Nz) — Msat[region]·fill (effective moment)
+    Msat_region::CuArray{T,4} # Msat[region] WITHOUT fill (exchange prefactor)
+    fill::CuArray{T,4}      # per-cell geometry fill fraction in [0,1]
     Aex::CuArray{T,4}
     Ku::CuArray{T,4}
     ux::CuArray{T,4}; uy::CuArray{T,4}; uz::CuArray{T,4}
@@ -539,11 +541,17 @@ function JuliaMag.togpu(rp::RegionParams{T}) where {T}
     ux = CuArray(_percell([u[1] for u in rp.anisU], idm))
     uy = CuArray(_percell([u[2] for u in rp.anisU], idm))
     uz = CuArray(_percell([u[3] for u in rp.anisU], idm))
-    # Fold the per-cell fill fraction into the materialized Msat, so every kernel
-    # (exchange, anisotropy, DMI, demag, thermal) reads the effective Msat, exactly
-    # like the CPU accessor msat(rp,i,j,k) = Msat[region]·fill[cell].
-    Msat_eff = CuArray(_percell(rp.Msat, idm) .* reshape(rp.fill, 1, Nx, Ny, Nz))
-    GpuRegionParams{T}(Msat_eff, pc(rp.Aex), pc(rp.Ku), ux, uy, uz,
+    # Fold the per-cell fill fraction into the materialized Msat for the terms
+    # where the moment is a source (demag, anisotropy, DMI, thermal, energy),
+    # exactly like the CPU accessor msat(rp,i,j,k) = Msat[region]·fill[cell].
+    # BUT keep the unscaled region Msat and the fill separately: the exchange
+    # prefactor divides by the FULL region Msat (mumax3 cuda/amul.h inv_Msat over
+    # the Msat LUT, never the geometry vol), and the fill mask marks empty
+    # neighbours for the Neumann boundary. See the CPU exchange! for the rationale.
+    Msat_region = CuArray(_percell(rp.Msat, idm))
+    fillcu = CuArray(reshape(Array{T}(rp.fill), 1, Nx, Ny, Nz))
+    Msat_eff = Msat_region .* fillcu
+    GpuRegionParams{T}(Msat_eff, Msat_region, fillcu, pc(rp.Aex), pc(rp.Ku), ux, uy, uz,
                        pc(rp.Dind), pc(rp.Dbulk), pc(rp.alpha), T(rp.alpha[1]),
                        hasku(rp), hasdind(rp), hasdbulk(rp))
 end
@@ -569,15 +577,24 @@ function exchange!(B::CuField{T}, m::CuField{T}, mesh::Mesh, p::GpuRegionParams{
     nz = Nz > 1
     azl = nz ? _hmean(A, _edgeshift(A,3,-1,pz)) : A
     azr = nz ? _hmean(A, _edgeshift(A,3,+1,pz)) : A
-    Msc = p.Msat
-    pref = ifelse.(Msc .== 0, zero(T), T(2) ./ Msc)   # empty cells → 0 field
+    # An empty neighbour (fill 0) is a free (Neumann) boundary: mumax3 replaces its
+    # m with the central m so the difference vanishes (cuda/exchange.cu is0 test).
+    # Build a 0/1 mask per direction that is 0 where the shifted neighbour is empty,
+    # and use it to null both the stiffness and the difference for that neighbour.
+    fmask(dir, off, per) = T(1) .- (_edgeshift(p.fill, dir, off, per) .== 0)
+    mxl_ok = fmask(1,-1,px); mxr_ok = fmask(1,+1,px)
+    myl_ok = fmask(2,-1,py); myr_ok = fmask(2,+1,py)
+    mzl_ok = nz ? fmask(3,-1,pz) : A; mzr_ok = nz ? fmask(3,+1,pz) : A
+    # Prefactor divides by the FULL region Msat (not Msat·fill); 0 in empty cells.
+    Msc = p.Msat_region
+    pref = ifelse.(p.Msat .== 0, zero(T), T(2) ./ Msc)   # empty cells → 0 field
     lap = similar(m)
     @views for c in 1:3
         mc = m[c:c,:,:,:]
-        f = pref .* ( axl .* (_edgeshift(mc,1,-1,px) .- mc) .* ix2 .+ axr .* (_edgeshift(mc,1,+1,px) .- mc) .* ix2 .+
-                      ayl .* (_edgeshift(mc,2,-1,py) .- mc) .* iy2 .+ ayr .* (_edgeshift(mc,2,+1,py) .- mc) .* iy2 )
+        f = pref .* ( (axl .* mxl_ok) .* (_edgeshift(mc,1,-1,px) .- mc) .* ix2 .+ (axr .* mxr_ok) .* (_edgeshift(mc,1,+1,px) .- mc) .* ix2 .+
+                      (ayl .* myl_ok) .* (_edgeshift(mc,2,-1,py) .- mc) .* iy2 .+ (ayr .* myr_ok) .* (_edgeshift(mc,2,+1,py) .- mc) .* iy2 )
         if nz
-            f = f .+ pref .* ( azl .* (_edgeshift(mc,3,-1,pz) .- mc) .* iz2 .+ azr .* (_edgeshift(mc,3,+1,pz) .- mc) .* iz2 )
+            f = f .+ pref .* ( (azl .* mzl_ok) .* (_edgeshift(mc,3,-1,pz) .- mc) .* iz2 .+ (azr .* mzr_ok) .* (_edgeshift(mc,3,+1,pz) .- mc) .* iz2 )
         end
         lap[c:c,:,:,:] .= f
     end

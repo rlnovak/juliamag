@@ -100,6 +100,11 @@ end
 # (defined alongside that type) index a per-region lookup table instead.
 
 @inline msat(m::Material, i, j, k)   = m.Msat
+# A scalar Material has no geometry fill (every cell is full), so the region Msat
+# equals the effective Msat and the fill is 1. These mirror the RegionParams
+# accessors so field kernels can treat both uniformly.
+@inline msat_region(m::Material, i, j, k) = m.Msat
+@inline fillof(m::Material, i, j, k) = one(typeof(m.Msat))
 @inline aex(m::Material, i, j, k)    = m.Aex
 @inline alphaof(m::Material, i, j, k) = m.alpha
 @inline ku(m::Material, i, j, k)     = m.Ku

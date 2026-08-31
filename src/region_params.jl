@@ -162,6 +162,14 @@ end
 # partially-covered boundary cell contributes proportionally (edge smoothing) and
 # an empty cell (fill 0 or Msat 0) contributes nothing.
 @inline msat(rp::RegionParams, i, j, k)     = @inbounds rp.Msat[_rid(rp, i, j, k)] * rp.fill[i, j, k]
+# Region Msat WITHOUT the fill factor. mumax3 scales the magnetization by the
+# cell fill only where the moment enters as a source (the demag input,
+# engine/demag.go SetMFull); the exchange field divides by the region's full
+# Msat (cuda/amul.h inv_Msat uses the Msat LUT, never the geometry vol). Using
+# the fill-scaled msat() in the exchange prefactor would inflate B_exch by 1/fill
+# at partially-covered boundary cells and stiffen the edge — see msat_region.
+@inline msat_region(rp::RegionParams, i, j, k) = @inbounds rp.Msat[_rid(rp, i, j, k)]
+@inline fillof(rp::RegionParams, i, j, k)   = @inbounds rp.fill[i, j, k]
 @inline aex(rp::RegionParams, i, j, k)      = @inbounds rp.Aex[_rid(rp, i, j, k)]
 @inline alphaof(rp::RegionParams, i, j, k)  = @inbounds rp.alpha[_rid(rp, i, j, k)]
 @inline ku(rp::RegionParams, i, j, k)       = @inbounds rp.Ku[_rid(rp, i, j, k)]

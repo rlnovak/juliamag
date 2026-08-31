@@ -151,6 +151,79 @@ cell_shape() = (x, y, z) -> abs(x) < 3e-9 && abs(y) < 3e-9
         @test all(isfinite, B)
     end
 
+    @testset "exchange edge-fill matches mumax3 (no 1/fill, Neumann to empty)" begin
+        # mumax3's exchange (cuda/exchange.cu + amul.h inv_Msat) divides by the
+        # region's FULL Msat, never Msat·fill, and treats an empty neighbour as a
+        # free (Neumann) boundary. Two regressions this guards:
+        #   (1) the prefactor must not pick up 1/fill on a partially-filled cell;
+        #   (2) an empty neighbour with a nonzero background-region Aex must not
+        #       leak a spurious -Ac·m_c/Δ² term (it must be Neumann).
+        py = Material(Msat = 8.0e5, Aex = 1.3e-11, alpha = 0.02)
+        mesh = Mesh((6, 1, 1), (4e-9, 4e-9, 4e-9))
+
+        # A material strip in cells 2..5; cells 1 and 6 empty (Msat 0), but their
+        # Aex is left at the default (nonzero), the exact condition that used to
+        # leak a spurious term at the strip edge.
+        rp = RegionParams(mesh, py)
+        setregion!(rp, 0; Msat = 0.0)                  # background empty (Aex ≠ 0)
+        for i in 2:5
+            rp.regions.id[i, 1, 1] = 1
+        end
+        rp.Msat[2] = 8.0e5; rp.Aex[2] = 1.3e-11        # region 1 = same material
+
+        # A non-uniform state so the exchange field is nonzero in the interior.
+        m = zeromag(mesh)
+        for i in 1:6
+            θ = 0.3 * i
+            m[1, i, 1, 1] = sin(θ); m[3, i, 1, 1] = cos(θ)
+        end
+        clearempty!(m, rp)
+        B = similar(m); exchange!(B, m, mesh, rp)
+
+        A = py.Aex; Ms = py.Msat; iΔ2 = 1 / (4e-9)^2
+        pref = 2 / Ms                                  # B = (2/Msat) Σ a (m_nbr-m_c)/Δ²
+        # (2) Edge cell 2 has an empty left neighbour (cell 1). Neumann → only the
+        # right neighbour (cell 3) couples; the empty side adds exactly zero, and
+        # the prefactor uses the full Msat (not Msat·fill, which is 1 here anyway).
+        for c in (1, 3)
+            ref = pref * (A * (m[c, 3, 1, 1] - m[c, 2, 1, 1]) * iΔ2)
+            @test B[c, 2, 1, 1] ≈ ref rtol = 1e-10
+        end
+        # An interior cell (3) couples to both neighbours (cells 2 and 4).
+        for c in (1, 3)
+            ref = pref * (A * (m[c, 2, 1, 1] - m[c, 3, 1, 1]) * iΔ2 +
+                          A * (m[c, 4, 1, 1] - m[c, 3, 1, 1]) * iΔ2)
+            @test B[c, 3, 1, 1] ≈ ref rtol = 1e-10
+        end
+        # Empty cells carry no field.
+        @test all(iszero, B[:, 1, 1, 1]); @test all(iszero, B[:, 6, 1, 1])
+    end
+
+    @testset "exchange prefactor ignores fill on a partial cell" begin
+        # A half-covered boundary cell (fill ≈ 0.5) must feel the same exchange
+        # field as if it were full: mumax3 divides by the region Msat, not Msat·fill.
+        # Build two identical strips differing only in the edge cell's fill, with a
+        # uniform-in-material state so the only difference would be the 1/fill bug.
+        py = Material(Msat = 8.0e5, Aex = 1.3e-11, alpha = 0.02)
+        mesh = Mesh((4, 1, 1), (4e-9, 4e-9, 4e-9))
+
+        full = RegionParams(mesh, py); setregion!(full, 0; Msat = 0.0)
+        for i in 1:4; full.regions.id[i,1,1] = 1; end
+        full.Msat[2] = 8.0e5; full.Aex[2] = 1.3e-11
+
+        half = deepcopy(full)
+        half.fill[2, 1, 1] = 0.5                       # cell 2 half-covered
+
+        m = zeromag(mesh)
+        for i in 1:4
+            θ = 0.4 * i; m[1,i,1,1] = sin(θ); m[3,i,1,1] = cos(θ)
+        end
+        Bf = similar(m); exchange!(Bf, m, mesh, full)
+        Bh = similar(m); exchange!(Bh, m, mesh, half)
+        # The exchange FIELD in the half cell must match the full cell (no 1/fill).
+        @test Bh[:, 2, 1, 1] ≈ Bf[:, 2, 1, 1] rtol = 1e-10
+    end
+
     @testset "clearempty! is a no-op for a scalar Material" begin
         mesh = Mesh((4, 4, 1), (5e-9, 5e-9, 5e-9))
         m = uniform(mesh, (1, 0, 0))

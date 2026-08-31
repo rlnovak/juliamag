@@ -45,13 +45,18 @@ function exchange!(B::AbstractArray{T,4}, m::AbstractArray{T,4},
     # region interface or an empty cell is handled correctly) and Msat is the
     # central cell's. The effective field carries no μ0 (OOMMF/mumax3 convention).
     @inbounds for k in 1:Nz, j in 1:Ny, i in 1:Nx
-        Msc = msat(params, i, j, k)
-        if Msc == 0            # empty cell: no field
+        # An empty cell (region Msat 0 or fill 0) carries no field. But the
+        # prefactor divides by the region's FULL Msat, not Msat·fill: mumax3's
+        # exchange uses inv_Msat over the Msat LUT (cuda/amul.h) and never the
+        # geometry fill, which only scales the demag source. Dividing by Msat·fill
+        # here would inflate B_exch by 1/fill at partially-filled boundary cells.
+        if msat(params, i, j, k) == 0            # empty cell: no field
             for c in 1:3
                 add || (B[c, i, j, k] = 0)
             end
             continue
         end
+        Msc = msat_region(params, i, j, k)       # full region Msat (no fill)
         Ac = aex(params, i, j, k)
         pref = T(2 / Msc)
 
@@ -62,17 +67,33 @@ function exchange!(B::AbstractArray{T,4}, m::AbstractArray{T,4},
         kl = k > 1 ? k - 1 : (pz ? Nz : 1)
         kr = k < Nz ? k + 1 : (pz ? 1 : Nz)
 
-        # Stiffness to each neighbour (harmonic mean with the neighbour's).
-        axl = harmonicmean(Ac, aex(params, il, j, k)); axr = harmonicmean(Ac, aex(params, ir, j, k))
-        ayl = harmonicmean(Ac, aex(params, i, jl, k)); ayr = harmonicmean(Ac, aex(params, i, jr, k))
+        # Empty-neighbour handling matches mumax3 (cuda/exchange.cu): a missing
+        # neighbour (empty cell, or a non-periodic edge that clamps onto the cell
+        # itself) contributes nothing — mumax replaces its m with m0 so (m_-m0)=0,
+        # a free (Neumann) boundary. We take the same route by substituting the
+        # central m for an empty/clamped neighbour, which also makes the empty
+        # cell's stiffness irrelevant (so a nonzero background-region Aex can't
+        # leak a spurious -Ac·m_c/Δ² term at the geometry edge).
+        el = isempty_cell(params, il, j, k) || (il == i); er = isempty_cell(params, ir, j, k) || (ir == i)
+        fl = isempty_cell(params, i, jl, k) || (jl == j); fr = isempty_cell(params, i, jr, k) || (jr == j)
+
+        axl = el ? Ac : harmonicmean(Ac, aex(params, il, j, k))
+        axr = er ? Ac : harmonicmean(Ac, aex(params, ir, j, k))
+        ayl = fl ? Ac : harmonicmean(Ac, aex(params, i, jl, k))
+        ayr = fr ? Ac : harmonicmean(Ac, aex(params, i, jr, k))
 
         for c in 1:3
             mc = m[c, i, j, k]
-            f = pref * ( axl * (m[c, il, j, k] - mc) * ix2 + axr * (m[c, ir, j, k] - mc) * ix2 +
-                         ayl * (m[c, i, jl, k] - mc) * iy2 + ayr * (m[c, i, jr, k] - mc) * iy2 )
+            mxl = el ? mc : m[c, il, j, k]; mxr = er ? mc : m[c, ir, j, k]
+            myl = fl ? mc : m[c, i, jl, k]; myr = fr ? mc : m[c, i, jr, k]
+            f = pref * ( axl * (mxl - mc) * ix2 + axr * (mxr - mc) * ix2 +
+                         ayl * (myl - mc) * iy2 + ayr * (myr - mc) * iy2 )
             if Nz > 1
-                azl = harmonicmean(Ac, aex(params, i, j, kl)); azr = harmonicmean(Ac, aex(params, i, j, kr))
-                f += pref * ( azl * (m[c, i, j, kl] - mc) * iz2 + azr * (m[c, i, j, kr] - mc) * iz2 )
+                gl = isempty_cell(params, i, j, kl) || (kl == k); gr = isempty_cell(params, i, j, kr) || (kr == k)
+                azl = gl ? Ac : harmonicmean(Ac, aex(params, i, j, kl))
+                azr = gr ? Ac : harmonicmean(Ac, aex(params, i, j, kr))
+                mzl = gl ? mc : m[c, i, j, kl]; mzr = gr ? mc : m[c, i, j, kr]
+                f += pref * ( azl * (mzl - mc) * iz2 + azr * (mzr - mc) * iz2 )
             end
             if add
                 B[c, i, j, k] += f

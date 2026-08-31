@@ -128,15 +128,30 @@ one a script bug (fixed), one a physics item still open:
   curves ~0.76× the mumax ones. Fixed by switching to `average_region(m, rp, 1)`, the
   analogue of mumax3's `TableAdd(m)`. The high-level table API (item 6) must default to
   this so future scripts don't repeat the mistake.
-- **Gyrotropic frequency +5.4% vs mumax3 (open).** The vortex gyration is 975 MHz in
-  JuliaMag vs 925 MHz in mumax3 — identical ratio (1.0541) across mx/my/mz, so it is a
-  frequency offset, not an amplitude one, and it accumulates a growing phase lag over
-  the 40 ns run. The **Slonczewski torque itself is not the cause** — `slonczewskitorque!`
-  is line-for-line identical to `cuda/slonczewski2.cu` and all parameters match the mumax3
-  `log.txt`. The gyration frequency comes from demag + exchange + edge confinement, so the
-  likely source is a difference in **edge-fill handling in the demag/exchange fields** vs
-  mumax3's fractional-cell geometry. Worth a focused check: compare the effective field at
-  the disk boundary (cell-fill weighting in demag and exchange) between the two codes.
+- **Gyrotropic frequency +5.4% vs mumax3 — ROOT-CAUSED and FIXED (exchange edge-fill).**
+  The vortex gyration was 975 MHz in JuliaMag vs 925 MHz in mumax3 — an identical ratio
+  (1.0541) across mx/my/mz, i.e. a pure frequency offset that accumulated a growing phase
+  lag over 40 ns. Ruled out the Slonczewski torque (`slonczewskitorque!` is line-for-line
+  identical to `cuda/slonczewski2.cu`, parameters match the mumax3 `log.txt`). Traced to
+  the **exchange field's handling of the geometry fill**, by reading the mumax3 source
+  (cloned at `../mumax3`). mumax3's rule: the cell fill (`vol`) scales the magnetization
+  **only where it is a source of the demag field** (`engine/demag.go` `SetMFull`:
+  `M = m·Msat·vol`); the **exchange** divides by the region's **full** Msat
+  (`cuda/amul.h` `inv_Msat` reads the Msat LUT, never `vol`) and treats an empty neighbour
+  as a free (Neumann) boundary (`cuda/exchange.cu`: `m_ = is0(m_) ? m0 : m_`). JuliaMag had
+  two bugs here, on **both CPU and GPU**:
+  1. the exchange prefactor divided by `Msat·fill`, inflating `B_exch` by `1/fill` at
+     partially-filled boundary cells (stiffening the edge);
+  2. an empty neighbour was read as `m = 0` (not Neumann), so a nonzero background-region
+     `Aex` leaked a spurious `−Aᶜ·mᶜ/Δ²` term at the geometry edge.
+  Fix (`src/exchange.jl`, `ext/JuliaMagCUDAExt.jl`, with `msat_region`/`fill` accessors in
+  `src/region_params.jl` + `src/params.jl`): divide by the full region Msat, and null both
+  the stiffness and the difference for an empty neighbour. Demag and the energies were
+  already correct (they use `msat = Msat·fill`) and were left untouched. Verified on a
+  small-disk gyration probe: **1000 → 875 MHz** (−12.5%, larger than the 128 nm disk's
+  −5.4% because the smaller disk has a larger edge fraction — the right direction and
+  magnitude). Regression tests added in `test/test_region_params.jl`. Still to do: re-run
+  the 128 nm disk on labmac04 (GPU) to confirm the frequency lands on mumax3's 925 MHz.
 
 ## Feature backlog (also from the stage-2 magnum.np review)
 
