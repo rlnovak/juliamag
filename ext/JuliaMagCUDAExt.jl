@@ -577,11 +577,13 @@ function exchange!(B::CuField{T}, m::CuField{T}, mesh::Mesh, p::GpuRegionParams{
     nz = Nz > 1
     azl = nz ? _hmean(A, _edgeshift(A,3,-1,pz)) : A
     azr = nz ? _hmean(A, _edgeshift(A,3,+1,pz)) : A
-    # An empty neighbour (fill 0) is a free (Neumann) boundary: mumax3 replaces its
-    # m with the central m so the difference vanishes (cuda/exchange.cu is0 test).
-    # Build a 0/1 mask per direction that is 0 where the shifted neighbour is empty,
-    # and use it to null both the stiffness and the difference for that neighbour.
-    fmask(dir, off, per) = T(1) .- (_edgeshift(p.fill, dir, off, per) .== 0)
+    # An empty neighbour is a free (Neumann) boundary: mumax3 replaces its m with
+    # the central m so the difference vanishes (cuda/exchange.cu is0 test). A cell
+    # is empty when its EFFECTIVE Msat (Msat[region]·fill) is 0 — NOT when fill is 0.
+    # Background cells outside the geometry keep fill = 1 with region Msat = 0, so
+    # masking on fill would treat them as real neighbours and leak a spurious
+    # (0 - m_c) term at the geometry boundary (the CPU path masks on msat == 0).
+    fmask(dir, off, per) = T(1) .- (_edgeshift(p.Msat, dir, off, per) .== 0)
     mxl_ok = fmask(1,-1,px); mxr_ok = fmask(1,+1,px)
     myl_ok = fmask(2,-1,py); myr_ok = fmask(2,+1,py)
     mzl_ok = nz ? fmask(3,-1,pz) : A; mzr_ok = nz ? fmask(3,+1,pz) : A
