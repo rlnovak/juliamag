@@ -73,7 +73,15 @@ end
 function demagenergy(m::AbstractArray{T,4}, plan::DemagPlan, mesh::Mesh, params::AbstractParams) where {T}
     B = similar(m)
     fill!(B, zero(T))
-    demagfield!(B, m, plan)
+    # The field must come from the same source the dynamics uses: for per-region
+    # params that is M = Msat[region]·fill·m (mumax3 SetMFull), not the uniform-Msat
+    # path, which ignores the cell fill and gives a wrong E_demag on edge-smoothed
+    # geometry (mumax3 GetDemagEnergy = -½·V·dot(M_full, B_demag)).
+    if params isa Material
+        demagfield!(B, m, plan)
+    else
+        demagfield!(B, m, plan, params, mesh)
+    end
     return fieldenergy(m, B, mesh, params; selfterm = true)
 end
 

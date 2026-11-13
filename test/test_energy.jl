@@ -49,6 +49,25 @@
         @test E > 0
     end
 
+    @testset "demag energy honours the cell fill (E ∝ fill²)" begin
+        # A partially filled cell carries the moment fill·Msat (mumax3 SetMFull,
+        # M = m·Msat·vol), both as the demag SOURCE and in the energy sum, so for a
+        # uniformly magnetized cube with every cell at fill f the demag energy is
+        # ½ μ0 (f·Msat)² V N = f² × the full-cube value. Regression: demagenergy
+        # once took the field from the uniform-Msat path, which ignores fill and
+        # gives E ∝ f (wrong E_demag on any edge-smoothed geometry).
+        mesh = Mesh((6, 6, 6), (5e-9, 5e-9, 5e-9))
+        mat = Material(Msat = Msat, Aex = 1.3e-11, alpha = 0.02)
+        m = uniform(mesh, (1, 0, 0))
+        E1 = demagenergy(m, DemagPlan(demagkernel(mesh), mesh, mat), mesh, mat)
+        for f in (0.5, 0.25)
+            rp = RegionParams(mesh, mat)
+            rp.fill .= f
+            w = World(mesh, rp; demag = true)
+            @test demagenergy(m, w.demagplan, mesh, rp) ≈ f^2 * E1 rtol = 1e-10
+        end
+    end
+
     @testset "total energy drops as the minimizer relaxes" begin
         # THE convergence check. The Barzilai-Borwein minimizer is not strictly
         # monotone — individual steps can overshoot (mumax3's minimizer has the
