@@ -11,7 +11,9 @@
 # the efficient modern replacement for Dormand-Prince RK45 (mumax3's method) for
 # non-stiff problems, which micromagnetic LLG dynamics are.
 
-using OrdinaryDiffEqTsit5: ODEProblem, Tsit5, init, DiscreteCallback, u_modified!
+using OrdinaryDiffEqTsit5: ODEProblem, Tsit5, init, DiscreteCallback
+# derivative_discontinuity! is the SciMLBase ≥ 3.36 name of the deprecated u_modified!.
+using SciMLBase: derivative_discontinuity!
 import OrdinaryDiffEqTsit5 as ODE
 
 # RHS of the LLG equation as an in-place ODE function. `p` carries the World.
@@ -27,7 +29,7 @@ function _normalize_callback()
     condition(u, t, integrator) = true            # fire every step
     function affect!(integrator)
         normalize!(integrator.u)
-        u_modified!(integrator, false)            # normalization doesn't affect error control
+        derivative_discontinuity!(integrator, false)  # normalization doesn't affect error control
     end
     DiscreteCallback(condition, affect!; save_positions = (false, false))
 end
