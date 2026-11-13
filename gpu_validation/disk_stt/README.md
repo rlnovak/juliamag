@@ -27,7 +27,14 @@ mumax3: its default adaptive RK45). Tables are logged every 5 ps.
   table: ⟨m⟩, maxTorque [T], energies, core) and `mumax3/stt_es4_noZL_40ns.mx3` (the
   `sims1` reference with only `EdgeSmooth = 4` and `DisableZhangLiTorque = true`
   added). `run_queue_disk40.sh` runs both on labmac04, each waiting for its GPU to be
-  idle; `examples/plot_disk40_compare.py` compares them.
+  idle; `examples/plot_disk40_compare.py` compares them, `examples/plot_disk40_paper.py`
+  draws the paper figure. `mumax3/stt_es4_noZL_40ns_maxerr1e-7.mx3` is the same
+  mumax3 run with `MaxErr = 1e-7` (see the maxTorque note below).
+- **maxTorque diagnostics**: `mumax3/stt_es4_noZL_snap.mx3` (snapshots of m, torque,
+  LLtorque, STTorque, B_eff at 12 and 17 ns), `juliamag/torque_on_mumax_m.jl`
+  (JuliaMag torques on mumax3's m, cell by cell), `mumax3/restart17_{default,
+  maxerr1e-7,rk4fixed}.mx3` and `juliamag/restart_from_mumax_m.jl` (200 ps restarts
+  from the 17 ns state), `examples/plot_disk40_maxtorque.py`.
 
 **Averaging convention.** mumax3's table `m` is the fill-weighted magnet average,
 Σ m·geom / Σ geom (`engine/average.go`, `sAverageMagnet`); `m.Region(r).Average()`
@@ -76,6 +83,43 @@ frequencies are therefore taken from ⟨m⟩. The cause was two bugs in JuliaMag
 read `f1 - 2f0 + f2`, where Julia parses `2f0` as the Float32 literal 2.0 (offsets
 shrunk ~10×), and it searched only the bottom layer, while mumax3's `ext_corepos`
 takes the max |m_z| over all layers. The 40 ns series uses the fixed tracker.
+
+**40 ns series** (EdgeSmooth 4, Slonczewski only; tables `jm_es4_40ns.txt`,
+`mumax_stt_es4_noZL_40ns.txt`, `mumax_stt_es4_noZL_40ns_maxerr1e-7.txt`):
+
+| quantity | JuliaMag vs mumax3 |
+|---|---|
+| frequency 1–40 ns (Hilbert x/y; orbit phase) | 962.28 / 962.318 MHz, identical |
+| frequency, every 2 ns window (961.9–964.1 MHz) | ≤ 0.001 MHz |
+| ringdown rate of the ⟨m⟩ amplitude | Γ = 0.0806 ns⁻¹ both |
+| max \|Δ⟨m⟩\| (t < 0.5 ns transient) / after 10 ns | 4×10⁻⁵ / < 10⁻⁶ |
+| E_total, E_exch / E_demag (max rel.) | 2.5×10⁻⁵ / 2×10⁻⁴ |
+| core position (fixed tracker) | 0.006 nm rms |
+| maxTorque vs mumax3 MaxErr 1e-7 | 0.2% rms |
+
+With p in the plane the current displaces the core equilibrium to (−6.35, −1.06) nm
+and the gyration rings down (orbit radius 6.0 nm at 2 ns → 0.31 nm at 40 ns): a
+damped gyration, not an auto-oscillation (damping compensation needs p_z ≠ 0).
+
+**maxTorque and mumax3's tolerance.** With the default `MaxErr = 1e-5`, mumax3's
+maxTorque follows JuliaMag until ~13 ns, then plateaus near 13 mT while JuliaMag keeps
+decaying. This is integration error in mumax3, shown by:
+1. JuliaMag's torques on mumax3's own m (12 and 17 ns) agree cell by cell: B_eff 2×10⁻⁷,
+   LL torque 1×10⁻⁵, STT 2×10⁻⁷, total 3×10⁻⁵ relative, same max cell.
+2. Near the core both codes have the same max torque (1.02×10⁻² T at 17 ns); mumax3's max
+   lies in the vortex body (r ≈ 35 nm, where m ≈ −p).
+3. Restarted from mumax3's 17 ns state for 200 ps: default RK45 keeps 13.06 mT; RK45
+   `MaxErr = 1e-7` → 10.25 mT; fixed RK4 50 fs → 10.25 mT; JuliaMag → 10.25 mT (body
+   torque decays in ~5 ps ≈ 1/(α ω_max)). `MaxErr = 1e-7` uses the same dt as the default,
+   so the tolerance, not stability, sets the residual (~10⁻⁴ in m, short-wavelength
+   exchange modes).
+4. The full 40 ns mumax3 run with `MaxErr = 1e-7` agrees with JuliaMag's maxTorque to 0.2%
+   rms (0.5% max before 13 ns, where the default run deviated by up to 24% too).
+
+**Estimator note.** `gyrofreq.freq_phase` defaults to `period = 1.08e-9` for its
+moving-average detrend. On the 6 ns windows of the table above, using 1/f_FFT instead
+moves the frequencies by ≤ 0.12 MHz, identically in both codes; on 2 ns windows the
+Hilbert fit is unusable, hence the orbit-phase method in `plot_disk40_compare.py`.
 
 ## Physical model
 

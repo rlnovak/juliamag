@@ -1,0 +1,26 @@
+// Restart the 40 ns series (stt_es4_noZL_40ns.mx3) from its 17 ns snapshot
+// (stt_es4_noZL_snap.out/m000001.ovf) and log maxTorque every 1 ps for 200 ps,
+// solver variant: rk4fixed. Tests whether the maxTorque plateau after ~13 ns is set by
+// the adaptive RK45 error tolerance rather than by the physics.
+SetGridsize(64, 64, 8)
+SetCellsize(2e-9, 2e-9, 2e-9)
+EdgeSmooth = 4
+setgeom(cylinder(128e-9, 16e-9))
+
+alpha = 0.01
+Aex   = 10.8e-12
+Msat  = 800e3
+m.LoadFile("stt_es4_noZL_snap.out/m000001.ovf")
+
+DisableZhangLiTorque = true
+lambda       = 1.0
+Pol          = 0.37
+epsilonprime = 0.01
+fixedlayer   = vector(cos(20*pi/180), sin(20*pi/180), 0)
+J = vector(0, 0, 0.040/(128e-9*128e-9*pi/4))
+SetSolver(4)
+FixDt = 5e-14
+TableAdd(maxTorque)
+TableAdd(dt)
+tableautosave(1e-12)
+run(200e-12)

@@ -109,8 +109,11 @@ low-to-medium effort — these make the package usable like mumax3 for productio
      table columns once (mx/my/mz, maxTorque, energies, `ext_corepos`, …) and let the
      run loop append a row every `interval`, mirroring mumax3's `TableAdd` +
      `tableautosave`. Subsumes the OVF-autosave hook in item 3.
-   The averaging quantity **must default to `average_region` over the filled geometry**,
-   not `sum / (Nx·Ny·Nz)` over the whole box — see the normalization bug below.
+   The averaging quantity **must default to `average_magnet`** (fill-weighted over the
+   magnet, mumax3's table `m`; `q_m` already uses it), not `sum / (Nx·Ny·Nz)` over the
+   whole box — see the normalization bug below. `q_maxtorque` still reports
+   max |dm/dt| in rad/s from the LLG torque only; to match mumax3's `maxTorque` it must
+   be in T (÷ γLL) and include the active spin torques, as the 40 ns driver does by hand.
 
 Items 4 and 5 are trivial and should land first (a small `runinfo`/logging helper
 the drivers call); 1–3 and 6 are the substantial driver refactor (6 is the
@@ -209,6 +212,17 @@ EdgeSmooth > 0. Plots: `examples/plot_stt_zhangli_validation.py`,
 `examples/plot_free_gyration_compare.py`. Physical model for the paper: Slonczewski only
 (the standard CPP vortex-oscillator model); Zhang–Li with a perpendicular current is
 kept only as a code-to-code check of mumax3's default.
+
+**40 ns EdgeSmooth-4 series (2026-11-13).** Slonczewski only, both codes on labmac04
+(JuliaMag 7.2 h on a Quadro P1000, mumax3 34 min). Frequency 962.28 MHz in both
+(every 2 ns window within 0.001 MHz), ringdown Γ = 0.0806 ns⁻¹ both, max |Δ⟨m⟩| 4e-5 in
+the first 0.5 ns and < 1e-6 after 10 ns, E_total 2.5e-5, core positions 0.006 nm rms.
+With p in-plane the gyration is damped (core settles at (−6.35, −1.06) nm), not an
+auto-oscillation. mumax3's `maxTorque` at its default `MaxErr = 1e-5` plateaus near
+13 mT after ~13 ns; proved to be RK45 tolerance noise in the stiff exchange modes (same
+torques cell by cell on mumax3's m; restarts with `MaxErr = 1e-7` or fixed RK4 drop to the
+JuliaMag value within 2 ps; a full `MaxErr = 1e-7` run agrees to 0.2% rms). Details:
+`gpu_validation/disk_stt/README.md`; paper Fig. "disc40".
 
 ## Feature backlog (also from the stage-2 magnum.np review)
 

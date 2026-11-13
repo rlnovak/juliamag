@@ -86,11 +86,12 @@ extension that adds GPU methods additively through dispatch. We validate
 standard problems~2, 4, and~5 --- covering static equilibria and the
 demagnetizing field, dynamic magnetization reversal, and current-driven
 spin-transfer torque --- reproducing the references to within
-$\sim 4\times10^{-3}$ in the spatially averaged magnetization. On a
-spin-torque vortex oscillator in a Permalloy disc, run on the GPU, the
+$\sim 4\times10^{-3}$ in the spatially averaged magnetization. On a vortex in a
+Permalloy disc driven by a spin-polarized current, run on the GPU, the
 demagnetizing and exchange fields agree with \mumax{} cell by cell to
-$10^{-6}$ and the vortex gyration frequency to better than $10^{-4}$, a test
-that exercises the treatment of curved boundaries and the Slonczewski torque.
+$10^{-6}$ and the vortex gyration frequency to better than $10^{-4}$ over
+$40$~ns, a test that exercises the treatment of curved boundaries and the
+Slonczewski torque.
 \end{abstract}
 
 \keywords{micromagnetics \and Landau--Lifshitz--Gilbert equation \and
@@ -157,8 +158,8 @@ minimization (Sec.~\ref{sec:solvers}), the initial states and I/O
 against the \mumax{} and \oommf{} reference codes on the $\mu$MAG standard
 problems~2, 4, and~5, which together exercise the static equilibria and
 demagnetizing field, the dynamic magnetization reversal, and the spin-transfer
-torque, respectively, and on a spin-torque vortex oscillator in a disc, which
-tests the curved-boundary treatment and the Slonczewski torque on the GPU.
+torque, respectively, and on a current-driven vortex in a disc, which tests the
+curved-boundary treatment and the Slonczewski torque on the GPU.
 
 % ==========================================================================
 \section{Theory}
@@ -689,12 +690,13 @@ component deviation of $9\times10^{-5}$, within \mumax's own $10^{-4}$ tolerance
 Standard problem~5 thus validates the Zhang--Li spin-transfer torque
 independently of the field terms exercised by standard problem~4.
 
-\subsection{Spin-torque vortex oscillator in a disc}
+\subsection{Current-driven vortex in a disc}
 \label{sec:discstt}
 
 The standard problems use rectangular, fully filled meshes. To test a curved
 boundary and the Slonczewski torque we compare \JuliaMag{} with \mumax{}
-(version~3.11.1) on a spin-torque vortex oscillator: a Permalloy disc of
+(version~3.11.1) on the free layer of a vortex spin-torque nanopillar: a
+Permalloy disc of
 diameter $128$~nm and thickness $16$~nm on a $64\times64\times8$ mesh of
 $2$~nm cells ($M_s=8\times10^5$~A/m, $A=1.08\times10^{-11}$~J/m,
 $\alpha=0.01$), relaxed to a vortex of circulation and polarity $+1$. A current
@@ -703,9 +705,11 @@ of $40$~mA flows perpendicular to the disc, $j_z = I/(\pi D^2/4) =
 $\bm{p}=(\cos20^\circ,\sin20^\circ,0)$ with $P=0.37$, $\Lambda=1$, and
 $\epsilon'=0.01$. Both codes run on the GPU, \JuliaMag{} with fourth-order
 Runge--Kutta at a fixed step $\Delta t = 5\times10^{-14}$~s and \mumax{} with
-its adaptive Dormand--Prince scheme; the boundary is the staircase
-(\texttt{EdgeSmooth}~$=0$) of the \mumax{} reference run, and
-$\langle\vm\rangle$ is averaged over the disc cells.
+its adaptive Dormand--Prince scheme. Unless stated otherwise the boundary is the
+staircase (\texttt{EdgeSmooth}~$=0$) of the \mumax{} reference run; the
+$40$~ns series at the end of this section uses an edge-smoothed boundary.
+$\langle\vm\rangle$ is the average over the disc, each cell weighted by its
+fill, as in the \mumax{} table.
 
 \paragraph{Static fields.}
 To separate the field terms from the dynamics, we load the vortex relaxed by
@@ -720,7 +724,12 @@ $E_{\mathrm{demag}} = 7.1783\times10^{-19}$~J and
 $E_{\mathrm{exch}} = 3.6270\times10^{-18}$~J.
 
 \paragraph{Gyration.}
-Under the current the vortex core gyrates around the disc centre. We measure
+The current displaces the equilibrium position of the vortex core, and the
+core gyrates around it with a slowly decaying amplitude. With $\bm{p}$ in the
+film plane this is a damped gyration, not a self-sustained oscillation: the
+part of the Slonczewski torque that can compensate the damping of the
+gyrotropic mode is set by the out-of-plane component of
+$\bm{p}$~\cite{khvalkovskiy2009}, which is zero here. We measure
 the frequency from $\langle m_x\rangle(t)$ and $\langle m_y\rangle(t)$ over
 $1$--$7$~ns: each signal is resampled onto a uniform time grid (the adaptive
 \mumax{} steps are not uniform), its slow drift is removed with a one-period
@@ -753,7 +762,7 @@ free gyration, no current   & $969.8$ & $969.8$ & $1.1\times10^{-4}$ \\
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/disk_stt_validation.png}
-  \caption{Spin-torque vortex oscillator in a
+  \caption{Current-driven vortex in a
   $128~\mathrm{nm}\times16~\mathrm{nm}$ Permalloy disc, \JuliaMag{} (blue)
   vs.\ \mumax{} (red). (a)~$\langle m_x\rangle(t)$ under the Slonczewski torque.
   (b)~The last two nanoseconds with the Slonczewski torque alone (solid) and
@@ -774,10 +783,11 @@ which each code relaxes with its own energy minimizer
 ($\Delta\langle m_x\rangle = 8\times10^{-5}$ at $t=0$). Halving the time step
 (tested on the edge-smoothed disc) leaves the frequency unchanged to
 $0.01$~MHz and $\langle\vm\rangle$ to below $10^{-6}$, the precision of the
-output tables, so the fixed-step integration is converged. The
-vortex-core positions returned by the two codes' core trackers differ by a few
-per cent, because the trackers interpolate differently; we therefore use
-$\langle\vm\rangle$, not the core position, to measure the frequency.
+output tables, so the fixed-step integration is converged. The frequency is
+measured from $\langle\vm\rangle$; the core position, which \JuliaMag{} locates
+with the algorithm of \mumax's \texttt{ext\_corepos} (maximum $|m_z|$ over all
+layers, refined by parabolic interpolation), is compared in the $40$~ns series
+below.
 
 \paragraph{The Zhang--Li term with a perpendicular current.}
 With $\bm{j} = j_z\hat{\bm{z}}$, Eq.~\eqref{eq:zhangli} reduces to
@@ -808,6 +818,58 @@ $(973.5/930.8)\times(963.6/973.5) = 1.035$. The same comparison, carried out
 field by field, located and removed the two edge-cell inconsistencies described
 in Sec.~\ref{sec:regions}. The \mumax{} inputs, the \JuliaMag{} drivers, and all
 time series are distributed with the code.
+
+\paragraph{A 40 ns run with an edge-smoothed boundary.}
+A longer comparison follows the dynamics until the gyration has nearly died
+out, on the edge-smoothed disc (\texttt{EdgeSmooth}~$=4$, fractional cells
+along the rim) and with the Slonczewski torque alone. Both codes log
+$\langle\vm\rangle$, the energies, the maximum torque, and the core position
+every $5$~ps for $40$~ns (Fig.~\ref{fig:disc40}). The current moves the core
+equilibrium to $(-6.35,-1.06)$~nm from the disc centre; the radius of the
+orbit around it decays from $6.0$~nm at $2$~ns to $0.31$~nm at $40$~ns, and the
+amplitude of $\langle\vm\rangle$ decays at $\Gamma = 0.0806$~ns$^{-1}$ in both
+codes. The frequency, $962.3$~MHz over $1$--$40$~ns, drifts from $964.1$ to
+$961.9$~MHz as the amplitude decays; in every $2$~ns window the two codes
+differ by less than $0.001$~MHz (Fig.~\ref{fig:disc40}b). The largest deviation
+of $\langle\vm\rangle$, $4\times10^{-5}$, occurs in the first half
+nanosecond, when spin waves launched by the onset of the current vary on the
+scale of the output interval; after $10$~ns it is below $10^{-6}$. The total
+energy agrees to $2.5\times10^{-5}$ relative, and the core positions to
+$0.006$~nm rms.
+
+The maximum torque is the one quantity that does not agree with \mumax{} run
+at its default tolerance: it follows \JuliaMag{} until ${\approx}13$~ns and
+then levels off near $13$~mT while the \JuliaMag{} value keeps decaying
+(Fig.~\ref{fig:disc40}c). The plateau is integration error. Evaluated on the
+very same magnetization (the \mumax{} state at $17$~ns, loaded from OVF), the
+two codes' torques agree cell by cell to $3\times10^{-5}$ relative. Restarted
+from that state, \mumax{} keeps the plateau with its default error tolerance
+($\mathrm{MaxErr}=10^{-5}$), but drops within $2$~ps to the \JuliaMag{} value
+with $\mathrm{MaxErr}=10^{-7}$ or with fixed-step fourth-order Runge--Kutta;
+\JuliaMag{} restarted from the same state does the same. With
+$\mathrm{MaxErr}=10^{-7}$ the adaptive step is the same as with the default
+tolerance, so the plateau is not a stability limit: the default tolerance
+leaves a residual error, of order $10^{-4}$ in $\vm$, in the stiff short-wavelength
+exchange modes, which the physical damping would otherwise remove in a few
+picoseconds. It is invisible in $\langle\vm\rangle$ and the energies, but sets
+the maximum torque once the physical torque has decayed below it. Rerun with
+$\mathrm{MaxErr}=10^{-7}$ over the full $40$~ns, \mumax's maximum torque agrees
+with \JuliaMag{} to $0.2\%$ rms. A maximum-torque criterion computed by an
+adaptive solver should therefore be read with its tolerance in mind.
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/disk_40ns_es4.png}
+  \caption{Current-driven vortex over $40$~ns, \texttt{EdgeSmooth}~$=4$,
+  Slonczewski torque only; \JuliaMag{} (blue) vs.\ \mumax{} (red).
+  (a)~$\langle m_x\rangle(t)$. (b)~Gyration frequency in sliding $2$~ns
+  windows, from the phase of the in-plane $\langle\vm\rangle$ about the orbit
+  centre. (c)~Maximum torque: \mumax{} at its default error tolerance
+  ($\mathrm{MaxErr}=10^{-5}$) levels off at ${\approx}13$~mT, while \mumax{}
+  with $\mathrm{MaxErr}=10^{-7}$ (orange) and \JuliaMag{} keep decaying
+  together.}
+  \label{fig:disc40}
+\end{figure*}
 
 % ==========================================================================
 \section{Applications}
@@ -896,11 +958,13 @@ agrees with the references to $\sim 4\times10^{-3}$ (dynamic reversal, standard
 problem~4), to $\sim 10^{-3}$ in the remanence and coercive field across a wide
 range of aspect ratios (static equilibria, standard problem~2), and to
 $9\times10^{-5}$ for the current-driven vortex (spin-transfer torque, standard
-problem~5). On a spin-torque vortex oscillator in a disc, run on the GPU, the
+problem~5). On a current-driven vortex in a disc, run on the GPU, the
 fields agree with \mumax{} cell by cell to $10^{-6}$ and the gyration frequency
-to better than $10^{-4}$, once both codes apply the same torques to the same
-boundary; that comparison also showed that \mumax{} adds the Zhang--Li torque
-to a current-perpendicular simulation by default.
+to better than $10^{-4}$, and $\langle\vm\rangle$ to $4\times10^{-5}$ over
+$40$~ns, once both codes apply the same torques to the same boundary; that
+comparison also showed that \mumax{} adds the Zhang--Li torque to a
+current-perpendicular simulation by default, and that its maximum-torque output
+at the default tolerance reflects integration error late in a long run.
 Beyond the benchmarks, the same interface handles a vortex hysteresis
 loop on a non-rectangular disc and a current-driven skyrmion on a periodic
 infinite wire (Section~\ref{sec:applications}). Three architectural choices carry
