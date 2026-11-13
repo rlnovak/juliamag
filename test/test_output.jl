@@ -166,6 +166,10 @@
         # corners would dilute).
         w = World(mesh, rp; demag = false)
         @test q_m()(w, m, 0.0) ≈ collect(a)
+        # average(sim) on a Simulation is the magnet average too.
+        sim = Simulation(mesh, rp; demag = false)
+        sim.m .= m
+        @test all(average(sim) .≈ a)
         # Staircase geometry (fill 0/1): identical to the region average.
         rp0 = disk(0)
         m0 = randommag(mesh); clearempty!(m0, rp0)

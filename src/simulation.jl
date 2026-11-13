@@ -171,8 +171,12 @@ function _rk4_current!(m::AbstractArray{T,4}, world, mesh::Mesh, mat, J, dt, nst
     return m
 end
 
-"Average magnetization ⟨mx,my,mz⟩ of the current state."
-average(sim::Simulation) = average(sim.m)
+"""
+Average magnetization ⟨mx,my,mz⟩ of the current state over the magnet — mumax3's
+table `m` ([`average_magnet`](@ref): fill-weighted, empty cells excluded). Equal to
+`average(sim.m)` when every cell is magnetic.
+"""
+average(sim::Simulation) = average_magnet(sim.m, sim.world.material)
 
 function Base.show(io::IO, ::MIME"text/plain", sim::Simulation)
     print(io, "Simulation\n")

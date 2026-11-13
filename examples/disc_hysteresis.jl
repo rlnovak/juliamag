@@ -3,8 +3,9 @@
 # A vortex sits at the centre of a disc in zero field. An in-plane field along x
 # displaces the core sideways, raising ⟨mx⟩ along a nearly linear reversible
 # branch; at a critical field the vortex annihilates and the disc reaches its
-# saturated branch (⟨mx⟩ ≈ ±0.78 — a thin disc never magnetizes fully in-plane,
-# shape demag keeps the edge spins curled). Reducing the field renucleates the
+# saturated branch. ⟨m⟩ is averaged over the disc only (average_magnet): an
+# average over the whole rectangular box would be diluted by the disc's area
+# fraction π/4 and read ≈ 0.78 at saturation. Reducing the field renucleates the
 # vortex on the return branch, giving the S-shaped vortex hysteresis loop.
 #
 # A well-formed vortex loop needs a disc that is wide and thin: here 500 nm
@@ -21,10 +22,10 @@
 # continuously. One table row (Bx, mx, my, mz) is written per field step.
 #
 # Run:  julia --project=examples examples/disc_hysteresis.jl
+# Plot: python examples/plot_disc_hysteresis.py
 
 using JuliaMag
 using Printf
-using Plots
 
 function main()
     mesh = Mesh((100, 100, 4), (5e-9, 5e-9, 5e-9))     # 500 × 500 × 20 nm mesh
@@ -48,7 +49,9 @@ function main()
         JuliaMag.setexternalfield!(sim.world, (B, 0.0, 0.0))
         relax!(sim; stopdm = 1e-6)
         savenow!(sim)                                   # one table row per step
-        push!(Bxs, B); push!(mxs, average(sim.m)[1])
+        # ⟨mx⟩ over the disc (empty cells excluded), not over the whole box: the
+        # box average is diluted by the disc's area fraction (≈ π/4 here).
+        push!(Bxs, B); push!(mxs, average_magnet(sim.m, rp)[1])
     end
 
     # Write the output table (t, mx, my, mz, B_extx, B_exty, B_extz).
@@ -60,13 +63,7 @@ function main()
     @printf("Done. ⟨mx⟩ range [%.3f, %.3f]; final core at (%.1f, %.1f) nm\n",
             minimum(mxs), maximum(mxs), xc * 1e9, yc * 1e9)
 
-    # Hysteresis curve.
-    plt = plot(Bxs .* 1e3, mxs; xlabel = "µ₀Hx (mT)", ylabel = "⟨mx⟩",
-               title = "Vortex hysteresis in a 500 nm × 20 nm Permalloy disc",
-               titlefontsize = 10, legend = false, lw = 2, marker = :circle, ms = 2)
-    out = joinpath(@__DIR__, "disc_hysteresis.png")
-    savefig(plt, out)
-    println("Wrote figure → ", out)
+    # Figure: python examples/plot_disc_hysteresis.py (matplotlib).
 end
 
 main()

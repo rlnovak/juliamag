@@ -163,15 +163,15 @@ end
 # The scalar plotted on the time-series y-axis for the current state.
 function _ycurve_value(sim)
     q = ycurve[]
-    if q == "mx"; return average(sim.m)[1]
-    elseif q == "my"; return average(sim.m)[2]
-    elseif q == "mz"; return average(sim.m)[3]
+    if q == "mx"; return average(sim)[1]
+    elseif q == "my"; return average(sim)[2]
+    elseif q == "mz"; return average(sim)[3]
     elseif q == "vortex x"; return vortexcore(sim.m, sim.world.mesh)[1]
     elseif q == "vortex y"; return vortexcore(sim.m, sim.world.mesh)[2]
     elseif q == "skyrmion x"; return skyrmionpos(sim.m, sim.world.mesh)[1]
     elseif q == "skyrmion y"; return skyrmionpos(sim.m, sim.world.mesh)[2]
     elseif q == "topological charge"; return topologicalcharge(sim.m, sim.world.mesh)
-    else; return average(sim.m)[1]
+    else; return average(sim)[1]
     end
 end
 
@@ -264,7 +264,7 @@ function gui_run(durstr, savedtstr, bxstr, bystr, bzstr)
         end
         update_field!(sim)
         running[] = false
-        mx, my, mz = average(sim.m)
+        mx, my, mz = average(sim)
         status[] = @sprintf("Done. t = %.3f ns, ⟨m⟩ = (%.3f, %.3f, %.3f)",
                             sim.t * 1e9, mx, my, mz)
     end

@@ -207,7 +207,7 @@ for B in Bs
     JuliaMag.setexternalfield!(sim.world, (B, 0.0, 0.0))
     relax!(sim; stopdm = 1e-6)
     savenow!(sim)                                    # one row: Bx, mx, my, mz…
-    push!(mxs, average(sim.m)[1])
+    push!(mxs, average(sim)[1])                      # over the disc, not the box
 end
 
 writetable(sim.table, "disc_hysteresis.txt")
@@ -216,13 +216,14 @@ writetable(sim.table, "disc_hysteresis.txt")
 
 Plotting `mxs` against `Bs` gives the S-shaped vortex loop: `⟨mx⟩ = 0` at zero
 field (the centred vortex), a nearly linear reversible rise as the core is pushed
-toward the edge, then an abrupt jump to the saturated branch (`⟨mx⟩ ≈ ±0.78`)
-where the vortex annihilates, and a jump back as it renucleates on the return
-branch. The plateau sits below 1 because a thin disc never magnetizes fully
-in-plane — shape demagnetization keeps the edge spins curled even at 150 mT. The
+toward the edge, then an abrupt jump to the nearly saturated branch
+(`⟨mx⟩ ≈ ±0.99`) where the vortex annihilates, and a jump back as it renucleates
+on the return branch. `average(sim)` averages over the disc's cells only (mumax3's
+table `m`); `average(sim.m)` would average over the whole rectangular box and read
+≈ ±0.78 at saturation, diluted by the disc's area fraction π/4. The
 `disc_hysteresis.txt` table holds `Bx` alongside `⟨mx,my,mz⟩` for each field
-step. This is a sizeable run (~13 minutes: 40k cells over ~120 field steps). A
-ready-to-run version with the plot is
+step. This is a sizeable run (40k cells over 153 field steps; ~5 min with 8 threads). A
+ready-to-run version (plot: `examples/plot_disc_hysteresis.py`) is
 [`examples/disc_hysteresis.jl`](../examples/disc_hysteresis.jl).
 
 You can also track the core position through the loop by adding `q_vortexcore()`
