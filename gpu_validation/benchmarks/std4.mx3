@@ -1,0 +1,28 @@
+// muMAG Standard Problem 4 — mumax3 reference with energies.
+// Permalloy 500 x 125 x 3 nm, 160 x 40 x 1 cells. Relax the S-state (saturate
+// [1,1,1], minimize at zero field), then apply field 1 = (-24.6, 4.3, 0) mT and
+// record <m> and every energy for 1 ns.
+
+SetGridsize(160, 40, 1)
+SetCellsize(3.125e-9, 3.125e-9, 3e-9)
+
+Msat  = 800e3
+Aex   = 13e-12
+alpha = 0.02
+
+// S-state: saturate along (1,1,1), then minimize at zero applied field.
+m = uniform(1, 1, 1)
+minimize()
+saveas(m, "sstate")
+
+// Table: averaged magnetization + all energy terms.
+TableAdd(E_demag)
+TableAdd(E_exch)
+TableAdd(E_Zeeman)
+TableAdd(E_total)
+tableautosave(2.5e-12)     // ~400 samples over 1 ns, matching the JuliaMag run
+
+// Field 1: mu0*H = (-24.6, 4.3, 0) mT  ->  B_ext in Tesla.
+B_ext = vector(-24.6e-3, 4.3e-3, 0)
+alpha = 0.02
+run(1e-9)

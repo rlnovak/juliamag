@@ -1,0 +1,29 @@
+// muMAG Standard Problem 5 — mumax3 reference with time series + energies.
+// 100 x 100 x 10 nm Permalloy, 32 x 32 x 4 cells. Relax a vortex, then apply an
+// in-plane current J = (1e12, 0, 0) A/m^2, P = 1, xi = 0.05, for 1 ns.
+
+SetGridsize(32, 32, 4)
+SetCellsize(100e-9/32, 100e-9/32, 10e-9/4)
+
+Msat  = 800e3
+Aex   = 13e-12
+alpha = 0.1
+
+// Relax the vortex (circ +1, pol +1 core).
+m = vortex(1, 1)
+minimize()
+saveas(m, "vortex0")
+
+// Zhang-Li spin-transfer torque.
+Pol = 1.0
+xi  = 0.05
+J   = vector(1e12, 0, 0)
+
+TableAdd(E_demag)
+TableAdd(E_exch)
+TableAdd(E_Zeeman)
+TableAdd(E_total)
+TableAdd(ext_corepos)
+tableautosave(2.5e-12)     // 400 samples over 1 ns
+
+run(1e-9)
