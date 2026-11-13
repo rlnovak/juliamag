@@ -1,0 +1,16 @@
+// Item 1c: free vortex gyration, no STT. Disk 128 nm x 16 nm, EdgeSmooth=0.
+// Relax under Bx = 10 mT (core displaced), switch the field off, record 7 ns.
+SetGridsize(64, 64, 8)
+SetCellsize(2e-9, 2e-9, 2e-9)
+EdgeSmooth = 0
+setgeom(cylinder(128e-9, 16e-9))
+Msat  = 800e3
+Aex   = 10.8e-12
+alpha = 0.01
+m = vortex(1, 1)
+B_ext = vector(10e-3, 0, 0)
+relax()
+B_ext = vector(0, 0, 0)
+TableAdd(ext_corepos)
+tableautosave(5e-12)
+run(7e-9)

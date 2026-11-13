@@ -1,0 +1,80 @@
+//-------- Magnetic system geometry: ----------//
+
+// This system consists of a linear array of N disks, with diameters equal to D, separated by a distance d.
+// The disks are made of permalloy (of CoFeB, or any other soft magnetic material leading to an in-plane magnetization and vortex ground state)
+
+D_big := 128e-9  // Disk diameter
+//D_small := 96e-9 // Disk diameter
+thickness := 16e-9
+dist := 0.0 // Distance between disk edges. Must be an even number
+
+N := 1 // Number of disks
+
+// -------- Simulation box geometry ---------//
+cell_size_in_plane := 2e-9
+cell_size_out_of_plane := 2e-9
+
+x_cells := D_big / cell_size_in_plane
+y_cells := D_big / cell_size_in_plane
+z_cells := (N*thickness + dist) / cell_size_out_of_plane
+
+SetGridsize(x_cells, y_cells, z_cells)
+SetCellsize(cell_size_in_plane, cell_size_in_plane, cell_size_out_of_plane)
+
+// ----- Definition of the N = 2 disks --------//
+disk_shift := (N*thickness+dist)/2 - thickness/2 // Valid for N = 2. This must be calculated manually, at this time.
+D1 := cylinder(D_big, thickness)//.transl(0, 0, -disk_shift)
+//D2 := cylinder(D_small, thickness).transl(0, 0, disk_shift)
+setgeom(D1)
+//saveas(geom, "lo")
+//save(regions)
+
+// -------- Magnetic parameters of the disks --------//
+alpha = 0.01
+Aex = 10.8e-12
+Msat = 800e3
+
+// --------- Initial magnetization state --------//
+m = vortex(1, 1)
+save(m)
+relax()
+save(m)
+// // Schedule output ////
+// t -> Col. 1
+// Mx -> Col. 2
+// My -> Col. 3
+// Mz -> Col. 4
+TableAdd(m) // m1x -> Col. 5, // m1y -> Col. 6, // m1z -> Col. 7
+TableAdd(maxTorque)   //Col. 8
+TableAdd(E_demag)     // Col. 9
+TableAdd(E_exch)      //Col. 10
+TableAdd(E_Zeeman)    //Col. 11
+TableAdd(E_total)     // Col. 12
+TableAdd(J)           // Jx -> Col. 13, Jy -> Col. 14, Jz -> Col. 15
+TableAdd(ext_corepos) // x_core -> Col. 16, y_core -> Col. 17
+
+//--------- Experiment -------//
+
+// set up spacer layer parameters:
+lambda = 1.0
+Pol = 0.37
+// Pol = 0.5669
+epsilonprime = 0.01
+
+// set up fixed layer polarization:
+angle := 20
+px := cos(angle * pi / 180)
+py := sin(angle * pi / 180)
+fixedlayer = vector(px, py, 0)
+
+// set up current through disk number 1:
+Jtot := 0.040 // total current in A
+area_big := D_big * D_big * pi / 4
+jc_big := Jtot / area_big // current density in A/, big diskm^2
+print("Current density in big disk (A/m^2): ", jc_big)
+J = vector(0, 0, jc_big)
+
+// schedule output & run
+autosave(m, 2e-10)
+tableautosave(5e-12)
+run(40e-9)

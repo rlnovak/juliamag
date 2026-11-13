@@ -1,0 +1,17 @@
+// Field-by-field reference: disk 128 nm x 16 nm, 2 nm cells, EdgeSmooth=0.
+// Relax the vortex, then save m, B_demag, B_exch and the energies.
+SetGridsize(64, 64, 8)
+SetCellsize(2e-9, 2e-9, 2e-9)
+EdgeSmooth = 0
+setgeom(cylinder(128e-9, 16e-9))
+Msat  = 800e3
+Aex   = 10.8e-12
+alpha = 0.01
+m = vortex(1, 1)
+relax()
+saveas(m, "m_relaxed")
+saveas(B_demag, "B_demag")
+saveas(B_exch, "B_exch")
+saveas(geom, "geom")
+print("ENERGY E_demag", E_demag.Get(), "E_exch", E_exch.Get(), "E_total", E_total.Get())
+print("MAVG", m.average())

@@ -1,0 +1,20 @@
+// Reference disk run (EdgeSmooth=0) with the Zhang-Li torque DISABLED, 7 ns.
+// mumax3 applies Zhang-Li AND Slonczewski whenever J is set (DisableZhangLiTorque
+// defaults to false); the JuliaMag driver applies only Slonczewski.
+SetGridsize(64, 64, 8)
+SetCellsize(2e-9, 2e-9, 2e-9)
+setgeom(cylinder(128e-9, 16e-9))
+alpha = 0.01
+Aex   = 10.8e-12
+Msat  = 800e3
+m = vortex(1, 1)
+relax()
+TableAdd(ext_corepos)
+lambda = 1.0
+Pol = 0.37
+epsilonprime = 0.01
+fixedlayer = vector(cos(20*pi/180), sin(20*pi/180), 0)
+DisableZhangLiTorque = true
+J = vector(0, 0, 0.040/(128e-9*128e-9*pi/4))
+tableautosave(5e-12)
+run(7e-9)

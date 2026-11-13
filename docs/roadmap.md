@@ -119,8 +119,9 @@ table/OVF-autosave layer that removes the per-script boilerplate).
 ### Validation follow-up: single-disk STT vortex frequency
 
 From comparing the labmac04 single-disk Slonczewski run against the mumax3
-reference (`disk_d1=128nm_t=16nm_40mA`), two separate discrepancies were found —
-one a script bug (fixed), one a physics item still open:
+reference (`disk_d1=128nm_t=16nm_40mA`), several discrepancies were found and are
+all resolved (see **Resolution** at the end of this section; the 975/925 MHz figures
+below are the historical, pre-resolution measurements):
 
 - **Table normalization (fixed in the driver scripts).** The scripts averaged `⟨m⟩`
   by dividing by `Nx·Ny·Nz` (the whole box) instead of the filled disk cells, diluting
@@ -146,12 +147,56 @@ one a script bug (fixed), one a physics item still open:
      `Aex` leaked a spurious `−Aᶜ·mᶜ/Δ²` term at the geometry edge.
   Fix (`src/exchange.jl`, `ext/JuliaMagCUDAExt.jl`, with `msat_region`/`fill` accessors in
   `src/region_params.jl` + `src/params.jl`): divide by the full region Msat, and null both
-  the stiffness and the difference for an empty neighbour. Demag and the energies were
-  already correct (they use `msat = Msat·fill`) and were left untouched. Verified on a
-  small-disk gyration probe: **1000 → 875 MHz** (−12.5%, larger than the 128 nm disk's
-  −5.4% because the smaller disk has a larger edge fraction — the right direction and
-  magnitude). Regression tests added in `test/test_region_params.jl`. Still to do: re-run
-  the 128 nm disk on labmac04 (GPU) to confirm the frequency lands on mumax3's 925 MHz.
+  the stiffness and the difference for an empty neighbour. The demag *field* was already
+  correct (it uses `msat = Msat·fill`). Verified on a small-disk gyration probe:
+  **1000 → 875 MHz** (−12.5%, larger than the 128 nm disk's −5.4% because the smaller
+  disk has a larger edge fraction — the right direction and magnitude). Regression tests
+  added in `test/test_region_params.jl`. The GPU exchange carried a second, cancelling
+  bug (empty neighbour masked on `fill == 0`, but background cells keep fill 1 with
+  region Msat 0); fixed in `0b9110d` by masking on `Msat·fill == 0`.
+- **Demag energy ignored the cell fill — FIXED.** `demagenergy` took the field from the
+  uniform-Msat path even for `RegionParams`, so on edge-smoothed geometry the source
+  ignored the fill (E ∝ fill instead of fill²). It now uses the per-region path, i.e.
+  mumax3's `GetDemagEnergy = −½·V·dot(M_full, B_demag)` with `M = m·Msat·vol`.
+  Regression test "E ∝ fill²" in `test/test_energy.jl` (fails on the old code).
+
+**Resolution (2026-11-12) — JuliaMag matches mumax3 like-for-like.** Field by field:
+the relaxed mumax3 `m` loaded from OVF gives `B_demag` and `B_exch` equal to mumax3's
+to a max relative error of 7.7e-7 and 2.3e-7 (EdgeSmooth 0 and 4; geometry/fill
+identical cell by cell); all energies agree. The residual frequency gap (963.6 MHz vs
+≈930 MHz) had **no JuliaMag bug left in it**; it came from two differences in the
+*setup*:
+
+1. **mumax3 adds the Zhang–Li torque whenever `J` is set** (`DisableZhangLiTorque =
+   false` by default, `engine/torque.go`), so the reference ran Slonczewski + Zhang–Li
+   (with `jz` it acts through ∂z m across the 8-cell thickness, −4.4% in frequency);
+   the JuliaMag driver applied Slonczewski only.
+2. **EdgeSmooth**: the reference used mumax3's default 0 (staircase); the port used 4
+   (≈ −1%).
+
+Like-for-like gyration frequencies (EdgeSmooth 0, 7 ns, ⟨m⟩-based Hilbert phase +
+FFT on a uniformly resampled time axis):
+
+| run | mumax3 | JuliaMag |
+|---|---|---|
+| Slonczewski + Zhang–Li | 930.8 MHz | 930.8 MHz |
+| Slonczewski only | 973.5 MHz | 973.5 MHz |
+| free gyration (no current) | 969.8 MHz, Γ = 0.0797 ns⁻¹ | 969.8 MHz, Γ = 0.0797 ns⁻¹ |
+
+(f = mean of the ⟨m_x⟩ and ⟨m_y⟩ Hilbert-phase frequencies over 1–7 ns; free gyration
+0.5–7 ns. The two codes differ by < 0.05 MHz; the ±1.5 MHz spread between the x and y
+estimates is the absolute uncertainty of the measurement, common to both. Reproduce
+with `gpu_validation/disk_stt/frequencies.py`; scripts and tables in
+`gpu_validation/disk_stt/`.)
+
+The integrator is converged (dt = 5e-14 vs 2.5e-14: 963.6 MHz both, ⟨m⟩ within 2.4e-5).
+Earlier quoted mumax3 values of 913–925 MHz were a measurement artefact: an FFT that
+assumed a uniform time step on mumax3's adaptive-step table (−1.6% bias). The two
+vortex-core trackers differ by 2–4% (JuliaMag's `vortexcore` vs mumax3 `ext_corepos`),
+so frequencies are measured from ⟨m⟩. Plots: `examples/plot_stt_zhangli_validation.py`,
+`examples/plot_free_gyration_compare.py`. Physical model for the paper: Slonczewski only
+(the standard CPP vortex-oscillator model); Zhang–Li with a perpendicular current is
+kept only as a code-to-code check of mumax3's default.
 
 ## Feature backlog (also from the stage-2 magnum.np review)
 
