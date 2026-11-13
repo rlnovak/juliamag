@@ -31,8 +31,12 @@ end
 "Simulated time [s]."
 q_time() = Quantity("t", "s", 1, (w, m, t) -> [Float64(t)])
 
-"Spatially averaged magnetization ⟨mx,my,mz⟩ over the whole sample."
-q_m() = Quantity("m", "", 3, (w, m, t) -> collect(Float64.(average(m))))
+"""
+Spatially averaged magnetization ⟨mx,my,mz⟩ over the magnet — mumax3's table `m`:
+cells weighted by their fill, empty cells excluded ([`average_magnet`](@ref)). For a
+scalar `Material` (no geometry) this is the plain mesh average.
+"""
+q_m() = Quantity("m", "", 3, (w, m, t) -> collect(Float64.(average_magnet(m, w.material))))
 
 "Averaged magnetization over one region."
 function q_m_region(id::Integer)

@@ -17,20 +17,25 @@ end
 """
     vortexcore(m, mesh) -> (x, y, z, polarity)
 
-Locate a vortex core as the cell of maximum |m_z|, with sub-cell interpolation in
-x and y. Returns the core position (m) from the sample centre and the core
-polarity (the signed m_z there). Uses the first z-layer.
+Locate a vortex core as the cell of maximum |m_z| over the whole mesh (every
+z-layer, the outermost row and column excluded), with sub-cell parabolic
+interpolation in x and y within that cell's layer — mumax3's `ext_corepos`
+(engine/ext_corepos.go: same search order z, y, x with a strict `>`, so the first
+maximum wins, and the same interpolation). Returns the core position (m) from the
+sample centre (z is the centre of the layer holding the maximum) and the core
+polarity (the signed m_z there). mumax3 compares in float32, so an exact tie
+between layers can resolve differently.
 """
 function vortexcore(m::AbstractArray{T,4}, mesh::Mesh) where {T}
     Nx, Ny, Nz = mesh.size
     cx, cy, cz = mesh.cellsize
+    maxi = maxj = 0
     k = 1
-    mx = maxi = maxj = 0
     best = T(-1)
-    @inbounds for j in 2:Ny-1, i in 2:Nx-1
-        a = abs(m[3, i, j, k])
+    @inbounds for kk in 1:Nz, j in 2:Ny-1, i in 2:Nx-1
+        a = abs(m[3, i, j, kk])
         if a > best
-            best = a; maxi = i; maxj = j
+            best = a; maxi = i; maxj = j; k = kk
         end
     end
     maxi == 0 && return (T(NaN), T(NaN), T(NaN), zero(T))   # flat state, no core

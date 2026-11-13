@@ -524,6 +524,17 @@ JuliaMag.hasdbulk(p::GpuRegionParams)= p.hasdbulk
 JuliaMag.hasdmi(p::GpuRegionParams)  = p.hasdind || p.hasdbulk
 JuliaMag.damping(p::GpuRegionParams) = p.alpha0
 
+# Fill-weighted magnet average (mumax3 table m), as the CPU average_magnet: weight =
+# fill, zero where the region Msat is 0 (empty cells).
+function JuliaMag.average_magnet(m::CuField{T}, p::GpuRegionParams{T}) where {T}
+    w = p.fill .* (p.Msat_region .!= 0)
+    W = sum(w)
+    iszero(W) && return (T(NaN), T(NaN), T(NaN))
+    return (sum((@view m[1:1,:,:,:]) .* w) / W,
+            sum((@view m[2:2,:,:,:]) .* w) / W,
+            sum((@view m[3:3,:,:,:]) .* w) / W)
+end
+
 # Gather a per-region LUT into a per-cell (1,Nx,Ny,Nz) array via the region map.
 function _percell(lut::Vector{T}, idmap::Array{UInt8,3}) where {T}
     Nx, Ny, Nz = size(idmap)

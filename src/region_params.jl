@@ -98,9 +98,11 @@ half-covered gets `fill ≈ 0.5`; a fully covered cell gets 1. `edgesmooth = 0` 
 1) samples the cell centre only — the plain staircase geometry, identical to
 `defregion!`.
 
-Cells with fill `> 0` are assigned region `id`; cells fully outside keep their
-current region and get fill 0 there (so they are empty unless another region
-fills them). Build a geometry by painting from the background outward.
+Cells with fill `> 0` are assigned region `id` and that fill; cells fully outside
+are left untouched (they keep their current region and fill). To cut a shape out
+of empty space, first make the background empty with `setregion!(rp, 0; Msat = 0)`
+— the outside cells are then empty through Msat = 0. Build a geometry by painting
+from the background outward.
 """
 function setgeometry!(rp::RegionParams{T}, shape::Shape;
                       id::Integer = 1, edgesmooth::Integer = 0) where {T}
@@ -200,7 +202,10 @@ damping(rp::RegionParams) = rp.alpha[1]
 """
     average_region(m, rp, id) -> (mx, my, mz)
 
-Averaged magnetization over the cells assigned to region `id`.
+Averaged magnetization over the cells assigned to region `id`, every cell with
+equal weight — mumax3's `m.Region(id).Average()` (engine/oneregion.go: the sum over
+the region's cells divided by their count). With a smoothed edge (fractional fill)
+this is NOT mumax3's table `m`; use [`average_magnet`](@ref) for that.
 """
 function average_region(m::AbstractArray{T,4}, rp::RegionParams, id::Integer) where {T}
     r = UInt8(id)
@@ -213,5 +218,34 @@ function average_region(m::AbstractArray{T,4}, rp::RegionParams, id::Integer) wh
     n == 0 && return (T(NaN), T(NaN), T(NaN))
     return (sx / n, sy / n, sz / n)
 end
+
+"""
+    average_magnet(m, params) -> (mx, my, mz)
+
+Volume average of the magnetization over the magnet: each cell is weighted by its
+fill fraction and empty cells (Msat = 0 or fill 0) are excluded,
+
+    ⟨m⟩ = Σ fill·m / Σ fill.
+
+This is mumax3's table `m` and `m.Average()` (engine/average.go `sAverageMagnet`:
+`dot(m, geometry) / sum(geometry)`) under the usual mapping, where mumax3's empty
+space comes from `setgeom` (vol 0) and JuliaMag's from an Msat = 0 background. (A
+mumax3 script that empties space with Msat = 0 regions and no `setgeom` averages
+over the whole box instead.) On a staircase geometry (fill 0 or 1) it
+equals [`average_region`](@ref) over the magnet's cells; with edge smoothing the
+partially covered boundary cells count with their covered fraction. For a scalar
+`Material` (no geometry) it is the plain mesh average.
+"""
+function average_magnet(m::AbstractArray{T,4}, rp::RegionParams) where {T}
+    sx = sy = sz = zero(T); w = zero(T)
+    @inbounds for k in axes(m, 4), j in axes(m, 3), i in axes(m, 2)
+        isempty_cell(rp, i, j, k) && continue
+        f = T(fillof(rp, i, j, k))
+        sx += f*m[1,i,j,k]; sy += f*m[2,i,j,k]; sz += f*m[3,i,j,k]; w += f
+    end
+    iszero(w) && return (T(NaN), T(NaN), T(NaN))
+    return (sx / w, sy / w, sz / w)
+end
+average_magnet(m::AbstractArray{T,4}, ::Material) where {T} = average(m)
 
 Base.size(rp::RegionParams) = size(rp.regions)

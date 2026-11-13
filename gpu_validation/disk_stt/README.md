@@ -22,6 +22,22 @@ mumax3: its default adaptive RK45). Tables are logged every 5 ps.
   default) or `free`.
 - `juliamag/fieldcmp.jl` — loads mumax3's relaxed m (OVF) and compares B_demag and
   B_exch cell by cell, plus the energies.
+- **40 ns production series** (EdgeSmooth 4, Slonczewski only, the physical model):
+  `juliamag/disk_d1=128nm_t=16nm_40mA.jl` (the JuliaMag port, full mumax3-style
+  table: ⟨m⟩, maxTorque [T], energies, core) and `mumax3/stt_es4_noZL_40ns.mx3` (the
+  `sims1` reference with only `EdgeSmooth = 4` and `DisableZhangLiTorque = true`
+  added). `run_queue_disk40.sh` runs both on labmac04, each waiting for its GPU to be
+  idle; `examples/plot_disk40_compare.py` compares them.
+
+**Averaging convention.** mumax3's table `m` is the fill-weighted magnet average,
+Σ m·geom / Σ geom (`engine/average.go`, `sAverageMagnet`); `m.Region(r).Average()`
+is the unweighted mean over the region's cells. JuliaMag's `average_magnet` and
+`average_region` reproduce the two. They coincide on a staircase edge (EdgeSmooth 0:
+every code-to-code comparison below), but not with EdgeSmooth > 0, where only
+`average_magnet` is the mumax3 table value. The EdgeSmooth-4 `gyro_lean.jl` tables
+(`stt_es4_dt25.txt`) use `average_region`: their frequencies (used only for the dt
+test and the EdgeSmooth shift) are unaffected, their amplitudes differ slightly from
+a fill-weighted average.
 - `gyrofreq.py` — frequency estimator (Hilbert phase with a one-period moving-average
   detrend, FFT cross-check). mumax3 tables have a non-uniform time axis (adaptive
   step), so every signal is resampled onto a uniform grid first; an FFT that assumes
@@ -54,8 +70,11 @@ my) and 0.045% (mz) rms with Zhang–Li. Time-step convergence: dt = 5×10⁻¹�
 max |Δ⟨m⟩| < 10⁻⁶ (the table print precision). Edge smoothing lowers the frequency by
 ≈1% (mumax3 with Zhang–Li: 930.8 → 922.0 MHz; JuliaMag Slonczewski only: 973.5 → 963.6 MHz).
 
-The vortex-core positions differ by 2–4% because the trackers differ (JuliaMag's
-`vortexcore` vs mumax3's `ext_corepos`); frequencies are therefore taken from ⟨m⟩.
+The vortex-core positions in these tables differ by 2–4% between the codes;
+frequencies are therefore taken from ⟨m⟩. The interpolation of the two trackers is
+identical; the difference was that JuliaMag's `vortexcore` searched only the bottom
+layer, while mumax3's `ext_corepos` takes the max |m_z| over all layers. `vortexcore`
+now does the same (after these tables were produced); the 40 ns series checks it.
 
 ## Physical model
 

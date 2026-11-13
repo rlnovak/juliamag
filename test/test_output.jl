@@ -15,6 +15,17 @@
         x2, y2, z2, pol2 = vortexcore(m2, mesh)
         @test x2 ≈ off atol = 4e-9                  # tracked to the shifted core
         @test pol2 < -0.9                           # -z polarity
+
+        # mumax3 ext_corepos searches every z-layer: a core present only in the
+        # top layer (bottom layer flat, m_z = 0) must still be found there.
+        mesh3 = Mesh((41, 41, 2), (4e-9, 4e-9, 4e-9))
+        m3 = setconfig(mesh3, translate(VortexConfig(mesh3; pol = 1), off, 0, 0))
+        m3[1, :, :, 1] .= 1.0; m3[2, :, :, 1] .= 0.0; m3[3, :, :, 1] .= 0.0
+        x3, y3, z3, pol3 = vortexcore(m3, mesh3)
+        @test x3 ≈ off atol = 4e-9
+        @test abs(y3) < 4e-9
+        @test z3 ≈ 2e-9                             # centre of the top layer
+        @test pol3 > 0.9
     end
 
     @testset "topological charge of a skyrmion is ±1" begin
@@ -108,5 +119,43 @@
 
         # For a scalar Material, region 0 is the whole sample.
         @test all(average_region(m, py, 0) .≈ average(m))
+    end
+
+    @testset "magnet average weights the cell fill (mumax3 table m)" begin
+        # mumax3 engine/average.go sAverageMagnet: <m> = Σ fill·m / Σ fill.
+        mesh = Mesh((16, 16, 2), (2e-9, 2e-9, 2e-9))
+        disk(es) = (rp = RegionParams(mesh, py); setregion!(rp, 0; Msat = 0.0);
+                    setgeometry!(rp, Cylinder(32e-9, 8e-9); id = 1, edgesmooth = es); rp)
+        rp = disk(4)
+        # Cells outside the shape keep region 0 (Msat = 0) with fill 1, so select
+        # the magnet's cells by region, then split them by fill.
+        disk1 = rp.regions.id .== 1
+        full = disk1 .& (rp.fill .== 1)
+        part = disk1 .& (rp.fill .< 1)
+        @test any(part)
+        m = zeromag(mesh)
+        for k in 1:2, j in 1:16, i in 1:16
+            full[i, j, k] && (m[1, i, j, k] = 1.0)     # interior +x
+            part[i, j, k] && (m[2, i, j, k] = 1.0)     # fractional edge +y
+        end
+        W = count(full) + sum(rp.fill[part])
+        a = average_magnet(m, rp)
+        @test a[1] ≈ count(full) / W
+        @test a[2] ≈ sum(rp.fill[part]) / W
+        @test a[3] == 0
+        # The unweighted region average counts edge cells fully — differs here.
+        b = average_region(m, rp, 1)
+        @test b[1] ≈ count(full) / (count(full) + count(part))
+        @test !isapprox(a[1], b[1]; rtol = 1e-3)
+        # q_m reports the magnet average, not the box average (which the empty
+        # corners would dilute).
+        w = World(mesh, rp; demag = false)
+        @test q_m()(w, m, 0.0) ≈ collect(a)
+        # Staircase geometry (fill 0/1): identical to the region average.
+        rp0 = disk(0)
+        m0 = randommag(mesh); clearempty!(m0, rp0)
+        @test all(average_magnet(m0, rp0) .≈ average_region(m0, rp0, 1))
+        # Scalar Material: plain mesh average.
+        @test all(average_magnet(m0, py) .≈ average(m0))
     end
 end
