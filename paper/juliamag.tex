@@ -86,7 +86,11 @@ extension that adds GPU methods additively through dispatch. We validate
 standard problems~2, 4, and~5 --- covering static equilibria and the
 demagnetizing field, dynamic magnetization reversal, and current-driven
 spin-transfer torque --- reproducing the references to within
-$\sim 4\times10^{-3}$ in the spatially averaged magnetization.
+$\sim 4\times10^{-3}$ in the spatially averaged magnetization. On a
+spin-torque vortex oscillator in a Permalloy disc, run on the GPU, the
+demagnetizing and exchange fields agree with \mumax{} cell by cell to
+$10^{-6}$ and the vortex gyration frequency to better than $10^{-4}$, a test
+that exercises the treatment of curved boundaries and the Slonczewski torque.
 \end{abstract}
 
 \keywords{micromagnetics \and Landau--Lifshitz--Gilbert equation \and
@@ -153,7 +157,8 @@ minimization (Sec.~\ref{sec:solvers}), the initial states and I/O
 against the \mumax{} and \oommf{} reference codes on the $\mu$MAG standard
 problems~2, 4, and~5, which together exercise the static equilibria and
 demagnetizing field, the dynamic magnetization reversal, and the spin-transfer
-torque, respectively.
+torque, respectively, and on a spin-torque vortex oscillator in a disc, which
+tests the curved-boundary treatment and the Slonczewski torque on the GPU.
 
 % ==========================================================================
 \section{Theory}
@@ -376,11 +381,14 @@ For an in-plane current through a magnetization texture, the Zhang--Li torque is
   \label{eq:zhangli}
 \end{equation}
 %
-with adiabatic spin velocity $\bm{h}_s = (b\,\bm{J}\cdot\nabla)\vm$,
-$b = \mu_B/[2\,e\,M_s(1+\xi^2)]$ (in \JuliaMag's convention, where $\gamma$ is
-carried inside the torque), $\bm{J}=P\bm{j}$ the polarized current density, and
-$\xi$ the non-adiabaticity. The gradient uses central differences with
-Neumann/periodic boundaries.
+with $\bm{h}_s = (b\,\bm{J}\cdot\nabla)\vm$, $b = \mu_B/[e\,M_s(1+\xi^2)]$,
+$\bm{J}=P\bm{j}$ the polarized current density, and $\xi$ the
+non-adiabaticity; $bPj = P\mu_B j/[e M_s(1+\xi^2)]$ is the spin-drift
+velocity $u$. Because \JuliaMag{} carries $\gamma$ inside the torque, $b$
+contains no $1/\gamma$. \mumax{} writes the same term with the prefactor
+$\mu_B/[2e\gamma M_s(1+\xi^2)]$ multiplying the \emph{undivided} central
+difference $(\vm_{+}-\vm_{-})/\Delta = 2\,\partial\vm$; \JuliaMag{} reproduces this
+arithmetic operation for operation, with Neumann/periodic boundaries.
 
 For a perpendicular current in a spin valve, the Slonczewski torque is
 %
@@ -394,7 +402,12 @@ For a perpendicular current in a spin valve, the Slonczewski torque is
 with $\beta = (\hbar/e)\,j/(t\,M_s)$ (times $\gamma$ in our convention), fixed-layer
 polarization direction $\bm{p}$, free-layer thickness $t$, angular efficiency
 $\epsilon = P\Lambda^2/[(\Lambda^2+1)+(\Lambda^2-1)(\bm{p}\cdot\vm)]$, and the
-secondary (field-like) term $\epsilon'$.
+secondary (field-like) term $\epsilon'$. As in \mumax, the torque is applied
+uniformly across the free layer, whose thickness $t$ defaults to that of the
+mesh. Unlike \mumax, which adds the Zhang--Li term as well whenever a current
+density is set (unless \texttt{DisableZhangLiTorque} is enabled), \JuliaMag{}
+adds each spin-transfer torque only when it is called explicitly; the
+consequence of this difference is quantified in Sec.~\ref{sec:discstt}.
 
 A subtlety worth recording: \mumax{} applies the gyromagnetic ratio $\gamma$ in
 the time integrator (its step is $\gamma\,\Delta t$ times the torque), so its
@@ -480,6 +493,27 @@ multilayer is expressed by painting material into the desired shape. The
 demagnetizing convolution weights each source cell by its own $M_s$, so a
 multilayer with layer-dependent magnetization is handled correctly.
 
+\paragraph{Fractional boundary cells.}
+A curved boundary on a Cartesian mesh is either a staircase or, with edge
+smoothing (\mumax's \texttt{EdgeSmooth}~$=n$), a set of partially filled cells:
+each cell is sampled on an $n^3$ sub-grid and stores its filled fraction
+$f\in[0,1]$ ($n=0$ gives the staircase, $f\in\{0,1\}$). The fill enters the
+terms differently, and we follow \mumax{} exactly. As a source of the
+demagnetizing field, and in every energy sum, a cell carries the moment
+$fM_s\vm$ (\mumax's $\bm{M}=\vm M_s\,\mathrm{vol}$), so that a self-interaction
+energy is $E = -\tfrac12 V\sum_c f_cM_{s,c}\,\vm_c\cdot\vB_c$ ($V$ the cell
+volume; the Zeeman energy has $-1$ in place of $-\tfrac12$). The exchange field,
+however, is divided by the full region $M_s$, not by $fM_s$ --- dividing by
+$fM_s$ would inflate $\vB_{\mathrm{exch}}$ by $1/f$ in a partial cell and
+stiffen the boundary --- and an empty neighbour ($fM_s=0$) is a free surface:
+it contributes nothing (Neumann), rather than acting as a neighbour with
+$\vm=0$. Each of these rules was checked against \mumax{} field by field on the
+disc of Sec.~\ref{sec:discstt}, and two departures from them in earlier versions
+of \JuliaMag{} were found and corrected this way: an exchange stiffening at the
+edge, and a demagnetizing energy whose field ignored the fill. The latter is
+guarded by a regression test: a uniformly magnetized cube in which every cell
+has fill $f$ must have $f^2$ times the demagnetizing energy of the full cube.
+
 % ==========================================================================
 \section{Output, materials, and the simulation interface}
 \label{sec:interface}
@@ -529,7 +563,9 @@ expression compiles to a single GPU kernel on a \texttt{CuArray} and to
 vectorized code on a host \texttt{Array}. The demagnetizing convolution reuses
 the same FFT structure through \texttt{CUDA.CUFFT}. The element type \texttt{T} is
 a type parameter throughout, so a device run in \texttt{Float32} follows from the
-same source that runs in \texttt{Float64} on the CPU. This is the concrete sense
+same source that runs in \texttt{Float64} on the CPU. The disc validation of
+Sec.~\ref{sec:discstt} ran entirely on the GPU, and the device exchange field was
+checked against the CPU one to round-off on that geometry. This is the concrete sense
 in which \JuliaMag{} ``explores'' Julia: multiple dispatch and parametric types
 turn CPU/GPU portability and single/multi-material generality from code-
 duplication problems into dispatch problems, resolved by the compiler.
@@ -653,6 +689,126 @@ component deviation of $9\times10^{-5}$, within \mumax's own $10^{-4}$ tolerance
 Standard problem~5 thus validates the Zhang--Li spin-transfer torque
 independently of the field terms exercised by standard problem~4.
 
+\subsection{Spin-torque vortex oscillator in a disc}
+\label{sec:discstt}
+
+The standard problems use rectangular, fully filled meshes. To test a curved
+boundary and the Slonczewski torque we compare \JuliaMag{} with \mumax{}
+(version~3.11.1) on a spin-torque vortex oscillator: a Permalloy disc of
+diameter $128$~nm and thickness $16$~nm on a $64\times64\times8$ mesh of
+$2$~nm cells ($M_s=8\times10^5$~A/m, $A=1.08\times10^{-11}$~J/m,
+$\alpha=0.01$), relaxed to a vortex of circulation and polarity $+1$. A current
+of $40$~mA flows perpendicular to the disc, $j_z = I/(\pi D^2/4) =
+3.108\times10^{12}$~A/m$^2$, polarized by a fixed layer along
+$\bm{p}=(\cos20^\circ,\sin20^\circ,0)$ with $P=0.37$, $\Lambda=1$, and
+$\epsilon'=0.01$. Both codes run on the GPU, \JuliaMag{} with fourth-order
+Runge--Kutta at a fixed step $\Delta t = 5\times10^{-14}$~s and \mumax{} with
+its adaptive Dormand--Prince scheme; the boundary is the staircase
+(\texttt{EdgeSmooth}~$=0$) of the \mumax{} reference run, and
+$\langle\vm\rangle$ is averaged over the disc cells.
+
+\paragraph{Static fields.}
+To separate the field terms from the dynamics, we load the vortex relaxed by
+\mumax{} into \JuliaMag{} from an OVF file and evaluate the fields on the same
+state. The cell fill agrees cell by cell, and the demagnetizing and exchange
+fields agree with \mumax's to a maximum relative deviation of
+$7.7\times10^{-7}$ and $2.3\times10^{-7}$ --- the single-precision round-off
+of \mumax{} --- both for the staircase and for an edge-smoothed boundary
+(\texttt{EdgeSmooth}~$=4$, with fractional cells). The energies of the relaxed
+vortex agree to all printed digits,
+$E_{\mathrm{demag}} = 7.1783\times10^{-19}$~J and
+$E_{\mathrm{exch}} = 3.6270\times10^{-18}$~J.
+
+\paragraph{Gyration.}
+Under the current the vortex core gyrates around the disc centre. We measure
+the frequency from $\langle m_x\rangle(t)$ and $\langle m_y\rangle(t)$ over
+$1$--$7$~ns: each signal is resampled onto a uniform time grid (the adaptive
+\mumax{} steps are not uniform), its slow drift is removed with a one-period
+moving average, and a line is fitted to the unwrapped phase of its analytic
+(Hilbert) signal; the frequency is the mean of the $x$ and $y$ estimates.
+Table~\ref{tab:discstt} and Fig.~\ref{fig:discstt} compare the two codes for
+three cases: the Slonczewski torque alone, the Slonczewski plus Zhang--Li
+torques, and free gyration without current (the vortex relaxed under a
+$10$~mT in-plane field that is then switched off).
+
+\begin{table}[t]
+\centering
+\caption{Vortex gyration in a $128~\mathrm{nm}\times16~\mathrm{nm}$ Permalloy
+disc: frequency $f$ from $\langle\vm\rangle$ over $1$--$7$~ns ($0.5$--$7$~ns
+for free gyration), and the maximum deviation of $\langle\vm\rangle(t)$ between
+the codes over $0$--$7$~ns.}
+\label{tab:discstt}
+\begin{tabular}{lccc}
+\toprule
+ & $f_{\text{\mumax}}$ (MHz) & $f_{\text{\JuliaMag}}$ (MHz) &
+   $\max|\Delta\langle\vm\rangle|$ \\
+\midrule
+Slonczewski                 & $973.5$ & $973.5$ & $4.3\times10^{-5}$ \\
+Slonczewski + Zhang--Li     & $930.8$ & $930.8$ & $4.5\times10^{-5}$ \\
+free gyration, no current   & $969.8$ & $969.8$ & $1.1\times10^{-4}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/disk_stt_validation.png}
+  \caption{Spin-torque vortex oscillator in a
+  $128~\mathrm{nm}\times16~\mathrm{nm}$ Permalloy disc, \JuliaMag{} (blue)
+  vs.\ \mumax{} (red). (a)~$\langle m_x\rangle(t)$ under the Slonczewski torque.
+  (b)~The last two nanoseconds with the Slonczewski torque alone (solid) and
+  with the Zhang--Li term added (dashed), as \mumax{} does by default: the term
+  lowers the frequency by $4.4\%$, identically in both codes. (c)~Free
+  gyration without current: the in-plane amplitude decays at the same rate
+  $\Gamma=0.0797$~ns$^{-1}$ in both codes.}
+  \label{fig:discstt}
+\end{figure}
+
+In all three cases the frequencies of the two codes differ by less than
+$0.05$~MHz, i.e.\ by less than $10^{-4}$ relative; the spread of
+$\pm1.5$~MHz between the $x$ and $y$ estimates bounds the absolute accuracy
+of the frequency measurement, which is common to both codes. The free-gyration
+amplitude decays at $\Gamma = 0.0797$~ns$^{-1}$ in both. The slightly larger
+deviation of $\langle\vm\rangle$ in free gyration comes from its initial state,
+which each code relaxes with its own energy minimizer
+($\Delta\langle m_x\rangle = 8\times10^{-5}$ at $t=0$). Halving the time step
+(tested on the edge-smoothed disc) leaves the frequency unchanged to
+$0.01$~MHz and $\langle\vm\rangle$ to below $10^{-6}$, the precision of the
+output tables, so the fixed-step integration is converged. The
+vortex-core positions returned by the two codes' core trackers differ by a few
+per cent, because the trackers interpolate differently; we therefore use
+$\langle\vm\rangle$, not the core position, to measure the frequency.
+
+\paragraph{The Zhang--Li term with a perpendicular current.}
+With $\bm{j} = j_z\hat{\bm{z}}$, Eq.~\eqref{eq:zhangli} reduces to
+$\bm{h}_s = u\,\partial_z\vm$ with $u = P\mu_Bj_z/(eM_s) = 83$~m/s: it acts only
+through the variation of $\vm$ across the thickness. Although that variation is
+small, the rate $u/t \approx 5\times10^{9}$~s$^{-1}$ is comparable to the
+gyration angular frequency $2\pi f\approx6\times10^{9}$~s$^{-1}$, and the term
+lowers the frequency by $4.4\%$ (Table~\ref{tab:discstt}). \mumax{} adds it
+whenever a current density is set unless \texttt{DisableZhangLiTorque} is
+enabled, so the reference \mumax{} script, written for a spin-valve
+nanopillar, applied it by default. The standard micromagnetic model of the
+current-perpendicular vortex oscillator retains the Slonczewski torque and the
+Oersted field of the current~\cite{khvalkovskiy2009}, and the Zhang--Li term
+is not part of it. We therefore take the Slonczewski-only run as the physical
+result, and use the Zhang--Li run only to show that both codes implement that
+term identically. The comparison is a test of the solver, not a prediction for
+a device: neither run includes the Oersted field, which would shift the
+frequency of a real oscillator.
+
+This test also illustrates why like-for-like comparisons matter. A first
+comparison of \JuliaMag{} (Slonczewski torque only, \texttt{EdgeSmooth}~$=4$)
+with the \mumax{} reference (Slonczewski plus the default Zhang--Li torque,
+staircase) gave $963.6$~MHz against $930.8$~MHz, a $3.5\%$ gap. The runs
+above account for all of it: the Zhang--Li term lowers the reference frequency
+from $973.5$ to $930.8$~MHz, and edge smoothing lowers the \JuliaMag{}
+frequency from $973.5$ to $963.6$~MHz, and
+$(973.5/930.8)\times(963.6/973.5) = 1.035$. The same comparison, carried out
+field by field, located and removed the two edge-cell inconsistencies described
+in Sec.~\ref{sec:regions}. The \mumax{} inputs, the \JuliaMag{} drivers, and all
+time series are distributed with the code.
+
 % ==========================================================================
 \section{Applications}
 \label{sec:applications}
@@ -737,18 +893,23 @@ agrees with the references to $\sim 4\times10^{-3}$ (dynamic reversal, standard
 problem~4), to $\sim 10^{-3}$ in the remanence and coercive field across a wide
 range of aspect ratios (static equilibria, standard problem~2), and to
 $9\times10^{-5}$ for the current-driven vortex (spin-transfer torque, standard
-problem~5). Beyond the benchmarks, the same interface handles a vortex hysteresis
+problem~5). On a spin-torque vortex oscillator in a disc, run on the GPU, the
+fields agree with \mumax{} cell by cell to $10^{-6}$ and the gyration frequency
+to better than $10^{-4}$, once both codes apply the same torques to the same
+boundary; that comparison also showed that \mumax{} adds the Zhang--Li torque
+to a current-perpendicular simulation by default.
+Beyond the benchmarks, the same interface handles a vortex hysteresis
 loop on a non-rectangular disc and a current-driven skyrmion on a periodic
 infinite wire (Section~\ref{sec:applications}). Three architectural choices carry
 the design: a
 component-first $(3,N_x,N_y,N_z)$ data layout, multiple dispatch on an abstract
 array type, and a single $(x,y,z)$ index convention with the origin at the sample
-centre. Together they keep the source small and, crucially, leave GPU support as
+centre. Together they keep the source small and, crucially, made GPU support
 a purely additive step: because every routine already operates on
-\texttt{AbstractArray\{T,4\}}, device execution requires only that the arrays be
+\texttt{AbstractArray\{T,4\}}, device execution required only that the arrays be
 \texttt{CuArray}s and that a handful of inner kernels acquire GPU methods, with no
-change to the call sites --- the natural next stage of development, following the
-path that took \mumax{} to the GPU~\cite{lopezdiaz2012}.
+change to the call sites (Section~\ref{sec:gpu}), following the path that took
+\mumax{} to the GPU~\cite{lopezdiaz2012}.
 
 Beyond conventional acceleration, a transparent, dispatch-based, and fully
 differentiable-by-construction Julia implementation is a natural substrate for
@@ -770,14 +931,15 @@ built. Positioning \JuliaMag{} within this ecosystem --- rather than as an
 isolated, hand-optimized binary --- is, in our view, its most significant
 long-term advantage.
 
-Immediate development priorities are the completion of GPU support, region-wise
-material parameters and non-rectangular geometries, and finite-temperature
-(stochastic) dynamics in the spirit of Brown~\cite{brown1963}. The code is open
-source and available at \url{https://github.com/rlnovak/juliamag}.
+Immediate development priorities are multi-backend GPU execution through
+\texttt{KernelAbstractions.jl}, adaptive time stepping with the spin-transfer
+torques, and nudged-elastic-band and eigenmode solvers, alongside the
+documentation of finite-temperature (stochastic) dynamics in the spirit of
+Brown~\cite{brown1963}. The code is open source and available at
+\url{https://github.com/rlnovak/juliamag}.
 
-\begin{acknowledgments}
+\section*{Acknowledgments}
 \emph{[To be added by the author.]}
-\end{acknowledgments}
 
 \begin{thebibliography}{99}
 
@@ -835,6 +997,11 @@ source and available at \url{https://github.com/rlnovak/juliamag}.
   displacement, and annihilation in submicron ferromagnetic dot arrays,''
   Phys.\ Rev.\ B \textbf{65}, 024414 (2001).
   \url{https://doi.org/10.1103/PhysRevB.65.024414}.
+\bibitem{khvalkovskiy2009} A.\ V.\ Khvalkovskiy, J.\ Grollier, A.\ Dussaux,
+  K.\ A.\ Zvezdin, and V.\ Cros, ``Vortex oscillations induced by
+  spin-polarized current in a magnetic nanopillar: Analytical versus
+  micromagnetic calculations,'' Phys.\ Rev.\ B \textbf{80}, 140401(R) (2009).
+  \url{https://doi.org/10.1103/PhysRevB.80.140401}.
 
 % --- Machine learning in micromagnetics (perspectives) ---
 \bibitem{schaffer2023} S.\ Schaffer, T.\ Schrefl, H.\ Oezelt, A.\ Kovacs,
