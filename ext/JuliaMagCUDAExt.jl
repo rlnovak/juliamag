@@ -465,20 +465,21 @@ end
 function vortexcore(m::CuField{T}, mesh::Mesh) where {T}
     Nx, Ny, Nz = mesh.size
     cx, cy, cz = mesh.cellsize
-    # Argmax of |mz| over the interior of the first layer, found on the device.
-    absmz = abs.(@view m[3, 2:Nx-1, 2:Ny-1, 1])
+    # Argmax of |mz| over the interior of every layer, found on the device (as the
+    # CPU method and mumax3 ext_corepos; column-major order = mumax3's x, y, z).
+    absmz = abs.(@view m[3, 2:Nx-1, 2:Ny-1, :])
     isempty(absmz) && return (T(NaN), T(NaN), T(NaN), zero(T))
     _, idx = findmax(absmz)                          # index into the interior block
-    maxi = idx[1] + 1; maxj = idx[2] + 1             # back to full-array indices
+    maxi = idx[1] + 1; maxj = idx[2] + 1; k = idx[3] # back to full-array indices
     # Pull the 3×3 neighbourhood to the host for the sub-cell interpolation.
-    nb = Array(@view m[3, maxi-1:maxi+1, maxj-1:maxj+1, 1])
+    nb = Array(@view m[3, maxi-1:maxi+1, maxj-1:maxj+1, k])
     a(i,j) = abs(nb[i,j])
     dx = _interp_max(a(2,2), a(1,2), a(3,2))
     dy = _interp_max(a(2,2), a(2,1), a(2,3))
     pol = nb[2,2]
     x = (maxi + dx - (Nx+1)/2) * cx
     y = (maxj + dy - (Ny+1)/2) * cy
-    z = (1 - (Nz+1)/2) * cz
+    z = (k - (Nz+1)/2) * cz
     return (T(x), T(y), T(z), T(pol))
 end
 

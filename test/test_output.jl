@@ -26,6 +26,21 @@
         @test abs(y3) < 4e-9
         @test z3 ≈ 2e-9                             # centre of the top layer
         @test pol3 > 0.9
+
+        # Sub-cell interpolation: an |m_z| profile that is exactly parabolic
+        # around an off-centre point must be recovered exactly (mumax3
+        # interpolate_maxpos). Regression for the `2f0` (= 2.0f0) typo in
+        # _interp_max, which a core centred on a cell (f1 = f2) cannot detect.
+        meshp = Mesh((21, 21, 1), (2e-9, 2e-9, 2e-9))
+        for (x0, y0) in ((0.3, -0.2), (0.5, 0.0), (-0.45, 0.4))   # cells from cell (11,11)
+            mp = zeromag(meshp)
+            for j in 1:21, i in 1:21
+                mp[3, i, j, 1] = 0.9 - 0.01 * ((i - 11 - x0)^2 + (j - 11 - y0)^2)
+            end
+            xc, yc, _, polc = vortexcore(mp, meshp)
+            @test xc ≈ x0 * 2e-9 atol = 1e-18
+            @test yc ≈ y0 * 2e-9 atol = 1e-18
+        end
     end
 
     @testset "topological charge of a skyrmion is ±1" begin

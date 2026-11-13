@@ -193,10 +193,15 @@ The integrator is converged (dt = 5e-14 vs 2.5e-14: 963.56 MHz both, max |Δ⟨m
 Earlier quoted mumax3 values of 913–925 MHz were a measurement artefact: an FFT that
 assumed a uniform time step on mumax3's adaptive-step table (−1.6% bias). The two
 vortex-core trackers differed by 2–4% (JuliaMag's `vortexcore` vs mumax3 `ext_corepos`),
-so frequencies are measured from ⟨m⟩. Cause found (2026-11-13): the interpolation is
-identical, but `vortexcore` searched only the bottom layer k = 1 while `ext_corepos`
-takes the max |m_z| over every layer; `vortexcore` now searches all layers like
-mumax3 (regression test in `test/test_output.jl`). The 40 ns EdgeSmooth-4 series
+so frequencies are measured from ⟨m⟩. Causes found (2026-11-13), both bugs in
+`vortexcore`: (1) the sub-cell interpolation denominator was written `f1 - 2f0 + f2`,
+and in Julia `2f0` is the Float32 literal 2.0f0, so it computed f1 − 2 + f2 and shrank
+every sub-cell offset by ~10× (a core centred on a cell, as in the old tests, hides
+it); (2) it searched only the bottom layer k = 1, while `ext_corepos` takes the max
+|m_z| over every layer. Both fixed on CPU and GPU, with regression tests (exact
+recovery of a parabolic peak; core only in the top layer) that fail on the old code.
+On mumax3's own relaxed m the old tracker gave (−0.354, −0.354) nm vs mumax3's (0, 0).
+Any earlier core-position figure is biased by up to half a cell. The 40 ns EdgeSmooth-4 series
 checks the core positions with the aligned tracker. Also added `average_magnet`
 (fill-weighted ⟨m⟩, mumax3's table `m`; `q_m` now uses it instead of the box
 average, and it has a GPU method) — it differs from `average_region` only with

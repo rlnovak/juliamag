@@ -9,7 +9,10 @@
 # value f0 at the sample and f1, f2 at the neighbours one cell to each side.
 @inline function _interp_max(f0::T, f1::T, f2::T) where {T}
     # Fit a parabola through (-1,f1),(0,f0),(1,f2); vertex offset in [-0.5,0.5].
-    denom = f1 - 2f0 + f2
+    # Same as mumax3 interpolate_maxpos: -b/(2a) = ½(f1-f2)/(f1-2f0+f2).
+    # NB: write 2 * f0 — in Julia `2f0` is the Float32 literal 2.0f0, not 2·f0
+    # (that typo made the denominator f1 - 2 + f2 and biased every core position).
+    denom = f1 - 2 * f0 + f2
     denom == 0 && return zero(T)
     return T(0.5) * (f1 - f2) / denom
 end

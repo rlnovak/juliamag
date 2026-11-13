@@ -71,10 +71,11 @@ max |Δ⟨m⟩| < 10⁻⁶ (the table print precision). Edge smoothing lowers th
 ≈1% (mumax3 with Zhang–Li: 930.8 → 922.0 MHz; JuliaMag Slonczewski only: 973.5 → 963.6 MHz).
 
 The vortex-core positions in these tables differ by 2–4% between the codes;
-frequencies are therefore taken from ⟨m⟩. The interpolation of the two trackers is
-identical; the difference was that JuliaMag's `vortexcore` searched only the bottom
-layer, while mumax3's `ext_corepos` takes the max |m_z| over all layers. `vortexcore`
-now does the same (after these tables were produced); the 40 ns series checks it.
+frequencies are therefore taken from ⟨m⟩. The cause was two bugs in JuliaMag's
+`vortexcore`, both fixed after these tables were produced: its sub-cell interpolation
+read `f1 - 2f0 + f2`, where Julia parses `2f0` as the Float32 literal 2.0 (offsets
+shrunk ~10×), and it searched only the bottom layer, while mumax3's `ext_corepos`
+takes the max |m_z| over all layers. The 40 ns series uses the fixed tracker.
 
 ## Physical model
 
