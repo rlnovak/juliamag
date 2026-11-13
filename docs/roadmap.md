@@ -189,7 +189,7 @@ estimates is the absolute uncertainty of the measurement, common to both. Reprod
 with `gpu_validation/disk_stt/frequencies.py`; scripts and tables in
 `gpu_validation/disk_stt/`.)
 
-The integrator is converged (dt = 5e-14 vs 2.5e-14: 963.6 MHz both, ⟨m⟩ within 2.4e-5).
+The integrator is converged (dt = 5e-14 vs 2.5e-14: 963.56 MHz both, max |Δ⟨m⟩| < 1e-6, the table print precision).
 Earlier quoted mumax3 values of 913–925 MHz were a measurement artefact: an FFT that
 assumed a uniform time step on mumax3's adaptive-step table (−1.6% bias). The two
 vortex-core trackers differ by 2–4% (JuliaMag's `vortexcore` vs mumax3 `ext_corepos`),

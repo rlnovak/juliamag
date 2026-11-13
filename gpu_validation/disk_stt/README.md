@@ -51,7 +51,8 @@ The codes differ by < 0.05 MHz; the ±1.5 MHz spread between the x and y estimat
 the absolute uncertainty of the estimator, common to both. ⟨m⟩ agrees to 0.007% (mx,
 my) and 0.045% (mz) rms with Zhang–Li. Time-step convergence: dt = 5×10⁻¹⁴ and
 2.5×10⁻¹⁴ s give the same frequency (963.6 MHz, EdgeSmooth 4, Slonczewski only) and
-⟨m⟩ within 2.4×10⁻⁵. Edge smoothing lowers the frequency by ≈1% in both codes.
+max |Δ⟨m⟩| < 10⁻⁶ (the table print precision). Edge smoothing lowers the frequency by
+≈1% (mumax3 with Zhang–Li: 930.8 → 922.0 MHz; JuliaMag Slonczewski only: 973.5 → 963.6 MHz).
 
 The vortex-core positions differ by 2–4% because the trackers differ (JuliaMag's
 `vortexcore` vs mumax3's `ext_corepos`); frequencies are therefore taken from ⟨m⟩.
