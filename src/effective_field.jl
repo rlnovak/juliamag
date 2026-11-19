@@ -33,7 +33,9 @@ function World(mesh::Mesh, mat::AbstractParams; demag::Bool = true,
     # μ0·Msat scaling uses a representative Msat here. For a scalar Material that
     # is exact; region-dependent Msat in the demag is handled in stage 5.
     Msref = _demag_msat(mat)
-    plan = demag ? DemagPlan(demagkernel(T, mesh; accuracy = accuracy), mesh, Msref) : nothing
+    # The kernel and its transform are computed in Float64 and only the transformed
+    # kernel is rounded to T (as mumax3 does for its float32 kernel).
+    plan = demag ? DemagPlan(demagkernel(Float64, mesh; accuracy = accuracy), mesh, Msref, T) : nothing
     Bbuf = zeros(T, 3, mesh.size...)
     World{T,typeof(plan),typeof(mat),typeof(Bbuf)}(mesh, mat, plan, NTuple{3,T}(Bext), Bbuf)
 end

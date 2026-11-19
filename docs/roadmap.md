@@ -61,6 +61,11 @@ Ordered roughly by value-to-effort:
    remove the per-term launch overhead we saw limiting the P1000 speedup. Our
    extension structure already matches theirs (weakdeps + per-backend Ext), so
    the migration is contained.
+   *Status (2026-11-19):* the CUDA methods are now explicit per-term kernels
+   (`ext/cuda_kernels.jl`, one thread per cell, mumax3-style), so the launch
+   overhead is gone (14 launches, 0 allocations per RHS; Float32 RHS = mumax3's
+   1.11 ms on the P1000) and the KernelAbstractions port is a mechanical
+   translation of those kernels.
 2. **NEB / GNEB** for energy barriers and switching paths — a frequently needed
    capability (thermal stability of bits/skyrmions) that we flagged as future
    work in the stage-2 list. `src/neb/` and `src/transition/` are the port

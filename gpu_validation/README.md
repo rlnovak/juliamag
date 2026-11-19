@@ -148,8 +148,67 @@ Core changes were type generalizations only — the `World` scratch buffer and t
 minimizer inner loops factored into helpers the extension overrides with
 broadcast GPU versions. The CPU logic is unchanged; **all 2299 CPU tests pass**.
 
+## Result 8 — mumax3-style kernels, Float32, performance (PASS)
+
+The GPU methods were rewritten after profiling showed the broadcast version to be
+launch- and allocation-bound (182 kernel launches and 74 device allocations per
+right-hand side). Now, as in mumax3:
+
+- each field and torque term is one CUDA kernel (`ext/cuda_kernels.jl`), one thread
+  per cell, repeating the arithmetic of the CPU loop; parameters are scalars or
+  per-cell arrays (regions) through the same kernel;
+- demag: the Fourier kernel is real (exact reflection symmetry, odd components
+  zeroed on their symmetry planes) and stored as such, transformed in Float64 with
+  1/N folded in; the three components go through one batched rFFT/brFFT; padding
+  written once; the C2R transform skips CUDA.jl's input copy;
+- Float32 runs via `Material{Float32}` / `material(...; precision = Float32)`;
+  reductions accumulate in Float64.
+
+One RHS now launches 14 kernels and allocates nothing.
+
+**Correctness** — `test_gpu.jl` (446/446, `test_gpu.txt`), every GPU method vs
+CPU on open/periodic meshes, scalar/region materials, both DMI forms:
+
+| | Float64 | Float32 |
+|---|---|---|
+| every field / torque / helper (203 checks each) | ≤ 2.8e-15 | ≤ 3.3e-7 |
+| fixed-step RK4, 200 steps | ≤ 1.4e-15 | ≤ 8.1e-7 |
+| adaptive Tsit5, 10 ps | ≤ 2.5e-10 | ≤ 1.4e-6 |
+| 20 BB minimizer steps | ≤ 1.2e-12 | ≤ 2.6 × own 1-ulp spread |
+
+The BB check uses tol = max(floor, 10× the CPU's own 1-ulp-perturbation spread):
+far from equilibrium the BB sequence amplifies rounding ~1e4× in 20 steps (Float32
+"mat open 3D Dind": CPU-vs-CPU spread 5.7e-4, GPU 6.5e-4), so a fixed tolerance is
+ill-posed there.
+
+**Physics** — 40 ns disc (`disk_stt/`, Slonczewski, EdgeSmooth 4):
+
+- Float64, kernels vs broadcast version, 1 ns: identical to every printed digit
+  (⟨m⟩, energies, maxTorque, core position; `tables/jm64_es4_1ns_rewrite.txt`).
+- Float32 vs Float64 over 40 ns: max |Δ⟨m⟩| 3.6e-6, total energy 2.9e-6 relative,
+  core 0.065 nm (`tables/jm32_es4_40ns.txt`).
+- Float32 vs mumax3: orbit-phase frequency 962.318 MHz in both; deviations equal to
+  those of the Float64 run within 5e-7.
+
+**Performance** — Quadro P1000, 64×64×8 cells (`disk_stt/bench_rhs_kernels.txt`,
+`disk_stt/perf_campaign_labmac03.txt`, `disk_stt/mumax3_bench_labmac03.txt`):
+
+| | ms / RHS | 40 ns wall (s) |
+|---|---|---|
+| broadcast version, Float64 | 7.5 | 25 902 |
+| broadcast version, Float32 | 5.4 | — |
+| kernels, Float64 | 3.54 (FFTs 2.8: FP64 at 1/32 rate) | 11 600 (290 s/ns) |
+| kernels, Float32 | **1.11** | **4 008** |
+| mumax3 (Float32) | 1.11 | 2 025 |
+
+Per evaluation JuliaMag Float32 = mumax3. The remaining 2× in wall time is the
+number of evaluations: fixed RK4 at 50 fs (3.2e6) vs mumax3's adaptive RK45
+(1.8e6) — adaptive stepping with STT is the next item. Old timings on labmac04,
+new on labmac03 (same GPU model): mumax3 takes 2017 s and 2025 s on the two.
+
 ## Files
 
+- `test_gpu.txt` — Result 8: every GPU method vs CPU, Float64 and Float32 (`test_gpu.jl`).
 - `gpu_check.txt` — field/torque kernels, CPU vs GPU agreement.
 - `demag_gpu.txt` — demag + full effective field: accuracy and speedup.
 - `solvers_gpu.txt` — relax + run correctness, std4 end-to-end, relax speedup.

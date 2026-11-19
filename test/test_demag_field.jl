@@ -144,4 +144,46 @@ end
         @test eltype(B) === Float32
         @test all(isfinite, B)
     end
+
+    @testset "Fourier kernel is real (odd, 2D and periodic meshes)" begin
+        # fourierkernel throws if any transformed component has an imaginary part;
+        # the plan stores only the real part.
+        # includes single-cell axes (wires, cross-sections, chains), where the
+        # odd off-diagonal components vanish identically, and pbc ≥ 2 image sums
+        for (sz, pbc) in (((7, 5, 3), (0, 0, 0)), ((8, 8, 1), (0, 0, 0)),
+                          ((16, 8, 2), (1, 0, 0)), ((5, 6, 4), (0, 1, 1)),
+                          ((16, 1, 4), (0, 0, 0)), ((1, 16, 4), (0, 0, 0)),
+                          ((32, 1, 1), (0, 0, 0)), ((16, 1, 4), (1, 0, 0)),
+                          ((8, 6, 2), (2, 0, 0)), ((6, 6, 3), (0, 0, 3)), ((1, 1, 1), (0, 0, 0)))
+            mesh = Mesh(sz, (3e-9, 4e-9, 5e-9); pbc = pbc)
+            K = JuliaMag.fourierkernel(demagkernel(mesh))
+            @test all(k -> all(isfinite, k), K)
+            @test size(K[1]) == (padsize(mesh)[1] ÷ 2 + 1, padsize(mesh)[2], padsize(mesh)[3])
+        end
+    end
+
+    @testset "FFT path = direct convolution to round-off (open and periodic)" begin
+        for (sz, pbc) in (((5, 4, 3), (0, 0, 0)), ((6, 4, 2), (1, 0, 0)))
+            mesh = Mesh(sz, (5e-9, 4e-9, 3e-9); pbc = pbc)
+            kernel = demagkernel(mesh)
+            plan = DemagPlan(kernel, mesh, mat)
+            m = randommag!(zeromag(mesh))
+            B = similar(m); demagfield!(B, m, plan)
+            Bref = direct_demag(kernel, m, mesh, mat)
+            @test maximum(abs.(B .- Bref)) < 1e-12 * maximum(abs.(Bref))
+            # Reusing the plan (padding never rewritten) gives the identical field.
+            B2 = similar(m); demagfield!(B2, m, plan)
+            @test B2 == B
+        end
+    end
+
+    @testset "Float32 plan agrees with Float64 (kernel transformed in Float64)" begin
+        mesh = Mesh((12, 10, 3), (4e-9, 4e-9, 4e-9))
+        m = randommag!(zeromag(mesh))
+        B64 = similar(m); demagfield!(B64, m, DemagPlan(demagkernel(mesh), mesh, mat))
+        p32 = DemagPlan(demagkernel(Float64, mesh), mesh, Msat, Float32)
+        B32 = zeromag(Float32, mesh); demagfield!(B32, Float32.(m), p32)
+        @test eltype(p32.Kxx) === Float32
+        @test maximum(abs.(B32 .- B64)) < 1e-5 * maximum(abs.(B64))
+    end
 end

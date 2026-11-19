@@ -1,0 +1,31 @@
+// Timing: mumax3 with the JuliaMag algorithm (fixed-step RK4, 50 fs) for 0.5 ns from the
+// 17 ns snapshot, same table columns every 5 ps as the production run.
+SetGridsize(64, 64, 8)
+SetCellsize(2e-9, 2e-9, 2e-9)
+EdgeSmooth = 4
+setgeom(cylinder(128e-9, 16e-9))
+
+alpha = 0.01
+Aex   = 10.8e-12
+Msat  = 800e3
+m.LoadFile("stt_es4_noZL_snap.out/m000001.ovf")
+
+DisableZhangLiTorque = true
+lambda       = 1.0
+Pol          = 0.37
+epsilonprime = 0.01
+fixedlayer   = vector(cos(20*pi/180), sin(20*pi/180), 0)
+J = vector(0, 0, 0.040/(128e-9*128e-9*pi/4))
+SetSolver(4)
+FixDt = 5e-14
+TableAdd(maxTorque)
+TableAdd(E_demag)
+TableAdd(E_exch)
+TableAdd(E_Zeeman)
+TableAdd(E_total)
+TableAdd(J)
+TableAdd(ext_corepos)
+TableAdd(NEval)
+tableautosave(5e-12)
+run(0.5e-9)
+print("steps", step, "NEval", NEval)

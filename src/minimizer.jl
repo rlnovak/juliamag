@@ -100,14 +100,18 @@ function _cayley_step!(m::AbstractArray{T,4}, τ, dt) where {T}
 end
 
 # Barzilai-Borwein inner products (ss, sy, yy) with s = m - mlast, y = τlast - τ.
+# Computed and accumulated in (at least) Float64: in a Float32 run the BB step
+# length ss/sy would otherwise carry ~1e-6 relative summation error, which the
+# step sequence amplifies. Returned in T.
 function _bb_sums(m::AbstractArray{T,4}, mlast, τlast, τ) where {T}
-    ss = zero(T); sy = zero(T); yy = zero(T)
+    S = promote_type(T, Float64)
+    ss = zero(S); sy = zero(S); yy = zero(S)
     @inbounds for I in eachindex(m)
-        s = m[I] - mlast[I]
-        y = τlast[I] - τ[I]
+        s = S(m[I]) - S(mlast[I])
+        y = S(τlast[I]) - S(τ[I])
         ss += s*s; sy += s*y; yy += y*y
     end
-    return (ss, sy, yy)
+    return (T(ss), T(sy), T(yy))
 end
 
 """

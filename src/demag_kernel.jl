@@ -200,10 +200,20 @@ function reconstruct_symmetry!(K, idx, psize, pbc)
         end
     end
 
-    # In 2D (single z-layer) the xz and yz components vanish identically.
-    if pz == 1
-        fill!(K[idx.xz], 0.0)
-        fill!(K[idx.yz], 0.0)
+    # A component odd under reflection along an axis is exactly zero at offset 0
+    # along that axis and, for an even size, at the half-period offset p/2 (its own
+    # mirror image). The integration leaves rounding noise there (~1e-19); set the
+    # exact zero, so the kernel is exactly symmetric and its Fourier transform real.
+    # With a single cell along an axis this zeroes the whole component (e.g. 2D:
+    # xz and yz vanish identically).
+    for (c, oddaxes) in ((idx.xy, (1, 2)), (idx.xz, (1, 3)), (idx.yz, (2, 3)))
+        for a in oddaxes
+            p = psize[a]
+            for o in (p % 2 == 0 && p > 1 ? (0, p ÷ 2) : (0,))
+                sl = ntuple(d -> d == a ? (o+1:o+1) : Colon(), 3)
+                fill!(view(K[c], sl...), 0.0)
+            end
+        end
     end
     return K
 end
@@ -234,9 +244,6 @@ function delta(d::Int)
     return Float64(d)
 end
 
-# Wrap an index into [0, max).
-function wrap(number::Int, max::Int)
-    number < 0 && (number += max)
-    number >= max && (number -= max)
-    return number
-end
+# Wrap an index into [0, max). With pbc ≥ 2 the image offsets span several periods,
+# so a single correction is not enough (mumax3 loops; mod is the same).
+wrap(number::Int, max::Int) = mod(number, max)

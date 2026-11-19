@@ -1,0 +1,24 @@
+2026-11-17 16:43:42 waiting for an idle GPU (10 checks): /home/rlnovak/juliamag/gpu_validation/disk_stt/run_perf_campaign.sh
+2026-11-19 03:41:18 GPU 0 (GPU-2f7001cf-b734-863e-fc13-f0bbd34f1f25) idle, starting on labmac03: /home/rlnovak/juliamag/gpu_validation/disk_stt/run_perf_campaign.sh
+   host labmac03, GPU GPU-2f7001cf-b734-863e-fc13-f0bbd34f1f25
+== 2026-11-19 03:41:18 1. test_gpu
+446/446 checks passed
+== 2026-11-19 03:43:49 2. bench_rhs
+=== Float64  (1 Julia threads) ===
+  RHS total            3.538 ms
+  RK4 step            14.163 ms
+  predicted wall per ns: 290 s  (RK4 283 s + table rows 7 s)
+  one RHS: 0 GPU allocations, 0.0 MiB
+=== Float32  (1 Julia threads) ===
+  RHS total            1.109 ms
+  RK4 step             4.777 ms
+  predicted wall per ns: 101 s  (RK4 96 s + table rows 6 s)
+  one RHS: 0 GPU allocations, 0.0 MiB
+== 2026-11-19 03:44:46 3. Float64 1 ns
+  t = 1.0 ns  ⟨m⟩ = (-0.0053, 0.0074, 0.0212)  core = (-0.1, -1.5) nm  wall = 290 s
+Done. wall = 290 s. Wrote table → jm64_1ns.txt
+== 2026-11-19 03:50:17 4. Float32 40 ns
+  t = 40.0 ns  ⟨m⟩ = (-0.0104, 0.0774, 0.0147)  core = (-6.6, -1.1) nm  wall = 4008 s
+Done. wall = 4008 s. Wrote table → jm32_40ns.txt
+== 2026-11-19 04:57:44 campaign done
+2026-11-19 04:57:44 done rc=0

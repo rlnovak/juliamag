@@ -54,6 +54,19 @@ end
 Base.eltype(::RegionParams{T}) where {T} = T
 
 """
+    RegionParams{T}(rp::RegionParams)
+
+The same region map and per-region tables in floating-point precision `T` (e.g.
+`RegionParams{Float32}(rp)` for a single-precision run). The region map is shared;
+the parameter tables and the cell fill are converted.
+"""
+RegionParams{T}(rp::RegionParams) where {T<:AbstractFloat} =
+    RegionParams{T}(rp.regions, T.(rp.Msat), T.(rp.Aex), T.(rp.alpha), T.(rp.Ku),
+                    [NTuple{3,T}(u) for u in rp.anisU], T.(rp.Dind), T.(rp.Dbulk),
+                    T.(rp.pol), T.(rp.xi), T.(rp.lambda), T.(rp.epsilonPrime),
+                    T.(rp.fill))
+
+"""
     setregion!(rp, id; Msat, Aex, alpha, Ku, anisU, Dind, Dbulk, pol, xi, lambda, epsilonPrime)
 
 Set one or more material parameters for region `id`. Only the keywords given are
@@ -209,14 +222,15 @@ this is NOT mumax3's table `m`; use [`average_magnet`](@ref) for that.
 """
 function average_region(m::AbstractArray{T,4}, rp::RegionParams, id::Integer) where {T}
     r = UInt8(id)
-    sx = sy = sz = zero(T); n = 0
+    S = promote_type(T, Float64)          # Float64 accumulator also for Float32 m
+    sx = sy = sz = zero(S); n = 0
     @inbounds for k in axes(m, 4), j in axes(m, 3), i in axes(m, 2)
         if rp.regions.id[i, j, k] == r
             sx += m[1,i,j,k]; sy += m[2,i,j,k]; sz += m[3,i,j,k]; n += 1
         end
     end
     n == 0 && return (T(NaN), T(NaN), T(NaN))
-    return (sx / n, sy / n, sz / n)
+    return (T(sx / n), T(sy / n), T(sz / n))
 end
 
 """
@@ -237,14 +251,15 @@ partially covered boundary cells count with their covered fraction. For a scalar
 `Material` (no geometry) it is the plain mesh average.
 """
 function average_magnet(m::AbstractArray{T,4}, rp::RegionParams) where {T}
-    sx = sy = sz = zero(T); w = zero(T)
+    S = promote_type(T, Float64)          # Float64 accumulator also for Float32 m
+    sx = sy = sz = zero(S); w = zero(S)
     @inbounds for k in axes(m, 4), j in axes(m, 3), i in axes(m, 2)
         isempty_cell(rp, i, j, k) && continue
-        f = T(fillof(rp, i, j, k))
+        f = S(fillof(rp, i, j, k))
         sx += f*m[1,i,j,k]; sy += f*m[2,i,j,k]; sz += f*m[3,i,j,k]; w += f
     end
     iszero(w) && return (T(NaN), T(NaN), T(NaN))
-    return (sx / w, sy / w, sz / w)
+    return (T(sx / w), T(sy / w), T(sz / w))
 end
 average_magnet(m::AbstractArray{T,4}, ::Material) where {T} = average(m)
 

@@ -7,15 +7,15 @@
 # around: the field and torque routines take AbstractArray{T,4}, so moving the
 # magnetization to the GPU switches to these methods with no change to user code.
 #
-# STATUS: written without GPU hardware available; intended to be verified on a
-# CUDA device (e.g. Google Colab). The scalar-Material path (uniform parameters)
-# is covered here; region-wise parameters on the GPU require uploading the region
-# tables and are a follow-up.
-#
-# Strategy: the per-cell field stencils are expressed with array programming
-# (shifted views + broadcast) rather than hand-written scalar loops, so the same
-# expression runs as a fused GPU kernel on a CuArray and as vectorized CPU code
-# on an Array. CUDA.CUFFT backs the demag convolution.
+# Strategy (mumax3's): every per-cell term — exchange, anisotropy, DMI, Zeeman, the
+# LLG and spin-transfer torques, normalization, the minimizer step — is one
+# hand-written CUDA kernel, one thread per cell, no temporaries (cuda_kernels.jl).
+# The demag convolution uses batched cuFFT transforms of the three components, the
+# real symmetric Fourier kernel with the inverse normalization folded in, and one
+# kernel each for the padding, the Fourier-space product and the copy-out. Every
+# kernel mirrors the arithmetic of the CPU loop in src/, so CPU and GPU agree to
+# rounding in Float64 and Float32 (gpu_validation/test_gpu.jl). The feature
+# trackers, which run once per output row, keep array-broadcast implementations.
 
 module JuliaMagCUDAExt
 
@@ -33,58 +33,34 @@ import JuliaMag: exchange!, anisotropy!, zeeman!, torque!, normalize!, average,
 
 const CuField{T} = CuArray{T,4}
 
+include("cuda_kernels.jl")
+
 # --- Helpers ---------------------------------------------------------------
 
 # Move a state or field to / from the GPU.
 JuliaMag.togpu(m::Array{T,4}) where {T} = CuArray(m)
 JuliaMag.tocpu(m::CuArray{T,4}) where {T} = Array(m)
 
-# Circularly / Neumann-shifted copy of component c along an axis. For GPU we
-# build neighbour arrays with CUDA-friendly indexing via circshift (periodic) or
-# a clamped gather. Here we use circshift for periodic axes and a replicate-edge
-# shift for Neumann, both of which are GPU array ops.
-function _shift(m::CuArray{T,4}, c::Int, axis::Int, dir::Int, periodic::Bool) where {T}
-    comp = @view m[c:c, :, :, :]                      # keep 4D shape
-    if periodic
-        return circshift(comp, ntuple(d -> d == axis+1 ? dir : 0, 4))
-    else
-        # Neumann: shift and replicate the edge (so nbr - centre = 0 at the wall).
-        s = circshift(comp, ntuple(d -> d == axis+1 ? dir : 0, 4))
-        return s   # edge handling below via masking is skipped for brevity
-    end
-end
+# Mesh sizes and periodicity in the form the kernels take.
+_dims(mesh::Mesh) = Int32.(mesh.size)
+_pbc(mesh::Mesh) = (isperiodic(mesh, 1), isperiodic(mesh, 2), isperiodic(mesh, 3))
+_ncells(m::CuField) = Int32(size(m, 2) * size(m, 3) * size(m, 4))
 
 # --- Exchange (uniform Material) -------------------------------------------
-
+# src/exchange.jl with scalar parameters: no cell is empty, the stiffness and the
+# 2/Msat prefactor are uniform.
 function exchange!(B::CuField{T}, m::CuField{T}, mesh::Mesh, mat::Material;
                    add::Bool = false) where {T}
-    Nx, Ny, Nz = mesh.size
+    Nx, Ny, Nz = _dims(mesh); px, py, pz = _pbc(mesh)
     cx, cy, cz = mesh.cellsize
-    px, py, pz = isperiodic(mesh,1), isperiodic(mesh,2), isperiodic(mesh,3)
-    pref = T(2 * mat.Aex / mat.Msat)
-    wx = pref / T(cx^2); wy = pref / T(cy^2); wz = pref / T(cz^2)
-
-    # ∇²m via shifted arrays; broadcast fuses into one GPU kernel per component.
-    lap = similar(m)
-    @views for c in 1:3
-        mc = m[c:c, :, :, :]
-        l = wx .* (_edgeshift(mc, 1, +1, px) .+ _edgeshift(mc, 1, -1, px) .- 2 .* mc) .+
-            wy .* (_edgeshift(mc, 2, +1, py) .+ _edgeshift(mc, 2, -1, py) .- 2 .* mc)
-        if Nz > 1
-            l = l .+ wz .* (_edgeshift(mc, 3, +1, pz) .+ _edgeshift(mc, 3, -1, pz) .- 2 .* mc)
-        end
-        lap[c:c, :, :, :] .= l
-    end
-    if add
-        B .+= lap
-    else
-        B .= lap
-    end
+    Ms = T(mat.Msat)
+    _launch(_k_exchange!, Nx * Ny * Nz, B, m, T(mat.Aex), Ms, Ms, Nx, Ny, Nz,
+            T(1 / cx^2), T(1 / cy^2), T(1 / cz^2), px, py, pz, add)
     return B
 end
 
 # Neighbour array along a spatial axis with Neumann (edge-replicate) or periodic
-# boundary — pure array ops, GPU-friendly.
+# boundary — pure array ops, used by the feature trackers (once per output row).
 function _edgeshift(comp::AbstractArray{T,4}, axis::Int, dir::Int, periodic::Bool) where {T}
     d = axis + 1                                       # array dim (component is dim 1)
     if periodic
@@ -118,25 +94,16 @@ function anisotropy!(B::CuField{T}, m::CuField{T}, mesh::Mesh, mat::Material;
         add || fill!(B, zero(T))
         return B
     end
-    pref = T(2 * mat.Ku / mat.Msat)
     ux, uy, uz = mat.anisU
-    mx = @view m[1:1, :, :, :]; my = @view m[2:2, :, :, :]; mz = @view m[3:3, :, :, :]
-    mu = ux .* mx .+ uy .* my .+ uz .* mz              # (m·u), GPU broadcast
-    if add
-        B[1:1,:,:,:] .+= pref .* mu .* ux
-        B[2:2,:,:,:] .+= pref .* mu .* uy
-        B[3:3,:,:,:] .+= pref .* mu .* uz
-    else
-        B[1:1,:,:,:] .= pref .* mu .* ux
-        B[2:2,:,:,:] .= pref .* mu .* uy
-        B[3:3,:,:,:] .= pref .* mu .* uz
-    end
+    _launch(_k_anisotropy!, _ncells(m), B, m, T(mat.Ku), T(mat.Msat), T(ux), T(uy), T(uz),
+            _ncells(m), add)
     return B
 end
 
 # --- DMI (uniform Material) ------------------------------------------------
-# Central derivative ∂(component c)/∂(axis) on the GPU, reusing the Neumann/
-# periodic edge shift of the exchange field. comp is a (1,Nx,Ny,Nz) view.
+# Central derivative ∂(component c)/∂(axis) as an array expression, with the
+# Neumann/periodic edge shift above — used only by the topological-charge tracker;
+# the DMI field itself is the _k_dmi_* kernel. comp is a (1,Nx,Ny,Nz) view.
 # circshift(+1) puts m[i-1] at i and circshift(-1) puts m[i+1] at i, so the
 # forward neighbour m[i+1] is _edgeshift(...,-1) and m[i-1] is _edgeshift(...,+1);
 # the central difference (m[i+1]-m[i-1]) is therefore edgeshift(-1) - edgeshift(+1).
@@ -145,81 +112,37 @@ _dcentral(comp, axis, inv2c, periodic) =
 
 function dmi_interfacial!(B::CuField{T}, m::CuField{T}, mesh::Mesh, mat::Material;
                           add::Bool = false) where {T}
-    Nx, Ny, Nz = mesh.size
-    cx, cy, cz = mesh.cellsize
-    px, py, pz = isperiodic(mesh,1), isperiodic(mesh,2), isperiodic(mesh,3)
-    i2x = T(1/(2cx)); i2y = T(1/(2cy))
-    pref = T(2 * mat.Dind / mat.Msat)
-    mx = @view m[1:1,:,:,:]; my = @view m[2:2,:,:,:]; mz = @view m[3:3,:,:,:]
-    bx = pref .* _dcentral(mz, 1, i2x, px)                              # ∂mz/∂x
-    by = pref .* _dcentral(mz, 2, i2y, py)                              # ∂mz/∂y
-    bz = pref .* (.-_dcentral(mx, 1, i2x, px) .- _dcentral(my, 2, i2y, py))  # -∂mx/∂x - ∂my/∂y
-    if add
-        B[1:1,:,:,:] .+= bx; B[2:2,:,:,:] .+= by; B[3:3,:,:,:] .+= bz
-    else
-        B[1:1,:,:,:] .= bx; B[2:2,:,:,:] .= by; B[3:3,:,:,:] .= bz
-    end
+    Nx, Ny, Nz = _dims(mesh); px, py, _ = _pbc(mesh)
+    cx, cy, _ = mesh.cellsize
+    _launch(_k_dmi_interfacial!, Nx * Ny * Nz, B, m, T(mat.Dind), T(mat.Msat), Nx, Ny, Nz,
+            T(1 / (2cx)), T(1 / (2cy)), px, py, add)
     return B
 end
 
 function dmi_bulk!(B::CuField{T}, m::CuField{T}, mesh::Mesh, mat::Material;
                    add::Bool = false) where {T}
-    Nx, Ny, Nz = mesh.size
+    Nx, Ny, Nz = _dims(mesh); px, py, pz = _pbc(mesh)
     cx, cy, cz = mesh.cellsize
-    px, py, pz = isperiodic(mesh,1), isperiodic(mesh,2), isperiodic(mesh,3)
-    i2x = T(1/(2cx)); i2y = T(1/(2cy)); i2z = T(1/(2cz))
-    pref = T(2 * mat.Dbulk / mat.Msat)
-    mx = @view m[1:1,:,:,:]; my = @view m[2:2,:,:,:]; mz = @view m[3:3,:,:,:]
-    z = CUDA.zeros(T, 1, Nx, Ny, Nz)
-    dmz_dy = _dcentral(mz, 2, i2y, py); dmy_dz = Nz > 1 ? _dcentral(my, 3, i2z, pz) : z
-    dmx_dz = Nz > 1 ? _dcentral(mx, 3, i2z, pz) : z; dmz_dx = _dcentral(mz, 1, i2x, px)
-    dmy_dx = _dcentral(my, 1, i2x, px); dmx_dy = _dcentral(mx, 2, i2y, py)
-    bx = .-pref .* (dmz_dy .- dmy_dz)                                   # -pref·(∇×m)_x
-    by = .-pref .* (dmx_dz .- dmz_dx)
-    bz = .-pref .* (dmy_dx .- dmx_dy)
-    if add
-        B[1:1,:,:,:] .+= bx; B[2:2,:,:,:] .+= by; B[3:3,:,:,:] .+= bz
-    else
-        B[1:1,:,:,:] .= bx; B[2:2,:,:,:] .= by; B[3:3,:,:,:] .= bz
-    end
+    _launch(_k_dmi_bulk!, Nx * Ny * Nz, B, m, T(mat.Dbulk), T(mat.Msat), Nx, Ny, Nz,
+            T(1 / (2cx)), T(1 / (2cy)), T(1 / (2cz)), px, py, pz, add)
     return B
 end
 
 # --- Spin-transfer torques (uniform Material) ------------------------------
+# Same prefactors as the CPU methods (src/stt.jl), computed on the host in T.
 
 function zhanglitorque!(τ::CuField{T}, m::CuField{T}, mesh::Mesh, mat::Material, J;
                         add::Bool = true) where {T}
     mat.pol == 0 && return τ
-    Nx, Ny, Nz = mesh.size
+    Nx, Ny, Nz = _dims(mesh); px, py, pz = _pbc(mesh)
     cx, cy, cz = mesh.cellsize
-    px, py, pz = isperiodic(mesh,1), isperiodic(mesh,2), isperiodic(mesh,3)
     α = T(mat.alpha); ξ = T(mat.xi)
-    b = T(μB / (2 * qe) / (mat.Msat * (1 + ξ^2)))                       # ×γLL vs mumax (see CPU)
-    Jx = T(mat.pol*J[1]); Jy = T(mat.pol*J[2]); Jz = T(mat.pol*J[3])
-    mx = @view m[1:1,:,:,:]; my = @view m[2:2,:,:,:]; mz = @view m[3:3,:,:,:]
-    # hs = (b/c)·J·(m[nbr+] - m[nbr-]) summed over active current axes (no 1/2).
-    Z = CUDA.zeros(T, 1, Nx, Ny, Nz)
-    # m[nbr+] - m[nbr-] = m[i+1] - m[i-1] = edgeshift(-1) - edgeshift(+1) (see _dcentral).
-    diff(comp, ax, per) = _edgeshift(comp, ax, -1, per) .- _edgeshift(comp, ax, +1, per)
-    hx = copy(Z); hy = copy(Z); hz = copy(Z)
-    if Jx != 0
-        w = b*Jx/T(cx); hx = hx .+ w.*diff(mx,1,px); hy = hy .+ w.*diff(my,1,px); hz = hz .+ w.*diff(mz,1,px)
-    end
-    if Jy != 0
-        w = b*Jy/T(cy); hx = hx .+ w.*diff(mx,2,py); hy = hy .+ w.*diff(my,2,py); hz = hz .+ w.*diff(mz,2,py)
-    end
-    if Jz != 0 && Nz > 1
-        w = b*Jz/T(cz); hx = hx .+ w.*diff(mx,3,pz); hy = hy .+ w.*diff(my,3,pz); hz = hz .+ w.*diff(mz,3,pz)
-    end
-    gfac = T(-1/(1+α^2)); c1 = T(1+ξ*α); c2 = T(ξ-α)
-    p1x = my.*hz .- mz.*hy; p1y = mz.*hx .- mx.*hz; p1z = mx.*hy .- my.*hx   # m × hs
-    qx = my.*p1z .- mz.*p1y; qy = mz.*p1x .- mx.*p1z; qz = mx.*p1y .- my.*p1x  # m×(m×hs)
-    tx = gfac.*(c1.*qx .+ c2.*p1x); ty = gfac.*(c1.*qy .+ c2.*p1y); tz = gfac.*(c1.*qz .+ c2.*p1z)
-    if add
-        τ[1:1,:,:,:] .+= tx; τ[2:2,:,:,:] .+= ty; τ[3:3,:,:,:] .+= tz
-    else
-        τ[1:1,:,:,:] .= tx; τ[2:2,:,:,:] .= ty; τ[3:3,:,:,:] .= tz
-    end
+    b = T(μB / (2 * qe) / (mat.Msat * (1 + ξ^2)))
+    Jx = T(mat.pol * J[1]); Jy = T(mat.pol * J[2]); Jz = T(mat.pol * J[3])
+    wx = (b / T(cx)) * Jx; wy = (b / T(cy)) * Jy; wz = (b / T(cz)) * Jz
+    gfac = T(-1 / (1 + α^2)); c1 = (1 + ξ*α); c2 = (ξ - α)
+    _launch(_k_zhangli!, Nx * Ny * Nz, τ, m, Nx, Ny, Nz, wx, wy, wz,
+            Jx != 0, Jy != 0, Jz != 0 && Nz > 1, px, py, pz, gfac, c1, c2, add)
     return τ
 end
 
@@ -227,34 +150,18 @@ function slonczewskitorque!(τ::CuField{T}, m::CuField{T}, mesh::Mesh, mat::Mate
                             Jz::Real, p, thickness::Real; add::Bool = true) where {T}
     (mat.pol == 0 || Jz == 0) && return τ
     α = T(mat.alpha); Λ = T(mat.lambda); εp = T(mat.epsilonPrime)
-    pn = normalize3(NTuple{3,T}(p)); ppx, ppy, ppz = pn
-    β = T(γLL * (ħ/qe) * Jz / (thickness * mat.Msat))                  # ×γLL (see CPU)
-    Λ2 = Λ^2; gilb = T(1/(1+α^2))
-    mx = @view m[1:1,:,:,:]; my = @view m[2:2,:,:,:]; mz = @view m[3:3,:,:,:]
-    pm = ppx.*mx .+ ppy.*my .+ ppz.*mz
-    ε  = T(mat.pol) .* Λ2 ./ ((Λ2 + 1) .+ (Λ2 - 1).*pm)
-    A = β .* ε; Bc = β * εp
-    f1 = gilb .* (A .+ α.*Bc); f2 = gilb .* (Bc .- α.*A)
-    pxm_x = ppy.*mz .- ppz.*my; pxm_y = ppz.*mx .- ppx.*mz; pxm_z = ppx.*my .- ppy.*mx  # p × m
-    mxpxm_x = my.*pxm_z .- mz.*pxm_y; mxpxm_y = mz.*pxm_x .- mx.*pxm_z; mxpxm_z = mx.*pxm_y .- my.*pxm_x
-    tx = f1.*mxpxm_x .+ f2.*pxm_x; ty = f1.*mxpxm_y .+ f2.*pxm_y; tz = f1.*mxpxm_z .+ f2.*pxm_z
-    if add
-        τ[1:1,:,:,:] .+= tx; τ[2:2,:,:,:] .+= ty; τ[3:3,:,:,:] .+= tz
-    else
-        τ[1:1,:,:,:] .= tx; τ[2:2,:,:,:] .= ty; τ[3:3,:,:,:] .= tz
-    end
+    ppx, ppy, ppz = normalize3(NTuple{3,T}(p))
+    β = T(γLL * (ħ / qe) * Jz / (thickness * mat.Msat))
+    gilb = T(1 / (1 + α^2))
+    _launch(_k_slonczewski!, _ncells(m), τ, m, ppx, ppy, ppz, β, T(mat.pol), Λ^2, εp, α,
+            gilb, _ncells(m), add)
     return τ
 end
 
 # --- Zeeman ----------------------------------------------------------------
 
 function zeeman!(B::CuField{T}, Bext; add::Bool = false) where {T}
-    bx, by, bz = T(Bext[1]), T(Bext[2]), T(Bext[3])
-    if add
-        B[1:1,:,:,:] .+= bx; B[2:2,:,:,:] .+= by; B[3:3,:,:,:] .+= bz
-    else
-        B[1:1,:,:,:] .= bx; B[2:2,:,:,:] .= by; B[3:3,:,:,:] .= bz
-    end
+    _launch(_k_zeeman!, _ncells(B), B, T(Bext[1]), T(Bext[2]), T(Bext[3]), _ncells(B), add)
     return B
 end
 
@@ -262,146 +169,117 @@ end
 
 function torque!(dm::CuField{T}, m::CuField{T}, B::CuField{T}, alpha::Real;
                  gamma::Real = γLL) where {T}
-    γ′ = T(gamma / (1 + alpha^2)); α = T(alpha)
-    mx = @view m[1:1,:,:,:]; my = @view m[2:2,:,:,:]; mz = @view m[3:3,:,:,:]
-    bx = @view B[1:1,:,:,:]; by = @view B[2:2,:,:,:]; bz = @view B[3:3,:,:,:]
-    # p = m × B
-    px = my.*bz .- mz.*by; py = mz.*bx .- mx.*bz; pz = mx.*by .- my.*bx
-    # q = m × p
-    qx = my.*pz .- mz.*py; qy = mz.*px .- mx.*pz; qz = mx.*py .- my.*px
-    dm[1:1,:,:,:] .= .-γ′ .* (px .+ α.*qx)
-    dm[2:2,:,:,:] .= .-γ′ .* (py .+ α.*qy)
-    dm[3:3,:,:,:] .= .-γ′ .* (pz .+ α.*qz)
+    _launch(_k_torque!, _ncells(m), dm, m, B, T(gamma / (1 + alpha^2)), T(alpha), _ncells(m))
     return dm
 end
 
 # --- Normalize and average -------------------------------------------------
 
 function normalize!(m::CuField{T}) where {T}
-    mx = @view m[1:1,:,:,:]; my = @view m[2:2,:,:,:]; mz = @view m[3:3,:,:,:]
-    n = sqrt.(mx.^2 .+ my.^2 .+ mz.^2)
-    inv_n = ifelse.(n .> 0, one(T) ./ n, zero(T))
-    m[1:1,:,:,:] .= mx .* inv_n
-    m[2:2,:,:,:] .= my .* inv_n
-    m[3:3,:,:,:] .= mz .* inv_n
+    _launch(_k_normalize!, _ncells(m), m, _ncells(m))
     return m
 end
 
+# Reductions accumulate in Float64, as the CPU methods do (also for Float32 m).
 function average(m::CuField{T}) where {T}
     n = size(m,2) * size(m,3) * size(m,4)
-    (sum(@view m[1,:,:,:]) / n, sum(@view m[2,:,:,:]) / n, sum(@view m[3,:,:,:]) / n)
+    s(c) = sum(Float64, @view m[c,:,:,:])
+    return (T(s(1) / n), T(s(2) / n), T(s(3) / n))
 end
 
 # --- Demagnetization on the GPU (FFT convolution via CUFFT) -----------------
 #
-# Mirror of the CPU DemagPlan/_demagfield! (src/demag_field.jl), but with every
-# array on the device and the three scalar loops (pad, pointwise tensor·vector,
-# copy-out) replaced by array operations so nothing indexes a CuArray on the CPU.
-# The transformed kernel is uploaded once; each call does pad → rFFT → pointwise
-# → irFFT → crop, all on the GPU.
+# Device mirror of the CPU DemagPlan (src/demag_field.jl): the real Fourier kernel
+# with the 1/N of the inverse folded in, batched rFFT / unnormalized backward rFFT
+# over the three components ((P1,P2,P3,3) buffers, transform over dims 1:3), and
+# one kernel each for the padding, the Fourier-space product and the copy-out —
+# 3 kernels plus 2 batched transforms per field evaluation.
 struct GpuDemagPlan{T<:AbstractFloat,PF,PI}
     padsize::NTuple{3,Int}
     dataregion::NTuple{3,UnitRange{Int}}
     prefactor::T
-    Kxx::CuArray{Complex{T},3}; Kyy::CuArray{Complex{T},3}; Kzz::CuArray{Complex{T},3}
-    Kxy::CuArray{Complex{T},3}; Kxz::CuArray{Complex{T},3}; Kyz::CuArray{Complex{T},3}
-    padm::NTuple{3,CuArray{T,3}}
-    mhat::NTuple{3,CuArray{Complex{T},3}}
-    bhat::NTuple{3,CuArray{Complex{T},3}}
+    Kxx::CuArray{T,3}; Kyy::CuArray{T,3}; Kzz::CuArray{T,3}
+    Kxy::CuArray{T,3}; Kxz::CuArray{T,3}; Kyz::CuArray{T,3}
+    padm::CuArray{T,4}            # padding zeroed once, never written again
+    mhat::CuArray{Complex{T},4}
+    bout::CuArray{T,4}
     pfor::PF
     pinv::PI
 end
 
-# Upload a CPU DemagPlan to the GPU: the transformed kernel is already in Fourier
-# space, so it is copied straight over; new CUFFT plans and device scratch are
-# built for the padded size.
 function JuliaMag.togpu(plan::DemagPlan{T}) where {T}
     psize = plan.padsize
-    scratch = CUDA.zeros(T, psize...)
-    pfor = plan_rfft(scratch)
-    mhat = ntuple(_ -> CuArray(zeros(Complex{T}, size(plan.Kxx))), 3)
-    bhat = ntuple(_ -> CuArray(zeros(Complex{T}, size(plan.Kxx))), 3)
-    padm = ntuple(_ -> CUDA.zeros(T, psize...), 3)
-    pinv = plan_irfft(mhat[1], psize[1])
+    padm = CUDA.zeros(T, psize..., 3)
+    mhat = CUDA.zeros(Complex{T}, size(plan.mhat)...)
+    bout = CUDA.zeros(T, psize..., 3)
+    pfor = plan_rfft(padm, (1, 2, 3))
+    pinv = plan_brfft(mhat, psize[1], (1, 2, 3))
     GpuDemagPlan{T,typeof(pfor),typeof(pinv)}(
         psize, plan.dataregion, plan.prefactor,
         CuArray(plan.Kxx), CuArray(plan.Kyy), CuArray(plan.Kzz),
         CuArray(plan.Kxy), CuArray(plan.Kxz), CuArray(plan.Kyz),
-        padm, mhat, bhat, pfor, pinv)
+        padm, mhat, bout, pfor, pinv)
 end
 
-# Uniform-Msat demag field on the GPU. `B` and `m` are (3,Nx,Ny,Nz) CuArrays.
-function demagfield!(B::CuField{T}, m::CuField{T}, plan::GpuDemagPlan{T};
-                     add::Bool = false) where {T}
-    rx, ry, rz = plan.dataregion
-    pref = plan.prefactor
-
-    # Pad each component into the device scratch and forward-transform.
-    for c in 1:3
-        pc = plan.padm[c]
-        fill!(pc, zero(T))
-        @views pc[rx, ry, rz] .= m[c, :, :, :]
-        mul!(plan.mhat[c], plan.pfor, pc)
+# Out-of-place complex-to-real cuFFT overwrites its input, so CUDA.jl's mul! first
+# copies the input to a scratch buffer. Here the input (the field transform) is
+# scratch anyway, so execute the plan directly and skip that copy.
+@inline function _exec_c2r!(y, p, x)
+    if isdefined(CUFFT, :unsafe_execute_trailing!)
+        CUFFT.unsafe_execute_trailing!(p, x, y)
+    else
+        mul!(y, p, x)
     end
+    return y
+end
 
-    mx, my, mz = plan.mhat
-    bx, by, bz = plan.bhat
-    # Pointwise tensor·vector product in Fourier space (broadcast, one kernel each).
-    @. bx = plan.Kxx*mx + plan.Kxy*my + plan.Kxz*mz
-    @. by = plan.Kxy*mx + plan.Kyy*my + plan.Kyz*mz
-    @. bz = plan.Kxz*mx + plan.Kyz*my + plan.Kzz*mz
-
-    # Inverse-transform and crop the data region back into B.
-    for c in 1:3
-        mul!(plan.padm[c], plan.pinv, plan.bhat[c])
-        cropped = @view plan.padm[c][rx, ry, rz]
-        if add
-            @views B[c, :, :, :] .+= pref .* cropped
-        else
-            @views B[c, :, :, :] .= pref .* cropped
-        end
-    end
+# Shared core: S = 1 (uniform Msat, plan prefactor μ0·Msat) or the per-cell Msat·fill
+# array (prefactor μ0).
+function _gpu_demag!(B::CuField{T}, m::CuField{T}, plan::GpuDemagPlan{T}, S, pref::T,
+                     add::Bool) where {T}
+    Nx, Ny, Nz = Int32.(size(m)[2:4])
+    N = Nx * Ny * Nz
+    _launch(_k_demag_pad!, N, plan.padm, m, S, Nx, Ny, Nz)
+    mul!(plan.mhat, plan.pfor, plan.padm)
+    nh = Int32(length(plan.Kxx))
+    _launch(_k_demag_kmul!, nh, plan.mhat, plan.Kxx, plan.Kyy, plan.Kzz,
+            plan.Kxy, plan.Kxz, plan.Kyz, nh)
+    _exec_c2r!(plan.bout, plan.pinv, plan.mhat)
+    _launch(_k_demag_crop!, N, B, plan.bout, pref, Nx, Ny, Nz, add)
     return B
 end
 
+# Uniform-Msat demag field on the GPU. `B` and `m` are (3,Nx,Ny,Nz) CuArrays.
+demagfield!(B::CuField{T}, m::CuField{T}, plan::GpuDemagPlan{T}; add::Bool = false) where {T} =
+    _gpu_demag!(B, m, plan, one(T), plan.prefactor, add)
+
 # --- Energy-minimizer kernels on the GPU -----------------------------------
-# GPU versions of the three helpers factored out of the CPU minimizer step. Each
-# is pure array programming, so the Barzilai-Borwein minimizer runs unchanged on
-# a CuArray state.
+# GPU versions of the three helpers factored out of the CPU minimizer step
+# (src/minimizer.jl), so the Barzilai-Borwein minimizer runs unchanged on a CuArray.
 
 # Damping torque τ = -γ m × (m × B).
 function _damping_torque!(τ::CuField{T}, m::CuField{T}, B::CuField{T}, γ) where {T}
-    mx = @view m[1:1,:,:,:]; my = @view m[2:2,:,:,:]; mz = @view m[3:3,:,:,:]
-    bx = @view B[1:1,:,:,:]; by = @view B[2:2,:,:,:]; bz = @view B[3:3,:,:,:]
-    px = my.*bz .- mz.*by; py = mz.*bx .- mx.*bz; pz = mx.*by .- my.*bx  # m × B
-    g = T(γ)
-    τ[1:1,:,:,:] .= .-g .* (my.*pz .- mz.*py)                            # -γ m×(m×B)
-    τ[2:2,:,:,:] .= .-g .* (mz.*px .- mx.*pz)
-    τ[3:3,:,:,:] .= .-g .* (mx.*py .- my.*px)
+    _launch(_k_damping_torque!, _ncells(m), τ, m, B, T(γ), _ncells(m))
     return τ
 end
 
 # Cayley step in place; returns max‖Δm‖² (reduction on the device).
 function _cayley_step!(m::CuField{T}, τ::CuField{T}, dt) where {T}
-    d = T(dt)
-    t2 = d^2 .* (τ[1:1,:,:,:].^2 .+ τ[2:2,:,:,:].^2 .+ τ[3:3,:,:,:].^2)  # per cell
-    inv_d = one(T) ./ (4 .+ t2); f = 4 .- t2
-    mnew = similar(m)
-    for c in 1:3
-        mnew[c:c,:,:,:] .= (f .* m[c:c,:,:,:] .+ 4 .* d .* τ[c:c,:,:,:]) .* inv_d
-    end
-    d2 = (mnew[1:1,:,:,:].-m[1:1,:,:,:]).^2 .+ (mnew[2:2,:,:,:].-m[2:2,:,:,:]).^2 .+
-         (mnew[3:3,:,:,:].-m[3:3,:,:,:]).^2
-    dmmax = maximum(d2)
-    copyto!(m, mnew)
-    return dmmax
+    N = _ncells(m)
+    d2 = CuArray{T}(undef, N)
+    _launch(_k_cayley!, N, m, τ, d2, T(dt), N)
+    return maximum(d2)
 end
 
 # Barzilai-Borwein inner products (ss, sy, yy); s = m - mlast, y = τlast - τ.
+# Lazy mapreduce (no temporaries), computed and accumulated in Float64 like the CPU
+# method, returned in T.
 function _bb_sums(m::CuField{T}, mlast::CuField{T}, τlast::CuField{T}, τ::CuField{T}) where {T}
-    s = m .- mlast
-    y = τlast .- τ
-    return (sum(s .* s), sum(s .* y), sum(y .* y))
+    d(a, b) = Float64(a) - Float64(b)
+    ss = mapreduce((a, b) -> d(a, b) * d(a, b), +, m, mlast)
+    sy = mapreduce((a, b, c, e) -> d(a, b) * d(c, e), +, m, mlast, τlast, τ)
+    yy = mapreduce((c, e) -> d(c, e) * d(c, e), +, τlast, τ)
+    return (T(ss), T(sy), T(yy))
 end
 
 # --- Feature trackers on the GPU -------------------------------------------
@@ -501,8 +379,8 @@ end
 # --- Region-wise (multi-material) parameters on the GPU --------------------
 # A RegionParams is a small per-region lookup table plus a cell→region map. For
 # the GPU we materialize each parameter into a per-cell device array once (gather
-# the LUT through the region map on the host, then upload), so the field kernels
-# become broadcasts over those arrays with no per-cell indexing on the device.
+# the LUT through the region map on the host, then upload); the field kernels read
+# them by the cell's linear index (_pc in cuda_kernels.jl).
 struct GpuRegionParams{T<:AbstractFloat} <: AbstractParams
     Msat::CuArray{T,4}      # (1,Nx,Ny,Nz) — Msat[region]·fill (effective moment)
     Msat_region::CuArray{T,4} # Msat[region] WITHOUT fill (exchange prefactor)
@@ -528,12 +406,13 @@ JuliaMag.damping(p::GpuRegionParams) = p.alpha0
 # Fill-weighted magnet average (mumax3 table m), as the CPU average_magnet: weight =
 # fill, zero where the region Msat is 0 (empty cells).
 function JuliaMag.average_magnet(m::CuField{T}, p::GpuRegionParams{T}) where {T}
-    w = p.fill .* (p.Msat_region .!= 0)
-    W = sum(w)
+    # weight = fill, 0 in empty cells; Float64 accumulation as on the CPU
+    wt(f, ms) = ms == 0 ? 0.0 : Float64(f)
+    W = mapreduce(wt, +, p.fill, p.Msat_region)
     iszero(W) && return (T(NaN), T(NaN), T(NaN))
-    return (sum((@view m[1:1,:,:,:]) .* w) / W,
-            sum((@view m[2:2,:,:,:]) .* w) / W,
-            sum((@view m[3:3,:,:,:]) .* w) / W)
+    s(c) = mapreduce((a, f, ms) -> Float64(a) * wt(f, ms), +,
+                     (@view m[c:c,:,:,:]), p.fill, p.Msat_region)
+    return (T(s(1) / W), T(s(2) / W), T(s(3) / W))
 end
 
 # Gather a per-region LUT into a per-cell (1,Nx,Ny,Nz) array via the region map.
@@ -573,46 +452,17 @@ end
 _demag!(B, m, w::World{T,P,M}; add) where {T,P,M<:GpuRegionParams} =
     demagfield!(B, m, w.demagplan, w.material, w.mesh; add = add)
 
-# Harmonic mean of two stiffness arrays (0 if either is 0), matching the CPU rule.
-_hmean(a, b) = ifelse.((a .== 0) .| (b .== 0), zero(eltype(a)), 2 .* a .* b ./ (a .+ b))
-
-# Exchange with per-cell Msat/Aex and harmonic-mean interface coupling.
+# Exchange with per-cell Msat/Aex and harmonic-mean interface coupling
+# (src/exchange.jl). A cell is empty when its EFFECTIVE Msat (Msat[region]·fill) is
+# 0 — not when its fill is 0: background cells outside the geometry keep fill 1
+# with region Msat 0. An empty neighbour is a free (Neumann) boundary, mumax3's
+# cuda/exchange.cu is0 rule; the prefactor divides by the FULL region Msat.
 function exchange!(B::CuField{T}, m::CuField{T}, mesh::Mesh, p::GpuRegionParams{T};
                    add::Bool = false) where {T}
-    Nx, Ny, Nz = mesh.size; cx, cy, cz = mesh.cellsize
-    px, py, pz = isperiodic(mesh,1), isperiodic(mesh,2), isperiodic(mesh,3)
-    ix2 = T(1/cx^2); iy2 = T(1/cy^2); iz2 = T(1/cz^2)
-    A = p.Aex
-    # Per-neighbour harmonic-mean stiffness (central with each shifted neighbour).
-    axl = _hmean(A, _edgeshift(A,1,-1,px)); axr = _hmean(A, _edgeshift(A,1,+1,px))
-    ayl = _hmean(A, _edgeshift(A,2,-1,py)); ayr = _hmean(A, _edgeshift(A,2,+1,py))
-    nz = Nz > 1
-    azl = nz ? _hmean(A, _edgeshift(A,3,-1,pz)) : A
-    azr = nz ? _hmean(A, _edgeshift(A,3,+1,pz)) : A
-    # An empty neighbour is a free (Neumann) boundary: mumax3 replaces its m with
-    # the central m so the difference vanishes (cuda/exchange.cu is0 test). A cell
-    # is empty when its EFFECTIVE Msat (Msat[region]·fill) is 0 — NOT when fill is 0.
-    # Background cells outside the geometry keep fill = 1 with region Msat = 0, so
-    # masking on fill would treat them as real neighbours and leak a spurious
-    # (0 - m_c) term at the geometry boundary (the CPU path masks on msat == 0).
-    fmask(dir, off, per) = T(1) .- (_edgeshift(p.Msat, dir, off, per) .== 0)
-    mxl_ok = fmask(1,-1,px); mxr_ok = fmask(1,+1,px)
-    myl_ok = fmask(2,-1,py); myr_ok = fmask(2,+1,py)
-    mzl_ok = nz ? fmask(3,-1,pz) : A; mzr_ok = nz ? fmask(3,+1,pz) : A
-    # Prefactor divides by the FULL region Msat (not Msat·fill); 0 in empty cells.
-    Msc = p.Msat_region
-    pref = ifelse.(p.Msat .== 0, zero(T), T(2) ./ Msc)   # empty cells → 0 field
-    lap = similar(m)
-    @views for c in 1:3
-        mc = m[c:c,:,:,:]
-        f = pref .* ( (axl .* mxl_ok) .* (_edgeshift(mc,1,-1,px) .- mc) .* ix2 .+ (axr .* mxr_ok) .* (_edgeshift(mc,1,+1,px) .- mc) .* ix2 .+
-                      (ayl .* myl_ok) .* (_edgeshift(mc,2,-1,py) .- mc) .* iy2 .+ (ayr .* myr_ok) .* (_edgeshift(mc,2,+1,py) .- mc) .* iy2 )
-        if nz
-            f = f .+ pref .* ( (azl .* mzl_ok) .* (_edgeshift(mc,3,-1,pz) .- mc) .* iz2 .+ (azr .* mzr_ok) .* (_edgeshift(mc,3,+1,pz) .- mc) .* iz2 )
-        end
-        lap[c:c,:,:,:] .= f
-    end
-    add ? (B .+= lap) : (B .= lap)
+    Nx, Ny, Nz = _dims(mesh); px, py, pz = _pbc(mesh)
+    cx, cy, cz = mesh.cellsize
+    _launch(_k_exchange!, Nx * Ny * Nz, B, m, p.Aex, p.Msat, p.Msat_region, Nx, Ny, Nz,
+            T(1 / cx^2), T(1 / cy^2), T(1 / cz^2), px, py, pz, add)
     return B
 end
 
@@ -621,55 +471,25 @@ function anisotropy!(B::CuField{T}, m::CuField{T}, mesh::Mesh, p::GpuRegionParam
     if !p.hasku
         add || fill!(B, zero(T)); return B
     end
-    Msc = p.Msat
-    pref = ifelse.(Msc .== 0, zero(T), T(2) .* p.Ku ./ Msc)
-    mx = @view m[1:1,:,:,:]; my = @view m[2:2,:,:,:]; mz = @view m[3:3,:,:,:]
-    mu = p.ux.*mx .+ p.uy.*my .+ p.uz.*mz
-    if add
-        B[1:1,:,:,:] .+= pref.*mu.*p.ux; B[2:2,:,:,:] .+= pref.*mu.*p.uy; B[3:3,:,:,:] .+= pref.*mu.*p.uz
-    else
-        B[1:1,:,:,:] .= pref.*mu.*p.ux; B[2:2,:,:,:] .= pref.*mu.*p.uy; B[3:3,:,:,:] .= pref.*mu.*p.uz
-    end
+    _launch(_k_anisotropy!, _ncells(m), B, m, p.Ku, p.Msat, p.ux, p.uy, p.uz, _ncells(m), add)
     return B
 end
 
 function dmi_interfacial!(B::CuField{T}, m::CuField{T}, mesh::Mesh, p::GpuRegionParams{T};
                           add::Bool = false) where {T}
+    Nx, Ny, Nz = _dims(mesh); px, py, _ = _pbc(mesh)
     cx, cy, _ = mesh.cellsize
-    px, py = isperiodic(mesh,1), isperiodic(mesh,2)
-    i2x = T(1/(2cx)); i2y = T(1/(2cy))
-    Msc = p.Msat
-    pref = ifelse.(Msc .== 0, zero(T), T(2) .* p.Dind ./ Msc)
-    mx = @view m[1:1,:,:,:]; my = @view m[2:2,:,:,:]; mz = @view m[3:3,:,:,:]
-    bx = pref .* _dcentral(mz,1,i2x,px)
-    by = pref .* _dcentral(mz,2,i2y,py)
-    bz = pref .* (.-_dcentral(mx,1,i2x,px) .- _dcentral(my,2,i2y,py))
-    if add
-        B[1:1,:,:,:] .+= bx; B[2:2,:,:,:] .+= by; B[3:3,:,:,:] .+= bz
-    else
-        B[1:1,:,:,:] .= bx; B[2:2,:,:,:] .= by; B[3:3,:,:,:] .= bz
-    end
+    _launch(_k_dmi_interfacial!, Nx * Ny * Nz, B, m, p.Dind, p.Msat, Nx, Ny, Nz,
+            T(1 / (2cx)), T(1 / (2cy)), px, py, add)
     return B
 end
 
 function dmi_bulk!(B::CuField{T}, m::CuField{T}, mesh::Mesh, p::GpuRegionParams{T};
                    add::Bool = false) where {T}
-    Nx, Ny, Nz = mesh.size; cx, cy, cz = mesh.cellsize
-    px, py, pz = isperiodic(mesh,1), isperiodic(mesh,2), isperiodic(mesh,3)
-    i2x = T(1/(2cx)); i2y = T(1/(2cy)); i2z = T(1/(2cz))
-    Msc = p.Msat
-    pref = ifelse.(Msc .== 0, zero(T), T(2) .* p.Dbulk ./ Msc)
-    mx = @view m[1:1,:,:,:]; my = @view m[2:2,:,:,:]; mz = @view m[3:3,:,:,:]
-    z = CUDA.zeros(T,1,Nx,Ny,Nz)
-    dmz_dy=_dcentral(mz,2,i2y,py); dmy_dz=Nz>1 ? _dcentral(my,3,i2z,pz) : z
-    dmx_dz=Nz>1 ? _dcentral(mx,3,i2z,pz) : z; dmz_dx=_dcentral(mz,1,i2x,px)
-    dmy_dx=_dcentral(my,1,i2x,px); dmx_dy=_dcentral(mx,2,i2y,py)
-    bx = .-pref.*(dmz_dy.-dmy_dz); by = .-pref.*(dmx_dz.-dmz_dx); bz = .-pref.*(dmy_dx.-dmx_dy)
-    if add
-        B[1:1,:,:,:] .+= bx; B[2:2,:,:,:] .+= by; B[3:3,:,:,:] .+= bz
-    else
-        B[1:1,:,:,:] .= bx; B[2:2,:,:,:] .= by; B[3:3,:,:,:] .= bz
-    end
+    Nx, Ny, Nz = _dims(mesh); px, py, pz = _pbc(mesh)
+    cx, cy, cz = mesh.cellsize
+    _launch(_k_dmi_bulk!, Nx * Ny * Nz, B, m, p.Dbulk, p.Msat, Nx, Ny, Nz,
+            T(1 / (2cx)), T(1 / (2cy)), T(1 / (2cz)), px, py, pz, add)
     return B
 end
 
@@ -685,15 +505,12 @@ function dmi!(B::CuField{T}, m::CuField{T}, mesh::Mesh, p::GpuRegionParams{T};
     end
 end
 
-# Region-aware demag on the GPU: the convolution acts on Msat[cell]·m and the
-# prefactor is μ0 alone (Msat enters per cell, not through the plan's scalar). The
-# uploaded plan's prefactor is μ0·Msref, so we rescale by 1/Msref to get μ0.
-function demagfield!(B::CuField{T}, m::CuField{T}, plan::GpuDemagPlan{T},
-                     p::GpuRegionParams{T}, mesh::Mesh; add::Bool = false) where {T}
-    msref = plan.prefactor / T(μ0)                   # plan.prefactor = μ0·Msref
-    Mm = (p.Msat .* m) ./ msref                       # (Msat[cell]·m)/Msref
-    demagfield!(B, Mm, plan; add = add)              # ·(μ0·Msref) = μ0·Msat[cell]·m
-end
+# Region-aware demag on the GPU: the convolution acts on Msat[cell]·m (Msat·fill,
+# padded by the kernel without a temporary) and the prefactor is μ0 alone — the
+# CPU region path (src/demag_field.jl).
+demagfield!(B::CuField{T}, m::CuField{T}, plan::GpuDemagPlan{T}, p::GpuRegionParams{T},
+            mesh::Mesh; add::Bool = false) where {T} =
+    _gpu_demag!(B, m, plan, p.Msat, T(μ0), add)
 
 # --- Thermal (Langevin) field on the GPU -----------------------------------
 # Same fluctuation-dissipation field as the CPU: B = η·sqrt(2 α kB T/(γ Msat V Δt)).

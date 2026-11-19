@@ -1,0 +1,466 @@
+device: Quadro P1000   CUDA.jl 5.11.3
+cuFFT batch: plan_max_dims((1,2,3), size(mhat)) = 4 (4 = one batched call)
+
+================ Float64 ================
+  mat open 3D Dind exchange (set)                             2.96e-16  (tol 1e-12)  ok
+  mat open 3D Dind anisotropy (set)                           1.57e-16  (tol 1e-12)  ok
+  mat open 3D Dind DMI (set)                                  1.21e-16  (tol 1e-12)  ok
+  mat open 3D Dind Zeeman (set)                               0.00e+00  (tol 1e-12)  ok
+  mat open 3D Dind demag (set)                                4.27e-16  (tol 1e-12)  ok
+  mat open 3D Dind exchange (add)                             2.95e-16  (tol 1e-12)  ok
+  mat open 3D Dind anisotropy (add)                           2.29e-16  (tol 1e-12)  ok
+  mat open 3D Dind DMI (add)                                  2.36e-16  (tol 1e-12)  ok
+  mat open 3D Dind Zeeman (add)                               0.00e+00  (tol 1e-12)  ok
+  mat open 3D Dind demag (add)                                3.28e-16  (tol 1e-12)  ok
+  mat open 3D Dind demag padding stays zero                  ok
+  mat open 3D Dind effective field                            2.95e-16  (tol 1e-12)  ok
+  mat open 3D Dind LLG torque                                 3.00e-16  (tol 1e-12)  ok
+  mat open 3D Dind Zhang-Li J=(2.0e11, 0, 0) (set)            2.12e-16  (tol 1e-12)  ok
+  mat open 3D Dind Zhang-Li J=(2.0e11, 0, 0) (add)            1.53e-16  (tol 1e-12)  ok
+  mat open 3D Dind Zhang-Li J=(1.0e11, -3.0e11, 0) (set)      2.24e-16  (tol 1e-12)  ok
+  mat open 3D Dind Zhang-Li J=(1.0e11, -3.0e11, 0) (add)      2.08e-16  (tol 1e-12)  ok
+  mat open 3D Dind Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (set)  2.76e-16  (tol 1e-12)  ok
+  mat open 3D Dind Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (add)  2.53e-16  (tol 1e-12)  ok
+  mat open 3D Dind Slonczewski (set)                          4.06e-16  (tol 1e-12)  ok
+  mat open 3D Dind Slonczewski (add)                          3.43e-16  (tol 1e-12)  ok
+  mat open 3D Dind damping torque                             2.39e-16  (tol 1e-12)  ok
+  mat open 3D Dind Cayley step m                              2.22e-16  (tol 1e-12)  ok
+  mat open 3D Dind Cayley step max|Δm|²                       1.55e-16  (tol 1e-12)  ok
+  mat open 3D Dind BB sum ss                                  2.12e-15  (tol 1e-11)  ok
+  mat open 3D Dind BB sum sy                                  3.88e-16  (tol 1e-11)  ok
+  mat open 3D Dind BB sum yy                                  4.21e-16  (tol 1e-11)  ok
+  mat open 3D Dind normalize!                                 3.33e-16  (tol 1e-12)  ok
+  mat open 3D Dind average                                    7.18e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind exchange (set)                      2.97e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind anisotropy (set)                    1.58e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind DMI (set)                           1.45e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind Zeeman (set)                        0.00e+00  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind demag (set)                         6.28e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind exchange (add)                      2.97e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind anisotropy (add)                    2.37e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind DMI (add)                           1.45e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind Zeeman (add)                        0.00e+00  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind demag (add)                         5.68e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind demag padding stays zero           ok
+  mat periodic-xy 2D Dind effective field                     2.91e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind LLG torque                          3.38e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind Zhang-Li J=(2.0e11, 0, 0) (set)     2.13e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind Zhang-Li J=(2.0e11, 0, 0) (add)     1.67e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind Zhang-Li J=(1.0e11, -3.0e11, 0) (set)  2.38e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind Zhang-Li J=(1.0e11, -3.0e11, 0) (add)  2.24e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (set)  1.82e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (add)  1.63e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind Slonczewski (set)                   4.07e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind Slonczewski (add)                   3.40e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind damping torque                      2.35e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind Cayley step m                       2.22e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind Cayley step max|Δm|²                1.28e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind BB sum ss                           8.43e-16  (tol 1e-11)  ok
+  mat periodic-xy 2D Dind BB sum sy                           1.67e-15  (tol 1e-11)  ok
+  mat periodic-xy 2D Dind BB sum yy                           4.06e-16  (tol 1e-11)  ok
+  mat periodic-xy 2D Dind normalize!                          3.33e-16  (tol 1e-12)  ok
+  mat periodic-xy 2D Dind average                             4.43e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk exchange (set)                     1.62e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk anisotropy (set)                   1.13e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk DMI (set)                          1.37e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk Zeeman (set)                       0.00e+00  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk demag (set)                        4.10e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk exchange (add)                     1.62e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk anisotropy (add)                   2.09e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk DMI (add)                          2.77e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk Zeeman (add)                       0.00e+00  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk demag (add)                        4.66e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk demag padding stays zero          ok
+  mat periodic-xz 3D Dbulk effective field                    1.62e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk LLG torque                         4.74e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk Zhang-Li J=(2.0e11, 0, 0) (set)    1.42e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk Zhang-Li J=(2.0e11, 0, 0) (add)    2.25e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk Zhang-Li J=(1.0e11, -3.0e11, 0) (set)  3.24e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk Zhang-Li J=(1.0e11, -3.0e11, 0) (add)  3.01e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (set)  2.59e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (add)  2.30e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk Slonczewski (set)                  4.06e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk Slonczewski (add)                  3.39e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk damping torque                     3.42e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk Cayley step m                      2.22e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk Cayley step max|Δm|²               0.00e+00  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk BB sum ss                          1.67e-16  (tol 1e-11)  ok
+  mat periodic-xz 3D Dbulk BB sum sy                          1.84e-15  (tol 1e-11)  ok
+  mat periodic-xz 3D Dbulk BB sum yy                          9.76e-16  (tol 1e-11)  ok
+  mat periodic-xz 3D Dbulk normalize!                         3.33e-16  (tol 1e-12)  ok
+  mat periodic-xz 3D Dbulk average                            1.12e-15  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) exchange (set)               2.71e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) anisotropy (set)             1.58e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) DMI (set)                    1.37e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) Zeeman (set)                 0.00e+00  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) demag (set)                  4.53e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) exchange (add)               2.72e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) anisotropy (add)             2.32e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) DMI (add)                    1.29e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) Zeeman (add)                 0.00e+00  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) demag (add)                  3.62e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) demag padding stays zero    ok
+  mat periodic-x odd Nx (odd P1) effective field              2.62e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) LLG torque                   3.69e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) Zhang-Li J=(2.0e11, 0, 0) (set)  2.06e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) Zhang-Li J=(2.0e11, 0, 0) (add)  1.69e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) Zhang-Li J=(1.0e11, -3.0e11, 0) (set)  1.22e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) Zhang-Li J=(1.0e11, -3.0e11, 0) (add)  1.03e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (set)  3.43e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (add)  2.68e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) Slonczewski (set)            4.07e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) Slonczewski (add)            3.42e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) damping torque               2.18e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) Cayley step m                2.22e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) Cayley step max|Δm|²         0.00e+00  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) BB sum ss                    1.50e-15  (tol 1e-11)  ok
+  mat periodic-x odd Nx (odd P1) BB sum sy                    1.32e-15  (tol 1e-11)  ok
+  mat periodic-x odd Nx (odd P1) BB sum yy                    3.60e-16  (tol 1e-11)  ok
+  mat periodic-x odd Nx (odd P1) normalize!                   3.33e-16  (tol 1e-12)  ok
+  mat periodic-x odd Nx (odd P1) average                      1.38e-15  (tol 1e-12)  ok
+  mat wire 1×16×4 exchange (set)                              1.46e-16  (tol 1e-12)  ok
+  mat wire 1×16×4 anisotropy (set)                            1.14e-16  (tol 1e-12)  ok
+  mat wire 1×16×4 DMI (set)                                   1.32e-16  (tol 1e-12)  ok
+  mat wire 1×16×4 Zeeman (set)                                0.00e+00  (tol 1e-12)  ok
+  mat wire 1×16×4 demag (set)                                 2.08e-16  (tol 1e-12)  ok
+  mat wire 1×16×4 exchange (add)                              1.47e-16  (tol 1e-12)  ok
+  mat wire 1×16×4 anisotropy (add)                            1.15e-16  (tol 1e-12)  ok
+  mat wire 1×16×4 DMI (add)                                   2.30e-16  (tol 1e-12)  ok
+  mat wire 1×16×4 Zeeman (add)                                0.00e+00  (tol 1e-12)  ok
+  mat wire 1×16×4 demag (add)                                 1.50e-16  (tol 1e-12)  ok
+  mat wire 1×16×4 demag padding stays zero                   ok
+  mat wire 1×16×4 effective field                             1.40e-16  (tol 1e-12)  ok
+  mat wire 1×16×4 LLG torque                                  3.67e-16  (tol 1e-12)  ok
+  mat wire 1×16×4 Zhang-Li J=(2.0e11, 0, 0) (set)             0.00e+00  (tol 1e-12)  ok
+  mat wire 1×16×4 Zhang-Li J=(2.0e11, 0, 0) (add)             0.00e+00  (tol 1e-12)  ok
+  mat wire 1×16×4 Zhang-Li J=(1.0e11, -3.0e11, 0) (set)       1.58e-16  (tol 1e-12)  ok
+  mat wire 1×16×4 Zhang-Li J=(1.0e11, -3.0e11, 0) (add)       1.33e-16  (tol 1e-12)  ok
+  mat wire 1×16×4 Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (set)   2.12e-16  (tol 1e-12)  ok
+  mat wire 1×16×4 Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (add)   1.98e-16  (tol 1e-12)  ok
+  mat wire 1×16×4 Slonczewski (set)                           3.08e-16  (tol 1e-12)  ok
+  mat wire 1×16×4 Slonczewski (add)                           2.56e-16  (tol 1e-12)  ok
+  mat wire 1×16×4 damping torque                              1.65e-16  (tol 1e-12)  ok
+  mat wire 1×16×4 Cayley step m                               1.11e-16  (tol 1e-12)  ok
+  mat wire 1×16×4 Cayley step max|Δm|²                        0.00e+00  (tol 1e-12)  ok
+  mat wire 1×16×4 BB sum ss                                   7.00e-16  (tol 1e-11)  ok
+  mat wire 1×16×4 BB sum sy                                   3.85e-16  (tol 1e-11)  ok
+  mat wire 1×16×4 BB sum yy                                   1.41e-16  (tol 1e-11)  ok
+  mat wire 1×16×4 normalize!                                  3.33e-16  (tol 1e-12)  ok
+  mat wire 1×16×4 average                                     2.33e-16  (tol 1e-12)  ok
+  regions bilayer exchange (set)                              2.76e-16  (tol 1e-12)  ok
+  regions bilayer anisotropy (set)                            1.57e-16  (tol 1e-12)  ok
+  regions bilayer DMI (set)                                   1.25e-16  (tol 1e-12)  ok
+  regions bilayer Zeeman (set)                                0.00e+00  (tol 1e-12)  ok
+  regions bilayer demag (set)                                 3.87e-16  (tol 1e-12)  ok
+  regions bilayer exchange (add)                              2.75e-16  (tol 1e-12)  ok
+  regions bilayer anisotropy (add)                            2.25e-16  (tol 1e-12)  ok
+  regions bilayer DMI (add)                                   1.20e-16  (tol 1e-12)  ok
+  regions bilayer Zeeman (add)                                0.00e+00  (tol 1e-12)  ok
+  regions bilayer demag (add)                                 3.50e-16  (tol 1e-12)  ok
+  regions bilayer demag padding stays zero                   ok
+  regions bilayer effective field                             2.78e-16  (tol 1e-12)  ok
+  regions bilayer LLG torque                                  3.90e-16  (tol 1e-12)  ok
+  regions bilayer damping torque                              3.32e-16  (tol 1e-12)  ok
+  regions bilayer Cayley step m                               2.22e-16  (tol 1e-12)  ok
+  regions bilayer Cayley step max|Δm|²                        4.00e-16  (tol 1e-12)  ok
+  regions bilayer BB sum ss                                   2.05e-15  (tol 1e-11)  ok
+  regions bilayer BB sum sy                                   6.93e-16  (tol 1e-11)  ok
+  regions bilayer BB sum yy                                   1.87e-16  (tol 1e-11)  ok
+  regions bilayer normalize!                                  3.33e-16  (tol 1e-12)  ok
+  regions bilayer relax, intrinsic 1-ulp spread               1.70e-13
+  regions bilayer relax, 20 BB steps, m (tol 10× spread)      9.04e-14  (tol 1e-09)  ok
+  regions bilayer fixed-step RK4 run 4 ps, m                  1.36e-15  (tol 1e-10)  ok
+  regions bilayer adaptive Tsit5 run 10 ps, m                 1.35e-11  (tol 1e-05)  ok
+  regions bilayer average                                     7.18e-16  (tol 1e-12)  ok
+  regions bilayer average_magnet                              7.18e-16  (tol 1e-12)  ok
+  regions bulk periodic-x exchange (set)                      2.15e-16  (tol 1e-12)  ok
+  regions bulk periodic-x anisotropy (set)                    1.14e-16  (tol 1e-12)  ok
+  regions bulk periodic-x DMI (set)                           2.40e-16  (tol 1e-12)  ok
+  regions bulk periodic-x Zeeman (set)                        0.00e+00  (tol 1e-12)  ok
+  regions bulk periodic-x demag (set)                         4.89e-16  (tol 1e-12)  ok
+  regions bulk periodic-x exchange (add)                      2.16e-16  (tol 1e-12)  ok
+  regions bulk periodic-x anisotropy (add)                    2.10e-16  (tol 1e-12)  ok
+  regions bulk periodic-x DMI (add)                           2.44e-16  (tol 1e-12)  ok
+  regions bulk periodic-x Zeeman (add)                        0.00e+00  (tol 1e-12)  ok
+  regions bulk periodic-x demag (add)                         4.11e-16  (tol 1e-12)  ok
+  regions bulk periodic-x demag padding stays zero           ok
+  regions bulk periodic-x effective field                     2.12e-16  (tol 1e-12)  ok
+  regions bulk periodic-x LLG torque                          3.25e-16  (tol 1e-12)  ok
+  regions bulk periodic-x damping torque                      1.71e-16  (tol 1e-12)  ok
+  regions bulk periodic-x Cayley step m                       2.22e-16  (tol 1e-12)  ok
+  regions bulk periodic-x Cayley step max|Δm|²                1.37e-16  (tol 1e-12)  ok
+  regions bulk periodic-x BB sum ss                           2.84e-15  (tol 1e-11)  ok
+  regions bulk periodic-x BB sum sy                           1.36e-16  (tol 1e-11)  ok
+  regions bulk periodic-x BB sum yy                           1.74e-15  (tol 1e-11)  ok
+  regions bulk periodic-x normalize!                          3.33e-16  (tol 1e-12)  ok
+  regions bulk periodic-x relax, intrinsic 1-ulp spread       4.01e-15
+  regions bulk periodic-x relax, 20 BB steps, m (tol 10× spread)  8.46e-15  (tol 1e-09)  ok
+  regions bulk periodic-x fixed-step RK4 run 4 ps, m          1.22e-15  (tol 1e-10)  ok
+  regions bulk periodic-x adaptive Tsit5 run 10 ps, m         1.93e-12  (tol 1e-05)  ok
+  regions bulk periodic-x average                             1.32e-15  (tol 1e-12)  ok
+  regions bulk periodic-x average_magnet                      1.32e-15  (tol 1e-12)  ok
+  regions disc es4 exchange (set)                             1.79e-16  (tol 1e-12)  ok
+  regions disc es4 anisotropy (set)                           7.60e-17  (tol 1e-12)  ok
+  regions disc es4 DMI (set)                                  8.81e-17  (tol 1e-12)  ok
+  regions disc es4 Zeeman (set)                               0.00e+00  (tol 1e-12)  ok
+  regions disc es4 demag (set)                                4.27e-16  (tol 1e-12)  ok
+  regions disc es4 exchange (add)                             1.79e-16  (tol 1e-12)  ok
+  regions disc es4 anisotropy (add)                           1.49e-16  (tol 1e-12)  ok
+  regions disc es4 DMI (add)                                  8.69e-17  (tol 1e-12)  ok
+  regions disc es4 Zeeman (add)                               0.00e+00  (tol 1e-12)  ok
+  regions disc es4 demag (add)                                3.55e-16  (tol 1e-12)  ok
+  regions disc es4 demag padding stays zero                  ok
+  regions disc es4 effective field                            1.81e-16  (tol 1e-12)  ok
+  regions disc es4 LLG torque                                 5.02e-16  (tol 1e-12)  ok
+  regions disc es4 damping torque                             2.98e-16  (tol 1e-12)  ok
+  regions disc es4 Cayley step m                              3.33e-16  (tol 1e-12)  ok
+  regions disc es4 Cayley step max|Δm|²                       5.02e-16  (tol 1e-12)  ok
+  regions disc es4 BB sum ss                                  4.13e-16  (tol 1e-11)  ok
+  regions disc es4 BB sum sy                                  3.40e-16  (tol 1e-11)  ok
+  regions disc es4 BB sum yy                                  4.83e-16  (tol 1e-11)  ok
+  regions disc es4 normalize!                                 3.33e-16  (tol 1e-12)  ok
+  regions disc es4 relax, intrinsic 1-ulp spread              4.99e-13
+  regions disc es4 relax, 20 BB steps, m (tol 10× spread)     2.26e-13  (tol 1e-09)  ok
+  regions disc es4 fixed-step RK4 run 4 ps, m                 1.17e-15  (tol 1e-10)  ok
+  regions disc es4 adaptive Tsit5 run 10 ps, m                4.50e-12  (tol 1e-05)  ok
+  regions disc es4 average                                    1.07e-15  (tol 1e-12)  ok
+  regions disc es4 average_magnet                             1.25e-15  (tol 1e-12)  ok
+  mat open 3D Dind relax, intrinsic 1-ulp spread              2.47e-12
+  mat open 3D Dind relax, 20 BB steps, m (tol 10× spread)     1.17e-12  (tol 1e-09)  ok
+  mat open 3D Dind fixed-step RK4 run 4 ps, m                 1.28e-15  (tol 1e-10)  ok
+  mat open 3D Dind adaptive Tsit5 run 10 ps, m                2.45e-10  (tol 1e-05)  ok
+
+================ Float32 ================
+  mat open 3D Dind exchange (set)                             1.19e-07  (tol 2e-05)  ok
+  mat open 3D Dind anisotropy (set)                           8.45e-08  (tol 2e-05)  ok
+  mat open 3D Dind DMI (set)                                  6.48e-08  (tol 2e-05)  ok
+  mat open 3D Dind Zeeman (set)                               0.00e+00  (tol 2e-05)  ok
+  mat open 3D Dind demag (set)                                2.29e-07  (tol 2e-05)  ok
+  mat open 3D Dind exchange (add)                             1.20e-07  (tol 2e-05)  ok
+  mat open 3D Dind anisotropy (add)                           1.21e-07  (tol 2e-05)  ok
+  mat open 3D Dind DMI (add)                                  6.47e-08  (tol 2e-05)  ok
+  mat open 3D Dind Zeeman (add)                               0.00e+00  (tol 2e-05)  ok
+  mat open 3D Dind demag (add)                                1.86e-07  (tol 2e-05)  ok
+  mat open 3D Dind demag padding stays zero                  ok
+  mat open 3D Dind effective field                            1.58e-07  (tol 2e-05)  ok
+  mat open 3D Dind LLG torque                                 2.15e-07  (tol 2e-05)  ok
+  mat open 3D Dind Zhang-Li J=(2.0e11, 0, 0) (set)            1.14e-07  (tol 2e-05)  ok
+  mat open 3D Dind Zhang-Li J=(2.0e11, 0, 0) (add)            8.21e-08  (tol 2e-05)  ok
+  mat open 3D Dind Zhang-Li J=(1.0e11, -3.0e11, 0) (set)      1.80e-07  (tol 2e-05)  ok
+  mat open 3D Dind Zhang-Li J=(1.0e11, -3.0e11, 0) (add)      1.68e-07  (tol 2e-05)  ok
+  mat open 3D Dind Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (set)  1.48e-07  (tol 2e-05)  ok
+  mat open 3D Dind Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (add)  1.36e-07  (tol 2e-05)  ok
+  mat open 3D Dind Slonczewski (set)                          2.18e-07  (tol 2e-05)  ok
+  mat open 3D Dind Slonczewski (add)                          1.84e-07  (tol 2e-05)  ok
+  mat open 3D Dind damping torque                             1.28e-07  (tol 2e-05)  ok
+  mat open 3D Dind Cayley step m                              1.19e-07  (tol 2e-05)  ok
+  mat open 3D Dind Cayley step max|Δm|²                       0.00e+00  (tol 2e-05)  ok
+  mat open 3D Dind BB sum ss                                  0.00e+00  (tol 1e-04)  ok
+  mat open 3D Dind BB sum sy                                  0.00e+00  (tol 1e-04)  ok
+  mat open 3D Dind BB sum yy                                  0.00e+00  (tol 1e-04)  ok
+  mat open 3D Dind normalize!                                 1.79e-07  (tol 2e-05)  ok
+  mat open 3D Dind average                                    0.00e+00  (tol 1e-06)  ok
+  mat periodic-xy 2D Dind exchange (set)                      1.60e-07  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind anisotropy (set)                    8.46e-08  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind DMI (set)                           7.78e-08  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind Zeeman (set)                        0.00e+00  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind demag (set)                         2.89e-07  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind exchange (add)                      1.61e-07  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind anisotropy (add)                    1.23e-07  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind DMI (add)                           7.48e-08  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind Zeeman (add)                        0.00e+00  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind demag (add)                         2.17e-07  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind demag padding stays zero           ok
+  mat periodic-xy 2D Dind effective field                     1.56e-07  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind LLG torque                          2.72e-07  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind Zhang-Li J=(2.0e11, 0, 0) (set)     1.14e-07  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind Zhang-Li J=(2.0e11, 0, 0) (add)     8.98e-08  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind Zhang-Li J=(1.0e11, -3.0e11, 0) (set)  1.28e-07  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind Zhang-Li J=(1.0e11, -3.0e11, 0) (add)  1.20e-07  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (set)  9.76e-08  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (add)  8.76e-08  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind Slonczewski (set)                   1.64e-07  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind Slonczewski (add)                   1.37e-07  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind damping torque                      1.26e-07  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind Cayley step m                       1.19e-07  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind Cayley step max|Δm|²                0.00e+00  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind BB sum ss                           0.00e+00  (tol 1e-04)  ok
+  mat periodic-xy 2D Dind BB sum sy                           0.00e+00  (tol 1e-04)  ok
+  mat periodic-xy 2D Dind BB sum yy                           0.00e+00  (tol 1e-04)  ok
+  mat periodic-xy 2D Dind normalize!                          1.79e-07  (tol 2e-05)  ok
+  mat periodic-xy 2D Dind average                             0.00e+00  (tol 1e-06)  ok
+  mat periodic-xz 3D Dbulk exchange (set)                     8.68e-08  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk anisotropy (set)                   6.08e-08  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk DMI (set)                          1.47e-07  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk Zeeman (set)                       0.00e+00  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk demag (set)                        2.93e-07  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk exchange (add)                     8.70e-08  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk anisotropy (add)                   1.13e-07  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk DMI (add)                          1.44e-07  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk Zeeman (add)                       0.00e+00  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk demag (add)                        2.52e-07  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk demag padding stays zero          ok
+  mat periodic-xz 3D Dbulk effective field                    8.70e-08  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk LLG torque                         2.04e-07  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk Zhang-Li J=(2.0e11, 0, 0) (set)    1.52e-07  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk Zhang-Li J=(2.0e11, 0, 0) (add)    1.21e-07  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk Zhang-Li J=(1.0e11, -3.0e11, 0) (set)  1.74e-07  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk Zhang-Li J=(1.0e11, -3.0e11, 0) (add)  1.61e-07  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (set)  1.39e-07  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (add)  1.24e-07  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk Slonczewski (set)                  2.18e-07  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk Slonczewski (add)                  1.82e-07  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk damping torque                     1.38e-07  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk Cayley step m                      1.19e-07  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk Cayley step max|Δm|²               7.91e-08  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk BB sum ss                          0.00e+00  (tol 1e-04)  ok
+  mat periodic-xz 3D Dbulk BB sum sy                          0.00e+00  (tol 1e-04)  ok
+  mat periodic-xz 3D Dbulk BB sum yy                          0.00e+00  (tol 1e-04)  ok
+  mat periodic-xz 3D Dbulk normalize!                         1.79e-07  (tol 2e-05)  ok
+  mat periodic-xz 3D Dbulk average                            0.00e+00  (tol 1e-06)  ok
+  mat periodic-x odd Nx (odd P1) exchange (set)               7.28e-08  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) anisotropy (set)             8.49e-08  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) DMI (set)                    7.34e-08  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) Zeeman (set)                 0.00e+00  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) demag (set)                  2.21e-07  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) exchange (add)               7.21e-08  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) anisotropy (add)             1.24e-07  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) DMI (add)                    6.92e-08  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) Zeeman (add)                 0.00e+00  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) demag (add)                  1.55e-07  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) demag padding stays zero    ok
+  mat periodic-x odd Nx (odd P1) effective field              1.41e-07  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) LLG torque                   3.30e-07  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) Zhang-Li J=(2.0e11, 0, 0) (set)  1.11e-07  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) Zhang-Li J=(2.0e11, 0, 0) (add)  9.09e-08  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) Zhang-Li J=(1.0e11, -3.0e11, 0) (set)  1.30e-07  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) Zhang-Li J=(1.0e11, -3.0e11, 0) (add)  1.11e-07  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (set)  1.84e-07  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (add)  1.44e-07  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) Slonczewski (set)            1.64e-07  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) Slonczewski (add)            1.38e-07  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) damping torque               1.17e-07  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) Cayley step m                1.19e-07  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) Cayley step max|Δm|²         0.00e+00  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) BB sum ss                    0.00e+00  (tol 1e-04)  ok
+  mat periodic-x odd Nx (odd P1) BB sum sy                    0.00e+00  (tol 1e-04)  ok
+  mat periodic-x odd Nx (odd P1) BB sum yy                    0.00e+00  (tol 1e-04)  ok
+  mat periodic-x odd Nx (odd P1) normalize!                   1.79e-07  (tol 2e-05)  ok
+  mat periodic-x odd Nx (odd P1) average                      0.00e+00  (tol 1e-06)  ok
+  mat wire 1×16×4 exchange (set)                              3.92e-08  (tol 2e-05)  ok
+  mat wire 1×16×4 anisotropy (set)                            6.14e-08  (tol 2e-05)  ok
+  mat wire 1×16×4 DMI (set)                                   7.11e-08  (tol 2e-05)  ok
+  mat wire 1×16×4 Zeeman (set)                                0.00e+00  (tol 2e-05)  ok
+  mat wire 1×16×4 demag (set)                                 2.23e-07  (tol 2e-05)  ok
+  mat wire 1×16×4 exchange (add)                              7.81e-08  (tol 2e-05)  ok
+  mat wire 1×16×4 anisotropy (add)                            6.22e-08  (tol 2e-05)  ok
+  mat wire 1×16×4 DMI (add)                                   6.62e-08  (tol 2e-05)  ok
+  mat wire 1×16×4 Zeeman (add)                                0.00e+00  (tol 2e-05)  ok
+  mat wire 1×16×4 demag (add)                                 1.51e-07  (tol 2e-05)  ok
+  mat wire 1×16×4 demag padding stays zero                   ok
+  mat wire 1×16×4 effective field                             7.49e-08  (tol 2e-05)  ok
+  mat wire 1×16×4 LLG torque                                  1.97e-07  (tol 2e-05)  ok
+  mat wire 1×16×4 Zhang-Li J=(2.0e11, 0, 0) (set)             0.00e+00  (tol 2e-05)  ok
+  mat wire 1×16×4 Zhang-Li J=(2.0e11, 0, 0) (add)             0.00e+00  (tol 2e-05)  ok
+  mat wire 1×16×4 Zhang-Li J=(1.0e11, -3.0e11, 0) (set)       4.24e-08  (tol 2e-05)  ok
+  mat wire 1×16×4 Zhang-Li J=(1.0e11, -3.0e11, 0) (add)       7.13e-08  (tol 2e-05)  ok
+  mat wire 1×16×4 Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (set)   1.14e-07  (tol 2e-05)  ok
+  mat wire 1×16×4 Zhang-Li J=(5.0e10, 2.0e10, 4.0e11) (add)   1.06e-07  (tol 2e-05)  ok
+  mat wire 1×16×4 Slonczewski (set)                           1.10e-07  (tol 2e-05)  ok
+  mat wire 1×16×4 Slonczewski (add)                           9.17e-08  (tol 2e-05)  ok
+  mat wire 1×16×4 damping torque                              8.88e-08  (tol 2e-05)  ok
+  mat wire 1×16×4 Cayley step m                               5.97e-08  (tol 2e-05)  ok
+  mat wire 1×16×4 Cayley step max|Δm|²                        6.92e-08  (tol 2e-05)  ok
+  mat wire 1×16×4 BB sum ss                                   6.26e-08  (tol 1e-04)  ok
+  mat wire 1×16×4 BB sum sy                                   0.00e+00  (tol 1e-04)  ok
+  mat wire 1×16×4 BB sum yy                                   0.00e+00  (tol 1e-04)  ok
+Precompiling JuliaMag...
+   2469.1 ms  ✓ JuliaMag
+   6087.2 ms  ✓ JuliaMag → JuliaMagCUDAExt
+  2 dependencies successfully precompiled in 21 seconds. 468 already precompiled.
+  mat wire 1×16×4 normalize!                                  1.19e-07  (tol 2e-05)  ok
+  mat wire 1×16×4 average                                     0.00e+00  (tol 1e-06)  ok
+  regions bilayer exchange (set)                              1.48e-07  (tol 2e-05)  ok
+  regions bilayer anisotropy (set)                            8.45e-08  (tol 2e-05)  ok
+  regions bilayer DMI (set)                                   6.71e-08  (tol 2e-05)  ok
+  regions bilayer Zeeman (set)                                0.00e+00  (tol 2e-05)  ok
+  regions bilayer demag (set)                                 2.60e-07  (tol 2e-05)  ok
+  regions bilayer exchange (add)                              1.49e-07  (tol 2e-05)  ok
+  regions bilayer anisotropy (add)                            1.21e-07  (tol 2e-05)  ok
+  regions bilayer DMI (add)                                   6.19e-08  (tol 2e-05)  ok
+  regions bilayer Zeeman (add)                                0.00e+00  (tol 2e-05)  ok
+  regions bilayer demag (add)                                 2.55e-07  (tol 2e-05)  ok
+  regions bilayer demag padding stays zero                   ok
+  regions bilayer effective field                             1.49e-07  (tol 2e-05)  ok
+  regions bilayer LLG torque                                  2.09e-07  (tol 2e-05)  ok
+  regions bilayer damping torque                              1.19e-07  (tol 2e-05)  ok
+  regions bilayer Cayley step m                               1.79e-07  (tol 2e-05)  ok
+  regions bilayer Cayley step max|Δm|²                        0.00e+00  (tol 2e-05)  ok
+  regions bilayer BB sum ss                                   0.00e+00  (tol 1e-04)  ok
+  regions bilayer BB sum sy                                   0.00e+00  (tol 1e-04)  ok
+  regions bilayer BB sum yy                                   0.00e+00  (tol 1e-04)  ok
+  regions bilayer normalize!                                  1.79e-07  (tol 2e-05)  ok
+  regions bilayer relax, intrinsic 1-ulp spread               1.60e-05
+  regions bilayer relax, 20 BB steps, m (tol 10× spread)      4.21e-05  (tol 2e-04)  ok
+  regions bilayer fixed-step RK4 run 4 ps, m                  4.77e-07  (tol 1e-04)  ok
+  regions bilayer adaptive Tsit5 run 10 ps, m                 1.16e-06  (tol 1e-03)  ok
+  regions bilayer average                                     0.00e+00  (tol 1e-06)  ok
+  regions bilayer average_magnet                              0.00e+00  (tol 1e-06)  ok
+  regions bulk periodic-x exchange (set)                      1.15e-07  (tol 2e-05)  ok
+  regions bulk periodic-x anisotropy (set)                    6.11e-08  (tol 2e-05)  ok
+  regions bulk periodic-x DMI (set)                           1.29e-07  (tol 2e-05)  ok
+  regions bulk periodic-x Zeeman (set)                        0.00e+00  (tol 2e-05)  ok
+  regions bulk periodic-x demag (set)                         2.63e-07  (tol 2e-05)  ok
+  regions bulk periodic-x exchange (add)                      1.15e-07  (tol 2e-05)  ok
+  regions bulk periodic-x anisotropy (add)                    6.09e-08  (tol 2e-05)  ok
+  regions bulk periodic-x DMI (add)                           1.24e-07  (tol 2e-05)  ok
+  regions bulk periodic-x Zeeman (add)                        0.00e+00  (tol 2e-05)  ok
+  regions bulk periodic-x demag (add)                         2.38e-07  (tol 2e-05)  ok
+  regions bulk periodic-x demag padding stays zero           ok
+  regions bulk periodic-x effective field                     1.14e-07  (tol 2e-05)  ok
+  regions bulk periodic-x LLG torque                          2.06e-07  (tol 2e-05)  ok
+  regions bulk periodic-x damping torque                      9.17e-08  (tol 2e-05)  ok
+  regions bulk periodic-x Cayley step m                       1.19e-07  (tol 2e-05)  ok
+  regions bulk periodic-x Cayley step max|Δm|²                0.00e+00  (tol 2e-05)  ok
+  regions bulk periodic-x BB sum ss                           0.00e+00  (tol 1e-04)  ok
+  regions bulk periodic-x BB sum sy                           0.00e+00  (tol 1e-04)  ok
+  regions bulk periodic-x BB sum yy                           0.00e+00  (tol 1e-04)  ok
+  regions bulk periodic-x normalize!                          1.79e-07  (tol 2e-05)  ok
+  regions bulk periodic-x relax, intrinsic 1-ulp spread       1.91e-06
+  regions bulk periodic-x relax, 20 BB steps, m (tol 10× spread)  2.33e-06  (tol 1e-04)  ok
+  regions bulk periodic-x fixed-step RK4 run 4 ps, m          8.05e-07  (tol 1e-04)  ok
+  regions bulk periodic-x adaptive Tsit5 run 10 ps, m         1.39e-06  (tol 1e-03)  ok
+  regions bulk periodic-x average                             0.00e+00  (tol 1e-06)  ok
+  regions bulk periodic-x average_magnet                      0.00e+00  (tol 1e-06)  ok
+  regions disc es4 exchange (set)                             9.60e-08  (tol 2e-05)  ok
+  regions disc es4 anisotropy (set)                           8.16e-08  (tol 2e-05)  ok
+  regions disc es4 DMI (set)                                  9.46e-08  (tol 2e-05)  ok
+  regions disc es4 Zeeman (set)                               0.00e+00  (tol 2e-05)  ok
+  regions disc es4 demag (set)                                2.29e-07  (tol 2e-05)  ok
+  regions disc es4 exchange (add)                             9.61e-08  (tol 2e-05)  ok
+  regions disc es4 anisotropy (add)                           1.13e-07  (tol 2e-05)  ok
+  regions disc es4 DMI (add)                                  9.48e-08  (tol 2e-05)  ok
+  regions disc es4 Zeeman (add)                               0.00e+00  (tol 2e-05)  ok
+  regions disc es4 demag (add)                                1.90e-07  (tol 2e-05)  ok
+  regions disc es4 demag padding stays zero                  ok
+  regions disc es4 effective field                            9.74e-08  (tol 2e-05)  ok
+  regions disc es4 LLG torque                                 2.70e-07  (tol 2e-05)  ok
+  regions disc es4 damping torque                             1.20e-07  (tol 2e-05)  ok
+  regions disc es4 Cayley step m                              1.19e-07  (tol 2e-05)  ok
+  regions disc es4 Cayley step max|Δm|²                       0.00e+00  (tol 2e-05)  ok
+  regions disc es4 BB sum ss                                  0.00e+00  (tol 1e-04)  ok
+  regions disc es4 BB sum sy                                  0.00e+00  (tol 1e-04)  ok
+  regions disc es4 BB sum yy                                  0.00e+00  (tol 1e-04)  ok
+  regions disc es4 normalize!                                 1.79e-07  (tol 2e-05)  ok
+  regions disc es4 relax, intrinsic 1-ulp spread              2.00e-05
+  regions disc es4 relax, 20 BB steps, m (tol 10× spread)     4.80e-05  (tol 2e-04)  ok
+  regions disc es4 fixed-step RK4 run 4 ps, m                 4.77e-07  (tol 1e-04)  ok
+  regions disc es4 adaptive Tsit5 run 10 ps, m                1.21e-06  (tol 1e-03)  ok
+  regions disc es4 average                                    0.00e+00  (tol 1e-06)  ok
+  regions disc es4 average_magnet                             0.00e+00  (tol 1e-06)  ok
+  mat open 3D Dind relax, intrinsic 1-ulp spread              5.71e-04
+  mat open 3D Dind relax, 20 BB steps, m (tol 10× spread)     6.48e-04  (tol 6e-03)  ok
+  mat open 3D Dind fixed-step RK4 run 4 ps, m                 4.21e-07  (tol 1e-04)  ok
+  mat open 3D Dind adaptive Tsit5 run 10 ps, m                1.37e-06  (tol 1e-03)  ok
+
+446/446 checks passed

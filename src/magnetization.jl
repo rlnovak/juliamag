@@ -140,14 +140,15 @@ Spatially averaged magnetization ⟨m⟩ over all cells. This is the quantity th
 µMAG standard problems report.
 """
 function average(m::AbstractArray{T,4}) where {T}
-    sx = sy = sz = zero(T)
+    S = promote_type(T, Float64)          # Float64 accumulator also for Float32 m
+    sx = sy = sz = zero(S)
     @inbounds for k in axes(m, 4), j in axes(m, 3), i in axes(m, 2)
         sx += m[1, i, j, k]
         sy += m[2, i, j, k]
         sz += m[3, i, j, k]
     end
-    n = T(length(m) ÷ 3)
-    return (sx / n, sy / n, sz / n)
+    n = S(length(m) ÷ 3)
+    return (T(sx / n), T(sy / n), T(sz / n))
 end
 
 # Helper: normalize a 3-tuple.

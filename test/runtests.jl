@@ -21,4 +21,5 @@ using Test
     include("test_output.jl")
     include("test_simulation.jl")
     include("test_thermal.jl")
+    include("test_precision.jl")
 end

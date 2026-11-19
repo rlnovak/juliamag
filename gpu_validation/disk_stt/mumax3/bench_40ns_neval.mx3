@@ -1,0 +1,42 @@
+// Timing replica of stt_es4_noZL_40ns.mx3: identical run plus the torque-evaluation
+// count (NEval) in the table and the totals printed at the end, for the per-evaluation
+// cost comparison with JuliaMag (bench_rhs.jl).
+// 40 ns production series, mumax3 side: the reference disk_d1=128nm_t=16nm_40mA run
+// (sims1) with exactly two changes, so that it matches the JuliaMag production script
+// gpu_validation/disk_stt/juliamag/disk_d1=128nm_t=16nm_40mA.jl like-for-like:
+//   1. EdgeSmooth = 4          (the reference used the default 0, a staircase edge)
+//   2. DisableZhangLiTorque    (mumax3 adds the Zhang-Li torque whenever J is set;
+//                               the CPP vortex-oscillator model is Slonczewski only)
+// Table columns as the reference: t, m, maxTorque, E_demag, E_exch, E_Zeeman,
+// E_total, J, ext_corepos, every 5 ps.
+SetGridsize(64, 64, 8)
+SetCellsize(2e-9, 2e-9, 2e-9)
+EdgeSmooth = 4
+setgeom(cylinder(128e-9, 16e-9))
+
+alpha = 0.01
+Aex   = 10.8e-12
+Msat  = 800e3
+
+m = vortex(1, 1)
+relax()
+
+TableAdd(maxTorque)
+TableAdd(E_demag)
+TableAdd(E_exch)
+TableAdd(E_Zeeman)
+TableAdd(E_total)
+TableAdd(J)
+TableAdd(ext_corepos)
+TableAdd(NEval)
+
+DisableZhangLiTorque = true
+lambda       = 1.0
+Pol          = 0.37
+epsilonprime = 0.01
+fixedlayer   = vector(cos(20*pi/180), sin(20*pi/180), 0)
+J = vector(0, 0, 0.040/(128e-9*128e-9*pi/4))
+
+tableautosave(5e-12)
+run(40e-9)
+print("steps", step, "NEval", NEval)

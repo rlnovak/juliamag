@@ -227,8 +227,8 @@ $(3, N_x, N_y, N_z)$, with the Cartesian component as the fastest-varying index:
 Placing the component first makes each cell's vector contiguous in memory, which
 vectorizes the per-cell cross products and, crucially, lets the whole array map
 onto a GPU \texttt{CuArray} without any restructuring. The element type \texttt{T}
-is a type parameter, so a simulation runs in \texttt{Float64} on the CPU and in
-\texttt{Float32} on the GPU with no change to the source.
+is a type parameter, so a simulation runs in \texttt{Float64} or in
+\texttt{Float32}, on the CPU or on the GPU, with no change to the source.
 
 \paragraph{Multiple dispatch.}
 Every field and torque routine is written against the abstract signature
@@ -347,10 +347,17 @@ The convolution theorem reduces it to $O(N\log N)$: the magnetization is
 zero-padded to a size that turns the circular FFT convolution into the linear
 convolution required, the kernel is transformed once at setup, and each timestep
 performs a forward real FFT, a pointwise tensor--vector product in Fourier space,
-and an inverse FFT. The transformed kernel, the FFT plans, and the scratch
+and an inverse FFT. As in \mumax{}, the kernel's reflection symmetry is used to
+halve the work: each diagonal component is even and each off-diagonal component
+odd under the reflections of the offset, so after the odd components are set
+exactly to zero on their symmetry planes the Fourier-space kernel is real and
+only its real part is stored. The kernel is transformed in \texttt{Float64}
+whatever the run precision, with the $1/N$ normalization of the inverse transform
+folded in, and the three magnetization components are transformed in a single
+batched call. The transformed kernel, the FFT plans, and the scratch
 buffers are cached in a \texttt{DemagPlan} object built once per simulation. We
 verified the FFT path against a direct real-space circular convolution with the
-same kernel to a relative error of $10^{-8}$, an accuracy check independent of any
+same kernel to a relative error below $10^{-12}$, an accuracy check independent of any
 analytic approximation. The self-demagnetization factors of a cubic cell come out
 to $1/3$ per axis and satisfy the trace sum rule $N_{xx}+N_{yy}+N_{zz}=1$.
 
@@ -557,19 +564,64 @@ dispatch, by the array type alone, to a GPU method --- there are no \texttt{if
 gpu} branches and no duplicated call sites.
 
 The GPU methods live in a Julia \emph{package extension} that loads only when
-\texttt{CUDA.jl} is present, so the core package carries no GPU dependency. Each
-method expresses the per-cell stencil with array programming --- shifted views
-and fused broadcast --- rather than a hand-written scalar loop, so the same
-expression compiles to a single GPU kernel on a \texttt{CuArray} and to
-vectorized code on a host \texttt{Array}. The demagnetizing convolution reuses
-the same FFT structure through \texttt{CUDA.CUFFT}. The element type \texttt{T} is
-a type parameter throughout, so a device run in \texttt{Float32} follows from the
-same source that runs in \texttt{Float64} on the CPU. The disc validation of
-Sec.~\ref{sec:discstt} ran entirely on the GPU, and the device exchange field was
-checked against the CPU one to round-off on that geometry. This is the concrete sense
+\texttt{CUDA.jl} is present, so the core package carries no GPU dependency.
+Following \mumax{}, each field and torque term is one CUDA kernel written in
+Julia, with one thread per cell, and each kernel repeats the arithmetic of the
+corresponding CPU loop line by line. Material parameters enter either as scalars
+or, in a multi-region simulation, as per-cell arrays, through the same kernel. The
+demagnetizing convolution uses the same real-kernel, batched FFT structure through
+\texttt{CUDA.CUFFT}, with the zero padding written once and preserved by the
+transforms. A right-hand-side evaluation of the LLG equation then performs no
+device allocations and launches $14$ kernels (an earlier version, written with
+shifted views and fused broadcasts, launched $182$ and allocated $74$ temporaries
+per evaluation, and was launch- and allocation-bound). Reductions (averages,
+energies, the minimizer's Barzilai--Borwein step) accumulate in \texttt{Float64}
+in either precision. A test suite checks every GPU method against its CPU
+counterpart on open and periodic meshes, scalar and region materials, and both DMI
+forms. Every field and torque agrees to $3\times10^{-15}$ relative in
+\texttt{Float64} and $3\times10^{-7}$ in \texttt{Float32}; $200$ fixed steps of
+fourth-order Runge--Kutta agree to $1.4\times10^{-15}$ and $8\times10^{-7}$. The disc validation of Sec.~\ref{sec:discstt} ran entirely on
+the GPU.
+
+\paragraph{Performance.}
+Table~\ref{tab:perf} compares the cost on the $40$~ns disc run of
+Sec.~\ref{sec:discstt} ($64\times64\times8$ cells, zero-padded to
+$128\times128\times16$ for the FFTs) on an NVIDIA Quadro P1000. In single precision a \JuliaMag{} evaluation
+costs the same as a \mumax{} one, $1.11$~ms. In double precision the demagnetizing
+FFTs take $2.8$ of the $3.5$~ms, because this GPU executes \texttt{Float64} at
+$1/32$ of the \texttt{Float32} rate. The \texttt{Float32} run reproduces the
+\texttt{Float64} one to $3.6\times10^{-6}$ in $\langle\vm\rangle$ over $40$~ns
+(Sec.~\ref{sec:discstt}). The remaining factor of two in wall time comes from the
+number of evaluations: the fixed-step fourth-order Runge--Kutta integration at
+$50$~fs used here needs $3.2\times10^{6}$, \mumax's adaptive fifth-order
+Runge--Kutta $1.8\times10^{6}$.
+
+\begin{table}[t]
+  \centering
+  \caption{Cost of the $40$~ns current-driven disc run on a Quadro P1000. Per
+  evaluation: one right-hand side of the LLG equation with the Slonczewski
+  torque. The \JuliaMag{} runs use fixed-step RK4 at $50$~fs, \mumax{} its
+  default adaptive RK45. The two \mumax{} timings were taken on the two machines
+  used (identical GPUs) and agree to $0.4\%$; the \texttt{Float64} wall time of the
+  current version is $40\times$ the measured $290$~s per simulated nanosecond.}
+  \label{tab:perf}
+  \begin{tabular}{lccc}
+    \hline
+    code & ms / evaluation & evaluations & wall time (s) \\
+    \hline
+    \JuliaMag{} broadcast version, \texttt{Float64} & $7.5$  & $3.2\times10^{6}$ & $25\,902$ \\
+    \JuliaMag{} broadcast version, \texttt{Float32} & $5.4$  & --- & --- \\
+    \JuliaMag{} kernels, \texttt{Float64}           & $3.54$ & $3.2\times10^{6}$ & $11\,600$ \\
+    \JuliaMag{} kernels, \texttt{Float32}           & $1.11$ & $3.2\times10^{6}$ & $4\,008$ \\
+    \mumax{} (\texttt{Float32})                     & $1.11$ & $1.8\times10^{6}$ & $2\,025$ \\
+    \hline
+  \end{tabular}
+\end{table}
+
+This is the concrete sense
 in which \JuliaMag{} ``explores'' Julia: multiple dispatch and parametric types
-turn CPU/GPU portability and single/multi-material generality from code-
-duplication problems into dispatch problems, resolved by the compiler.
+turn CPU/GPU portability and single/multi-material generality from
+code-duplication problems into dispatch problems, resolved by the compiler.
 
 % ==========================================================================
 \section{Validation}
@@ -857,6 +909,15 @@ $\mathrm{MaxErr}=10^{-7}$ over the full $40$~ns, \mumax's maximum torque agrees
 with \JuliaMag{} to $0.2\%$ rms. A maximum-torque criterion computed by an
 adaptive solver should therefore be read with its tolerance in mind.
 
+The same $40$~ns run in \texttt{Float32}, \mumax's precision, reproduces the
+\texttt{Float64} \JuliaMag{} run to $3.6\times10^{-6}$ in $\langle\vm\rangle$,
+$3\times10^{-6}$ relative in the total energy, and $0.07$~nm in the core
+position, with the same frequency ($962.318$~MHz over $1$--$39.5$~ns, from the
+orbit phase). Its largest deviations from \mumax{} equal those of the
+\texttt{Float64} run to within $5\times10^{-7}$: the comparison with \mumax{} is
+limited by the difference between the two time integrations, not by the
+floating-point precision.
+
 \begin{figure*}[t]
   \centering
   \includegraphics[width=\textwidth]{figures/disk_40ns_es4.png}
@@ -976,7 +1037,10 @@ a purely additive step: because every routine already operates on
 \texttt{AbstractArray\{T,4\}}, device execution required only that the arrays be
 \texttt{CuArray}s and that a handful of inner kernels acquire GPU methods, with no
 change to the call sites (Section~\ref{sec:gpu}), following the path that took
-\mumax{} to the GPU~\cite{lopezdiaz2012}.
+\mumax{} to the GPU~\cite{lopezdiaz2012}. With one kernel per term, as in \mumax{},
+a single-precision evaluation of the equation of motion costs the same as in
+\mumax{} on the same device, and a single-precision run reproduces the
+double-precision one to $4\times10^{-6}$.
 
 Beyond conventional acceleration, a transparent, dispatch-based, and fully
 differentiable-by-construction Julia implementation is a natural substrate for
@@ -1000,7 +1064,8 @@ long-term advantage.
 
 Immediate development priorities are multi-backend GPU execution through
 \texttt{KernelAbstractions.jl}, adaptive time stepping with the spin-transfer
-torques, and nudged-elastic-band and eigenmode solvers, alongside the
+torques (which accounts for the remaining factor of two in wall time against
+\mumax{}), and nudged-elastic-band and eigenmode solvers, alongside the
 documentation of finite-temperature (stochastic) dynamics in the spirit of
 Brown~\cite{brown1963}. The code is open source and available at
 \url{https://github.com/rlnovak/juliamag}.

@@ -1,0 +1,9 @@
+2026-11-17 16:43:44 waiting for an idle GPU (10 checks): /home/rlnovak/juliamag/gpu_validation/disk_stt/run_mumax3_bench.sh
+2026-11-19 04:15:24 GPU 1 (GPU-6016255c-f6db-366f-3488-3a7be8a33db5) idle, starting on labmac03: /home/rlnovak/juliamag/gpu_validation/disk_stt/run_mumax3_bench.sh
+   host labmac03, GPU GPU-6016255c-f6db-366f-3488-3a7be8a33db5
+== 2026-11-19 04:15:24 mumax3 bench_rk4fixed_0p5ns
+   wall 44.288 s; //steps 10000 NEval 40000
+== 2026-11-19 04:16:08 mumax3 bench_40ns_neval
+   wall 2024.804 s; //steps 302912 NEval 1.815341e+06
+== 2026-11-19 04:49:53 mumax3 bench done
+2026-11-19 04:49:53 done rc=0

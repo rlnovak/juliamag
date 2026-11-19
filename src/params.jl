@@ -71,6 +71,20 @@ end
 
 Base.eltype(::Material{T}) where {T} = T
 
+"""
+    Material{T}(mat::Material)
+
+The same material in floating-point precision `T`. The precision of a simulation is
+that of its material: build the `World`/`Simulation` from a `Material{Float32}` to run
+the whole pipeline (fields, torques, integrators, GPU kernels) in single precision,
+as mumax3 does; the demag kernel is still computed and transformed in Float64.
+
+    py32 = Material{Float32}(material("Permalloy"))
+"""
+Material{T}(m::Material) where {T<:AbstractFloat} =
+    Material{T}(m.Msat, m.Aex, m.alpha, m.Ku, m.anisU, m.Dind, m.Dbulk,
+                m.pol, m.xi, m.lambda, m.epsilonPrime)
+
 "Exchange length √(2A / (μ0 Msat²)) [m] — the mesh cell size should stay below this."
 exchangelength(mat::Material) = sqrt(2 * mat.Aex / (μ0 * mat.Msat^2))
 

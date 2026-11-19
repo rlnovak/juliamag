@@ -1,6 +1,6 @@
 # JuliaMag
 
-Micromagnetic simulation in pure Julia, on CPU and (later) GPU.
+Micromagnetic simulation in pure Julia, on CPU and GPU, in double or single precision.
 
 Inspired by [mumax3](https://github.com/mumax/3) (Vansteenkiste et al., *AIP Advances* **4**, 107133 (2014)),
 but written from scratch to take advantage of Julia's multiple dispatch.
@@ -13,8 +13,16 @@ and the array maps directly onto a `CuArray`.
 
 Every routine dispatches on the array type. A CPU run passes an `Array`, a GPU run
 passes a `CuArray`, and the correct method is selected — no separate code path, no
-`if gpu` branches. The element type `T` is propagated too, so `Float32` on the GPU
-comes for free.
+`if gpu` branches. The element type `T` is propagated too: build the material in
+single precision (`material("Permalloy"; precision = Float32)` or `Material{Float32}(mat)`)
+and the whole run — fields, torques, integrator — is `Float32`, mumax3's precision.
+The demag kernel is always computed and transformed in `Float64`, and reductions
+(averages, energies, the minimizer's step) accumulate in `Float64`.
+
+On the GPU each field and torque term is one CUDA kernel (one thread per cell, the
+same arithmetic as the CPU loop), as in mumax3. On a Quadro P1000 a single-precision
+evaluation of the equation of motion for a 64×64×8 disc costs 1.11 ms, the same as
+mumax3 ([`gpu_validation/README.md`](gpu_validation/README.md), Result 8).
 
 Index convention is `(x, y, z)`, 1-based, everywhere.
 
@@ -33,9 +41,9 @@ Under construction. Roadmap:
 - [x] Bulk DMI validated term-by-term against mumax3
 - [x] Initial states (uniform, vortex, antivortex, vortex wall, two-domain,
       random, Néel/Bloch skyrmion) + OVF loading
-- [ ] Geometries / regions
-- [ ] OVF I/O and output tables
-- [ ] GPU (CuArray) — the dispatch design is ready for it
+- [x] Geometries / regions
+- [x] OVF I/O and output tables
+- [x] GPU (CuArray), Float64 and Float32
 
 ## Usage
 

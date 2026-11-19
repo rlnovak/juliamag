@@ -23,17 +23,20 @@ field (`selfterm=false`).
 """
 function fieldenergy(m::AbstractArray{T,4}, B::AbstractArray{T,4},
                      mesh::Mesh, params::AbstractParams; selfterm::Bool = true) where {T}
-    prefactor = selfterm ? T(-0.5) : T(-1)
-    V = T(cellvolume(mesh))
+    prefactor = selfterm ? -0.5 : -1.0
+    V = cellvolume(mesh)
     Nx, Ny, Nz = mesh.size
-    s = zero(T)
+    # Accumulate in (at least) Float64: a Float32 running sum over ~10⁶ cells
+    # would lose several digits. The result is returned in T.
+    S = promote_type(T, Float64)
+    s = zero(S)
     # Msat is per-cell (a region interface may change it), so it stays inside the
     # sum: E = prefactor · V · Σ Msat[cell] (m·B).
     @inbounds for k in 1:Nz, j in 1:Ny, i in 1:Nx
         mb = m[1,i,j,k]*B[1,i,j,k] + m[2,i,j,k]*B[2,i,j,k] + m[3,i,j,k]*B[3,i,j,k]
-        s += msat(params, i, j, k) * mb
+        s += S(msat(params, i, j, k) * mb)
     end
-    return prefactor * V * s
+    return T(prefactor * V * s)
 end
 
 """

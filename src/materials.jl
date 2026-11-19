@@ -11,29 +11,33 @@
 # (cubic anisotropy is not yet modelled, so cubic materials list their |K1|).
 
 """
-    material(name; alpha=nothing, anisU=(0,0,1)) -> Material
+    material(name; alpha=nothing, anisU=(0,0,1), precision=Float64) -> Material
 
 Look up a standard material by name (case-insensitive). Known names:
 `Permalloy`/`Py`, `Fe`, `Co`, `Ni`, `CoFeB`, `YIG`. Optionally override the
-damping or easy axis.
+damping or easy axis. `precision = Float32` returns a single-precision material,
+which makes every simulation built from it run in Float32 (as mumax3 does).
 
 # Example
 ```julia
 py = material("Permalloy")
 co = material("Co"; alpha = 0.05)
+py32 = material("Permalloy"; precision = Float32)
 ```
 """
-function material(name::AbstractString; alpha = nothing, anisU = (0, 0, 1))
+function material(name::AbstractString; alpha = nothing, anisU = (0, 0, 1),
+                  precision::Type{<:AbstractFloat} = Float64)
     key = lowercase(name)
     p = get(_MATERIALS, key, nothing)
     p === nothing && throw(ArgumentError(
         "unknown material \"$name\"; known: " * join(sort(collect(keys(_MATERIALS_CANON))), ", ")))
     a = alpha === nothing ? p.alpha : alpha
-    if p.K1 == 0
-        return Material(Msat = p.Msat, Aex = p.Aex, alpha = a)
+    mat = if p.K1 == 0
+        Material(Msat = p.Msat, Aex = p.Aex, alpha = a)
     else
-        return Material(Msat = p.Msat, Aex = p.Aex, alpha = a, Ku = p.K1, anisU = anisU)
+        Material(Msat = p.Msat, Aex = p.Aex, alpha = a, Ku = p.K1, anisU = anisU)
     end
+    return Material{precision}(mat)
 end
 
 "List the known material names (canonical, deduplicated across aliases)."

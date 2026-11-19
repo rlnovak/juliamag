@@ -1,0 +1,61 @@
+device: Quadro P1000
+
+=== Float64  (1 Julia threads) ===
+  exchange             0.204 ms
+  demag                3.236 ms
+    rFFT ×3            1.389 ms
+    irFFT ×3           1.430 ms
+  effectivefield       3.449 ms
+  torque (LLG)         0.053 ms
+  slonczewski          0.061 ms
+  normalize            0.038 ms
+  RHS total            3.538 ms
+  RK4 step            14.163 ms
+  table row (CPU)     35.499 ms
+  predicted wall per ns: 290 s  (RK4 283 s + table rows 7 s)
+  one RHS: 0 GPU allocations, 0.0 MiB
+
+--- device-side profile of one RHS (Float64) ---
+Profiler ran for 4.11 ms, capturing 178 events.
+
+Host-side activity: calling CUDA APIs took 121.12 µs (2.95% of the trace)
+┌──────────┬────────────┬───────┬──────────────────────────────────────┬─────────────────────┐
+│ Time (%) │ Total time │ Calls │ Time distribution                    │ Name                │
+├──────────┼────────────┼───────┼──────────────────────────────────────┼─────────────────────┤
+│    2.47% │  101.33 µs │    14 │   7.24 µs ± 5.84   (  4.29 ‥ 27.18)  │ cuLaunchKernel      │
+│    0.11% │    4.53 µs │     4 │   1.13 µs ± 1.31   (  0.48 ‥ 3.1)    │ cudaGetFuncBySymbol │
+│    0.02% │  715.26 ns │     2 │ 357.63 ns ± 168.59 (238.42 ‥ 476.84) │ cuStreamIsCapturing │
+└──────────┴────────────┴───────┴──────────────────────────────────────┴─────────────────────┘
+
+Device-side activity: GPU was busy for 4.04 ms (98.31% of the trace)
+┌──────────┬────────────┬───────┬──────────────────────────────────────┬──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ Time (%) │ Total time │ Calls │ Time distribution                    │ Name                                                                                                                                                                                                                                             │
+├──────────┼────────────┼───────┼──────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│   27.40% │    1.13 ms │     2 │ 562.55 µs ± 0.84   (561.95 ‥ 563.14) │ void regular_fft<128u, EPT<8u>, 16u, 4u, (padding_t)1, (twiddle_t)0, (loadstore_modifier_t)2, (layout_t)1, unsigned int, double>(kernel_arguments_t<unsigned int>)                                                                               │
+│   19.62% │  805.85 µs │     2 │ 402.93 µs ± 0.67   (402.45 ‥ 403.4)  │ void vector_fft<64u, EPT<8u>, 8u, 8u, (padding_t)0, (twiddle_t)0, (loadstore_modifier_t)2, (layout_t)0, unsigned int, double>(kernel_arguments_t<unsigned int>)                                                                                  │
+│   16.84% │  691.65 µs │     2 │ 345.83 µs ± 2.19   (344.28 ‥ 347.38) │ void regular_fft<16u, EPT<4u>, 64u, 4u, (padding_t)0, (twiddle_t)0, (loadstore_modifier_t)2, (layout_t)1, unsigned int, double>(kernel_arguments_t<unsigned int>)                                                                                │
+│    9.27% │  380.75 µs │     1 │                                      │ void preprocess_kernel<double, unsigned int, (loadstore_modifier_t)2>(real_complex_args_t<unsigned int>)                                                                                                                                         │
+│    8.06% │  330.92 µs │     1 │                                      │ void postprocess_kernel<double, unsigned int, (loadstore_modifier_t)2>(real_complex_args_t<unsigned int>)                                                                                                                                        │
+│    6.68% │  274.42 µs │     1 │                                      │ _k_demag_kmul_(CuDeviceArray<Complex<Float64>, 4, 1>, CuDeviceArray<Float64, 3, 1>, CuDeviceArray<Float64, 3, 1>, CuDeviceArray<Float64, 3, 1>, CuDeviceArray<Float64, 3, 1>, CuDeviceArray<Float64, 3, 1>, CuDeviceArray<Float64, 3, 1>, Int32) │
+│    5.75% │  236.27 µs │     1 │                                      │ _k_exchange_(CuDeviceArray<Float64, 4, 1>, CuDeviceArray<Float64, 4, 1>, CuDeviceArray<Float64, 4, 1>, CuDeviceArray<Float64, 4, 1>, CuDeviceArray<Float64, 4, 1>, Int32, Int32, Int32, Float64, Float64, Float64, Bool, Bool, Bool, Bool)       │
+│    1.47% │   60.56 µs │     1 │                                      │ _k_slonczewski_(CuDeviceArray<Float64, 4, 1>, CuDeviceArray<Float64, 4, 1>, Float64, Float64, Float64, Float64, Float64, Float64, Float64, Float64, Float64, Int32, Bool)                                                                        │
+│    1.23% │   50.31 µs │     1 │                                      │ _k_demag_crop_(CuDeviceArray<Float64, 4, 1>, CuDeviceArray<Float64, 4, 1>, Float64, Int32, Int32, Int32, Bool)                                                                                                                                   │
+│    1.17% │   48.16 µs │     1 │                                      │ _k_torque_(CuDeviceArray<Float64, 4, 1>, CuDeviceArray<Float64, 4, 1>, CuDeviceArray<Float64, 4, 1>, Float64, Float64, Int32)                                                                                                                    │
+│    0.80% │    32.9 µs │     1 │                                      │ _k_demag_pad_(CuDeviceArray<Float64, 4, 1>, CuDeviceArray<Float64, 4, 1>, CuDeviceArray<Float64, 4, 1>, Int32, Int32, Int32)                                                                                                                     │
+└──────────┴────────────┴───────┴──────────────────────────────────────┴──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+
+=== Float32  (1 Julia threads) ===
+  exchange             0.089 ms
+  demag                1.034 ms
+    rFFT ×3            0.488 ms
+    irFFT ×3           0.398 ms
+  effectivefield       1.077 ms
+  torque (LLG)         0.042 ms
+  slonczewski          0.034 ms
+  normalize            0.028 ms
+  RHS total            1.109 ms
+  RK4 step             4.777 ms
+  table row (CPU)     28.501 ms
+  predicted wall per ns: 101 s  (RK4 96 s + table rows 6 s)
+  one RHS: 0 GPU allocations, 0.0 MiB
