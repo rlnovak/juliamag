@@ -98,4 +98,13 @@ new one. The probable cause is the protocol, not the dynamics:
 `stage2_local.jl` thermalizes for 2 ns from a random state, but at ξ = 1 the
 applied field is only 4.1 mT, and the relaxation time 1/(α γ′ μ0H) is 3.5 ns.
 `langevin_thermalization.jl` repeats the ξ = 1, 2 and 5 cases with 20 ns of
-thermalization (result in `langevin_thermalization.txt`).
+thermalization and gives ⟨mx⟩ = 0.3119, 0.5328 and 0.7995, against L(ξ) = 0.3130,
+0.5373 and 0.8001 (`langevin_thermalization.txt`). `stage2_local.jl` now
+thermalizes for 20 ns with dt = 1e-14 s. Its re-run (`logs/stage2_rerun_langevin20ns.log`,
+`examples/stage2_langevin.txt`) gives 0.331, 0.535, 0.802, 0.900 and 0.949 for
+ξ = 1, 2, 5, 10, 20, against L(ξ) = 0.313, 0.537, 0.800, 0.900 and 0.950.
+
+The +0.018 at ξ = 1 is about 2σ of the sampling error. The per-spin variance
+of mx is about 0.28 there, so the ensemble mean over 4096 spins has σ ≈ 0.008.
+The 40 snapshots span 0.4 ps, much less than the 3.4 ns correlation time, so they
+count as one sample. Depinning and the helix are unchanged.

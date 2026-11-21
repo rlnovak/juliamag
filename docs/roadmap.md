@@ -261,6 +261,94 @@ JuliaMag value within 2 ps; a full `MaxErr = 1e-7` run agrees to 0.2% rms). Deta
 - 3D Voronoi grains + grain-boundary exchange scaling (phase-3 follow-ups).
 - Energy functions and `clearempty!` on the GPU (currently CPU-only readback).
 
+## Work queue (set 2026-11-21)
+
+Runs first; they use the GPUs while the code work below proceeds.
+
+**0a. GPU validation of the driver layer** (queued on labmac03,
+`~/JuliaMag/item3/logs/chain.sh`, behind another project's queue).
+- `test_gpu.jl` with `stepper_terms`.
+- The 40 ns disc with adaptive RK45 in Float32 and Float64 (`disk_40mA_sim.jl`):
+  number of evaluations and wall time against mumax3 (1.8e6 evaluations,
+  2 025 s), and the physics against the fixed-step run.
+- Fills the open line of the paper's performance table.
+
+**0b. Vortex hysteresis at finite temperature** (paper, Sec. "Vortex
+hysteresis in a disc").
+- **Protocol.** Same disc, field steps and sweep as the T = 0 loop, but at each
+  field step the LLG–Langevin dynamics runs for a fixed time instead of the
+  minimizer: `settemperature!`, Heun with a fixed step, on the GPU in Float32.
+  - The damping is raised (α = 0.5, quasi-static protocol): α sets the
+    relaxation rate, not the equilibrium, and the fluctuation–dissipation
+    field uses the same α.
+  - The dwell per step is chosen after a convergence check (0.5 vs 1 ns per step
+    on one realization).
+- **Ensemble.** T = 50 K and 300 K, N ≈ 8 realizations each, with seeds set
+  through `CUDA.seed!` per realization.
+- **Report.** The mean loop and the distribution of the renucleation and
+  annihilation fields, next to the T = 0 deterministic and perturbed loops.
+- **Caveats to state in the paper.**
+  - The simulated sweep rate (~10⁷ T/s) is many orders above experiment, so the
+    switching fields are upper bounds on thermally activated switching.
+  - Msat and A are kept at their room-temperature values at 50 K.
+- **Cost estimate.** About 0.5 h of GPU time per loop, so about 8 h in all.
+- **Prerequisite.** A driver `examples/disc_hysteresis_thermal.jl`, smoke-tested
+  on the CPU.
+
+**1. KernelAbstractions.jl: multi-backend GPU.**
+- **Kernels.** Rewrite the ~20 per-term CUDA kernels of `ext/cuda_kernels.jl`
+  once as `@kernel` functions in the core, generic over the backend:
+  exchange, anisotropy, DMI, Zeeman, the torques and STT, normalize, the
+  minimizer step, the demag pad, k-space product and crop, the norm reduction.
+  - Thin backend extensions keep only the array type and the FFT plans:
+    CUFFT for CUDA, rocFFT for AMDGPU, oneMKL for oneAPI.
+  - Metal.jl has no FFT, so Apple GPUs need a fallback for the demag term,
+    decided when that backend is reached.
+- **Validation.**
+  - `test_gpu.jl` becomes backend-parametric, plus the KA CPU backend as an
+    extra reference.
+  - It must reproduce the current CUDA results to rounding.
+  - It must not regress the CUDA cost (1.11 ms per Float32 evaluation on the
+    P1000).
+- **Hardware.** Only NVIDIA is available here (labmac03/04); AMD, Intel and
+  Apple need access to such hardware, or stay "compiles, untested".
+
+**2. NEB / GNEB: energy barriers and minimum-energy paths.**
+- **Prerequisite.** Energy functions on the GPU, from the feature backlog: the
+  NEB evaluates every image's energy and gradient at every iteration.
+- **Method.** Geodesic NEB on the product of unit spheres (Bessarab, Uzdin,
+  Jónsson, Comput. Phys. Commun. 196, 335 (2015)):
+  - geodesic distances and tangents;
+  - spring forces;
+  - a climbing image;
+  - images relaxed with velocity-projection optimization or the existing
+    Barzilai–Borwein minimizer;
+  - an initial path by geodesic interpolation.
+  - Reference implementation: MicroMagnetic.jl `src/neb/`.
+- **Validation.**
+  - Stoner–Wohlfarth macrospin: ΔE = K V (1 − h)² for a field along the easy
+    axis.
+  - The magnum.np `energy_barrier_ellipse` demo.
+  - A skyrmion-collapse barrier against published values.
+
+**3. Eigenmodes / FMR.**
+- **Method.** Linearize the LLG about an equilibrium in the local tangent frame
+  (two components per cell):
+  - Small systems: a dense eigenproblem.
+  - Large systems: matrix-free Krylov with shift-invert near the frequencies of
+    interest; the demag part of the Hessian applied through the existing FFT
+    convolution.
+  - Reference: MicroMagnetic.jl `src/eigen/`.
+- **Validation.**
+  - The Kittel formula for a macrospin and a thin film.
+  - The FMR standard problem of Baker et al. (J. Magn. Magn. Mater. 421, 428
+    (2017)), against a ringdown FFT done with the time integrators.
+  - The disc's gyrotropic mode against the 969.8 MHz free gyration already
+    validated against mumax3.
+
+Each item: implementation, tests (CPU, then GPU), validation against an analytic
+result and a reference code, paper section, commit. Ask before starting each.
+
 ## Near-term priorities
 
 The **driver ergonomics group above** is done (2026-11-20). Next: the

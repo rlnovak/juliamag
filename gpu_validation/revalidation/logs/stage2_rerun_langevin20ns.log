@@ -1,3 +1,19 @@
 JuliaMag Stage-2 problems (adapted from magnum.np demos)
 
 [1/3] Langevin: free macrospin at finite T…
+  ξ=1.0  ⟨mx⟩=0.331  L(ξ)=0.313  (Δ=0.018)
+  ξ=2.0  ⟨mx⟩=0.535  L(ξ)=0.537  (Δ=-0.002)
+  ξ=5.0  ⟨mx⟩=0.802  L(ξ)=0.800  (Δ=0.002)
+  ξ=10.0  ⟨mx⟩=0.900  L(ξ)=0.900  (Δ=0.000)
+  ξ=20.0  ⟨mx⟩=0.949  L(ξ)=0.950  (Δ=-0.001)
+  wrote stage2_langevin.txt / .png
+
+[2/3] Domain-wall depinning at a soft/hard interface…
+  depinning field ≈ 1.570 T (largest ⟨my⟩ jump)
+  wrote stage2_depinning.txt / .png
+
+[3/3] Bulk-DMI spin spiral (period L = 4piA/D)...
+  seeded L=54.5 nm, measured L=55.0 nm (1.96 turns over 108 nm)
+  wrote stage2_dmi_spiral.txt / .png
+
+Stage-2 done. Tables + figures in examples/.

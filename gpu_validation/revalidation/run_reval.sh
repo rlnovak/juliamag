@@ -18,9 +18,12 @@ set -u
 ROLE=${1:?usage: run_reval.sh labmac03|labmac04 [SMOKE]}
 SMOKE=${2:-0}
 JULIA=$HOME/opt/julia-1.11.9/bin/julia
-PROJ=$HOME/juliamag
-R=$HOME/juliamag
-W=$HOME/JuliaMag/reval
+# JM_REPO: the code tree to run (default ~/juliamag); JM_WORK: the work tree;
+# CPU_ONLY=1 skips the GPU chains.
+R=${JM_REPO:-$HOME/juliamag}
+PROJ=$R
+W=${JM_WORK:-$HOME/JuliaMag/reval}
+CPU_ONLY=${CPU_ONLY:-0}
 [ "$SMOKE" = 1 ] && W=$HOME/JuliaMag/reval_smoke
 WAIT=$R/gpu_validation/run_when_gpu_idle.sh
 GYRO=$R/gpu_validation/disk_stt/juliamag/gyro_lean.jl
@@ -99,12 +102,12 @@ labmac03)
     #      dt = 5e-14), standard problem 4 on the GPU, then the three like-for-like
     #      7 ns runs against mumax3 (EdgeSmooth 0).
     #   B: the 40 ns EdgeSmooth-4 series in Float64, then the dt = 2.5e-14 run.
-    gpuchain gpuA "$GYRO 4 5e-14 $T7 stt stt_es4_dt5.txt" \
+    [ "$CPU_ONLY" = 1 ] || gpuchain gpuA "$GYRO 4 5e-14 $T7 stt stt_es4_dt5.txt" \
                   "$E/stdproblem4_gpu.jl" \
                   "$GYRO 0 5e-14 $T7 stt jm_stt_es0_dt5.txt" \
                   "$GYRO 0 5e-14 $T7 sttzl sttzl_es0_dt5.txt" \
                   "$GYRO 0 5e-14 $T7 free free_es0_dt5.txt"
-    gpuchain gpuB "'$DRV' $T40 $W/disk/jm_es4_40ns.txt Float64" \
+    [ "$CPU_ONLY" = 1 ] || gpuchain gpuB "'$DRV' $T40 $W/disk/jm_es4_40ns.txt Float64" \
                   "$GYRO 4 2.5e-14 $T7 stt stt_es4_dt25.txt"
     ;;
 labmac04)
