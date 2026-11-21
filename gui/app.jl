@@ -241,7 +241,10 @@ function gui_run(durstr, savedtstr, bxstr, bystr, bzstr)
 
     stopflag[] = false; pauseflag[] = false; running[] = true
     nchunks = max(1, round(Int, duration / savedt))
-    it = JuliaMag.Integrator(sim.world, sim.m; tend = sim.t + duration)
+    # The Integrator's clock starts at 0: sim.t = t0 + its time (else a second run
+    # would reset sim.t).
+    t0 = sim.t
+    it = JuliaMag.Integrator(sim.world, sim.m; tend = duration)
     status[] = "Running…"
     _push_point!(sim)
     @async begin
@@ -255,7 +258,7 @@ function gui_run(durstr, savedtstr, bxstr, bystr, bzstr)
                 status[] = "Running…"
             end
             JuliaMag.advance!(it, savedt)
-            sim.t = JuliaMag.currenttime(it)
+            sim.t = t0 + JuliaMag.currenttime(it)
             copyto!(sim.m, JuliaMag.state(it))
             _push_point!(sim)
             (i % field_every[] == 0) && update_field!(sim)
@@ -279,9 +282,10 @@ function gui_step(savedtstr, bxstr, bystr, bzstr)
     savedt = parse(Float64, savedtstr) * 1e-12
     Bext = (parse(Float64, bxstr), parse(Float64, bystr), parse(Float64, bzstr)) .* 1e-3
     JuliaMag.setexternalfield!(sim.world, Bext)
-    it = JuliaMag.Integrator(sim.world, sim.m; tend = sim.t + savedt)
+    t0 = sim.t
+    it = JuliaMag.Integrator(sim.world, sim.m; tend = savedt)
     JuliaMag.advance!(it, savedt)
-    sim.t = JuliaMag.currenttime(it)
+    sim.t = t0 + JuliaMag.currenttime(it)
     copyto!(sim.m, JuliaMag.state(it))
     _push_point!(sim)
     update_field!(sim)

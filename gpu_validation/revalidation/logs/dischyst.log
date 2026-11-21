@@ -1,0 +1,5 @@
+2026-11-20 12:44:56 start on labmac03 (CPU): /home/rlnovak/JuliaMag/reval/examples/disc_hysteresis.jl
+Sweeping the in-plane field along x…
+Wrote table  → /home/rlnovak/JuliaMag/reval/examples/disc_hysteresis.txt
+Done. ⟨mx⟩ range [-0.994, 0.994]; final core at (241.2, 49.5) nm
+2026-11-20 12:52:28 done rc=0

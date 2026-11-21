@@ -1,0 +1,60 @@
+2026-11-20 12:44:56 waiting for an idle GPU (10 checks): bash /home/rlnovak/JuliaMag/reval/logs/gpuA.chain.sh
+2026-11-20 12:53:58 GPU 0 (GPU-2f7001cf-b734-863e-fc13-f0bbd34f1f25) idle, starting on labmac03: bash /home/rlnovak/JuliaMag/reval/logs/gpuA.chain.sh
+2026-11-20 12:53:58 step: /home/rlnovak/juliamag/gpu_validation/disk_stt/juliamag/gyro_lean.jl 4 5e-14 7e-9 stt stt_es4_dt5.txt
+[stt es=4 dt=5.00e-14] relaxed <m>_disk = (0.00000, 0.00000, 0.01729) steps=106
+  t=1.0 ns  wall=282 s
+  t=2.0 ns  wall=561 s
+  t=3.0 ns  wall=841 s
+  t=4.0 ns  wall=1121 s
+  t=5.0 ns  wall=1401 s
+  t=6.0 ns  wall=1681 s
+  t=7.0 ns  wall=1961 s
+done stt_es4_dt5.txt  wall=1961 s
+2026-11-20 13:27:19 step rc=0
+2026-11-20 13:27:19 step: /home/rlnovak/JuliaMag/reval/examples/stdproblem4_gpu.jl
+CUDA device: Quadro P1000
+Relaxing to the S-state on the GPU…
+  relaxed after 321 steps, ⟨m⟩ = (0.9668, 0.1256, 0.0000)
+Integrating the 1 ns switching on the GPU…
+  t = 0.25 ns  ⟨m⟩ = (-0.6847, -0.4165, 0.0192)
+  t = 0.50 ns  ⟨m⟩ = (-0.9180, -0.2275, 0.0470)
+  t = 0.75 ns  ⟨m⟩ = (-0.9413, 0.2751, -0.0454)
+  t = 1.00 ns  ⟨m⟩ = (-0.9850, 0.1227, 0.0434)
+Wrote table → /home/rlnovak/JuliaMag/reval/examples/stdproblem4_gpu.txt
+Max |GPU - CPU| over the run: mx=1.33e-05 my=1.61e-05 mz=4.05e-06
+Wrote figure → /home/rlnovak/JuliaMag/reval/examples/stdproblem4_gpu.png
+2026-11-20 13:28:36 step rc=0
+2026-11-20 13:28:36 step: /home/rlnovak/juliamag/gpu_validation/disk_stt/juliamag/gyro_lean.jl 0 5e-14 7e-9 stt jm_stt_es0_dt5.txt
+[stt es=0 dt=5.00e-14] relaxed <m>_disk = (0.00000, -0.00000, 0.01773) steps=119
+  t=1.0 ns  wall=282 s
+  t=2.0 ns  wall=562 s
+  t=3.0 ns  wall=842 s
+  t=4.0 ns  wall=1122 s
+  t=5.0 ns  wall=1402 s
+  t=6.0 ns  wall=1682 s
+  t=7.0 ns  wall=1962 s
+done jm_stt_es0_dt5.txt  wall=1962 s
+2026-11-20 14:01:57 step rc=0
+2026-11-20 14:01:57 step: /home/rlnovak/juliamag/gpu_validation/disk_stt/juliamag/gyro_lean.jl 0 5e-14 7e-9 sttzl sttzl_es0_dt5.txt
+[sttzl es=0 dt=5.00e-14] relaxed <m>_disk = (0.00000, -0.00000, 0.01773) steps=119
+  t=1.0 ns  wall=287 s
+  t=2.0 ns  wall=571 s
+  t=3.0 ns  wall=856 s
+  t=4.0 ns  wall=1140 s
+  t=5.0 ns  wall=1425 s
+  t=6.0 ns  wall=1709 s
+  t=7.0 ns  wall=1994 s
+done sttzl_es0_dt5.txt  wall=1994 s
+2026-11-20 14:35:50 step rc=0
+2026-11-20 14:35:50 step: /home/rlnovak/juliamag/gpu_validation/disk_stt/juliamag/gyro_lean.jl 0 5e-14 7e-9 free free_es0_dt5.txt
+[free es=0 dt=5.00e-14] relaxed <m>_disk = (0.09787, 0.00000, 0.01774) steps=560
+  t=1.0 ns  wall=277 s
+  t=2.0 ns  wall=553 s
+  t=3.0 ns  wall=828 s
+  t=4.0 ns  wall=1103 s
+  t=5.0 ns  wall=1378 s
+  t=6.0 ns  wall=1653 s
+  t=7.0 ns  wall=1928 s
+done free_es0_dt5.txt  wall=1928 s
+2026-11-20 15:08:39 step rc=0
+2026-11-20 15:08:39 done rc=0

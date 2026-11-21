@@ -16,11 +16,10 @@ using OrdinaryDiffEqTsit5: ODEProblem, Tsit5, init, DiscreteCallback
 using SciMLBase: derivative_discontinuity!
 import OrdinaryDiffEqTsit5 as ODE
 
-# RHS of the LLG equation as an in-place ODE function. `p` carries the World.
+# RHS of the LLG equation as an in-place ODE function. `p` carries the World; the
+# spin-transfer torques of world.current are included (llgrhs!).
 function _llg_rhs!(du, u, world::World, t)
-    B = world._Bbuf                       # reuse the World's field buffer
-    effectivefield!(B, u, world)
-    torque!(du, u, B, damping(world.material))
+    llgrhs!(du, u, world)
     return nothing
 end
 

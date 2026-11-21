@@ -24,6 +24,7 @@ mutable struct World{T<:AbstractFloat,P,M<:AbstractParams,B<:AbstractArray{T,4}}
     demagplan::P                      # DemagPlan{T,...} or nothing
     Bext::NTuple{3,T}
     _Bbuf::B                          # scratch effective-field buffer for integrators
+    current::Union{Nothing,SpinCurrent{T}}   # spin-polarized current (STT), or nothing
 end
 
 function World(mesh::Mesh, mat::AbstractParams; demag::Bool = true,
@@ -37,8 +38,26 @@ function World(mesh::Mesh, mat::AbstractParams; demag::Bool = true,
     # kernel is rounded to T (as mumax3 does for its float32 kernel).
     plan = demag ? DemagPlan(demagkernel(Float64, mesh; accuracy = accuracy), mesh, Msref, T) : nothing
     Bbuf = zeros(T, 3, mesh.size...)
-    World{T,typeof(plan),typeof(mat),typeof(Bbuf)}(mesh, mat, plan, NTuple{3,T}(Bext), Bbuf)
+    World{T,typeof(plan),typeof(mat),typeof(Bbuf)}(mesh, mat, plan, NTuple{3,T}(Bext), Bbuf, nothing)
 end
+
+"""
+    setcurrent!(world, J; zhangli=true, slonczewski=false, fixedlayer=(0,0,1),
+                thickness=<mesh thickness>, params=sttparams(world.material))
+    setcurrent!(world, nothing)
+
+Set (or remove) the spin-polarized current density `J` [A/m²] whose spin-transfer
+torques every integrator adds to the LLG torque; see [`SpinCurrent`](@ref).
+"""
+function setcurrent!(w::World{T}, J; zhangli::Bool = true, slonczewski::Bool = false,
+                     fixedlayer = (0, 0, 1), thickness = nothing, params = nothing) where {T}
+    th = thickness === nothing ? w.mesh.size[3] * w.mesh.cellsize[3] : thickness
+    pm = params === nothing ? sttparams(w.material) : params
+    w.current = SpinCurrent(J, Material{T}(pm); zhangli = zhangli, slonczewski = slonczewski,
+                            fixedlayer = fixedlayer, thickness = th)
+    return w
+end
+setcurrent!(w::World, ::Nothing) = (w.current = nothing; w)
 
 # Representative Msat for building the demag plan's μ0·Msat prefactor.
 _demag_msat(m::Material) = m.Msat

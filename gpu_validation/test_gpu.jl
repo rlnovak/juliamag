@@ -210,6 +210,50 @@ function solver_terms(label, mesh, params, T)
     check("$label adaptive Tsit5 run 10 ps, m", state(itg), state(itc), T == Float64 ? 1e-5 : 1e-3)
 end
 
+# mumax3 time steppers (src/timestepper.jl) on the GPU vs the CPU, with a spin
+# current in the World (Zhang-Li + Slonczewski), and the Simulation driver layer.
+function stepper_terms(label, mesh, params, T)
+    tol = T == Float64 ? 1e-10 : 1e-4
+    m = setconfig(T, mesh, VortexConfig(mesh)); clearempty!(m, params)
+    Random.seed!(7); τ = randommag!(zeromag(T, mesh)) .* T(1e9)
+    check("$label maxtorque", [maxtorque(togpu(τ))], [maxtorque(τ)], T == Float64 ? 1e-14 : 1e-6)
+    w = World(mesh, params; demag = true, Bext = (0.02, 0, 0))
+    setcurrent!(w, (2e11, -1e11, 4e11); zhangli = true, slonczewski = true,
+                fixedlayer = (cos(0.3), sin(0.3), 0.2), thickness = 3e-9)
+    wg = togpu(w)
+    dc = similar(m); dg = togpu(similar(m))
+    llgrhs!(dc, m, w); llgrhs!(dg, togpu(m), wg)
+    check("$label llgrhs! (LLG + Zhang-Li + Slonczewski)", dg, dc, tolfor(T))
+    for s in (:euler, :heun, :rk23, :rk4, :rk45)
+        mc = copy(m); mg = togpu(m)
+        tc = TimeStepper(w, mc; solver = s, fixdt = 2e-14); advanceto!(tc, 2e-12)
+        tg = TimeStepper(wg, mg; solver = s, fixdt = 2e-14); advanceto!(tg, 2e-12)
+        check("$label $s fixed step, 100 steps, m", mg, mc, tol)
+    end
+    mc = copy(m); mg = togpu(m)
+    tc = TimeStepper(w, mc; solver = :rk45); advanceto!(tc, 5e-12)
+    tg = TimeStepper(wg, mg; solver = :rk45); advanceto!(tg, 5e-12)
+    @printf("  %-58s CPU %d/%d  GPU %d/%d\n", "$label rk45 adaptive steps/undone",
+            tc.nsteps, tc.nundone, tg.nsteps, tg.nundone)
+    check("$label rk45 adaptive 5 ps, m", mg, mc, T == Float64 ? 1e-8 : 1e-3)
+    check("$label rk45 adaptive 5 ps, last dt", [tg.dt], [tc.dt], T == Float64 ? 1e-6 : 1e-2)
+
+    # Simulation on the GPU (togpu): table rows (device and host columns) and OVF.
+    dir = mktempdir()
+    mk() = (sim = Simulation(mesh, params; demag = true, Bext = (0.02, 0, 0), verbose = false);
+            setmag!(sim, m); tableadd!(sim, q_maxtorque()); tableadd!(sim, q_energy());
+            tableautosave!(sim, 1e-12); setcurrent!(sim, (2e11, 0, 4e11); zhangli = true,
+            slonczewski = true, fixedlayer = (1, 0, 0), thickness = 3e-9); sim)
+    sc = mk(); sg = togpu(mk()); setoutdir!(sg, dir); autosave!(sg, 2e-12)
+    run!(sc, 4e-12; solver = :rk4, fixdt = 2e-14); run!(sg, 4e-12; solver = :rk4, fixdt = 2e-14)
+    check("$label togpu(sim) run!, m", sg.m, sc.m, tol)
+    check("$label togpu(sim) table (t, m, maxTorque, E_total)",
+          reduce(vcat, sg.table.rows), reduce(vcat, sc.table.rows), T == Float64 ? 1e-9 : 1e-4)
+    m2, _ = loadovf(joinpath(dir, "m000002.ovf"))
+    check("$label togpu(sim) OVF autosave m000002 = state", m2, Array(sg.m), T == Float64 ? 1e-15 : 1e-7)
+    println("  ", deviceinfo(sg.m))
+end
+
 function average_terms(label, mesh, params, T)
     Random.seed!(5)
     m = randommag!(zeromag(T, mesh)); clearempty!(m, params)
@@ -241,8 +285,10 @@ for T in (Float64, Float32)
         field_terms(lab, mesh, rp, T)
         minimizer_terms(lab, mesh, rp, T)
         solver_terms(lab, mesh, rp, T)
+        stepper_terms(lab, mesh, rp, T)
         average_terms(lab, mesh, rp, T)
     end
+    stepper_terms("mat open 3D Dind", Mesh((20, 16, 4), (3e-9, 3e-9, 2e-9)), mI, T)
     solver_terms("mat open 3D Dind", Mesh((20, 16, 4), (3e-9, 3e-9, 2e-9)), mI, T)
 end
 

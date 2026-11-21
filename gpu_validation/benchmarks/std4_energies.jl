@@ -5,7 +5,7 @@
 using JuliaMag
 using Printf
 
-const OUT = raw"C:\Users\rlnov\AppData\Local\Temp\claude\c--Users-rlnov-Projetos-mumag\bfbbd7a3-2b9f-4849-996b-9f44d5632691\scratchpad"
+const OUT = get(ENV, "JM_OUT", @__DIR__)   # output directory for the table
 
 mesh = Mesh((160, 40, 1), (3.125e-9, 3.125e-9, 3e-9))
 mat  = Material(Msat = 8.0e5, Aex = 1.3e-11, alpha = 0.02)
@@ -22,7 +22,7 @@ it = Integrator(world, m0; abstol = 1e-6, reltol = 1e-5, dtmax = 5e-13, tend = 1
 n = 400; Δt = 1e-9 / n
 
 tbl = open(joinpath(OUT, "std4_juliamag_table.txt"), "w")
-println(tbl, "# JuliaMag std4 (post exchange fix) — t mx my mz E_demag E_exch E_Zeeman E_total")
+println(tbl, "# JuliaMag std4 — t mx my mz E_demag E_exch E_Zeeman E_total")
 function logrow!()
     mh = state(it); a = average(mh)
     Ed = demagenergy(mh, world.demagplan, mesh, mat)

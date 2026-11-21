@@ -143,8 +143,8 @@ mathematical syntax with performance approaching that of C, and its multiple
 dispatch lets a single generic implementation of each field and torque serve both
 CPU and GPU arrays without duplication. The scientific Julia ecosystem, in
 particular the \texttt{DifferentialEquations.jl} suite~\cite{diffeq}, further
-supplies community-validated adaptive time integrators that we use directly in
-place of a hand-rolled solver.
+supplies community-validated adaptive time integrators, which \JuliaMag{} offers
+alongside its own step-for-step ports of the \mumax{} solvers.
 
 The remainder of the paper describes the theory (Sec.~\ref{sec:theory}), the
 architecture and data layout (Sec.~\ref{sec:arch}), the effective-field terms and
@@ -433,13 +433,35 @@ standard-problem-5 target below did not move.
 \JuliaMag{} advances Eq.~\eqref{eq:llg} in two complementary ways.
 
 \paragraph{Time integration.}
-For real-time dynamics we use the community-validated, adaptive Runge--Kutta
-methods of \texttt{OrdinaryDiffEq.jl}, wrapping the LLG right-hand side as an
-ordinary differential equation $\mathrm{d}\vm/\mathrm{d}t = f(\vm)$ with a
-per-step callback that renormalizes $|\vm|=1$. The default method is
-\texttt{Tsit5}, the modern fifth-order explicit Runge--Kutta that supersedes the
-Dormand--Prince RK45 used by \mumax{}. A hand-rolled Dormand--Prince integrator is
-retained for reference and passes an analytic Larmor-precession test exactly.
+The right-hand side $\mathrm{d}\vm/\mathrm{d}t = f(\vm)$ is a single function,
+\texttt{llgrhs!}: the Landau--Lifshitz torque of the effective field plus the
+spin-transfer torques of the current, if one is set (Sec.~\ref{sec:interface}).
+Every integrator and the maximum-torque output evaluate this one function, so a
+current-driven simulation can use any of them.
+
+The default integrators are \mumax's explicit solvers, reproduced step for step.
+They are Euler, Heun, the Bogacki--Shampine RK23, the classical RK4, and the
+Dormand--Prince RK45, the default. Each one follows its \mumax{} counterpart in
+the stages, in the renormalization of $\vm$ after every stage, and in the error
+estimate: the largest per-cell norm of the embedded error of $\Delta\vm$ (for
+RK4, of $(\bm{k}_1-\bm{k}_4)\Delta t$). The two FSAL methods reuse the last stage.
+The step-size control is also \mumax's. A step is accepted when the error is
+below $\mathrm{MaxErr}$ ($10^{-5}$ by default). The next step is
+$\Delta t\cdot\min[2,\max(\tfrac12,0.8\,(\mathrm{MaxErr}/\mathrm{err})^{1/q})]$,
+with $q$ the order of the error estimate plus one after an accepted step and
+plus two after a rejected one. It is then bounded by the optional
+$\Delta t_{\min}$, $\Delta t_{\max}$ and clipped so that no step crosses the end
+of the run. A fixed step is also available.
+
+With the same tolerance, a \JuliaMag{} run and a \mumax{} run therefore choose
+their steps by the same rule. This makes their step counts comparable, and it
+makes the tolerance a shared parameter rather than a source of disagreement
+(Sec.~\ref{sec:discstt}). A finite temperature requires a fixed step: the thermal
+field is redrawn every step, and its variance scales as $1/\Delta t$. The
+\texttt{Tsit5} method of \texttt{OrdinaryDiffEq.jl}~\cite{diffeq} remains
+available as an alternative. Tests check the order of every method on the
+analytic damped precession of a macrospin, and check that the adaptive RK45
+follows that solution to within its tolerance.
 
 \paragraph{Energy minimization.}
 Relaxing to equilibrium by integrating the damped LLG in time is impractical: the
@@ -537,18 +559,27 @@ on a chosen time interval.
 
 A small library of standard materials (Permalloy, Fe, Co, Ni, CoFeB, YIG) returns
 representative parameter sets by name. A \texttt{Simulation} object bundles the
-geometry, parameters, magnetization, and output table so that a script mirrors
-the \mumax{} workflow:
+geometry, parameters, magnetization, solver settings, and output, and its verbs
+are those of a \mumax{} input file. The 40~ns run of Sec.~\ref{sec:discstt}
+reads, after the geometry and material are defined:
 %
 \begin{lstlisting}
-sim = Simulation(mesh, material("Permalloy"))
-setmag!(sim, VortexConfig(mesh))
-savequantities!(sim, q_time(), q_m(),
-                q_vortexcore(); every = 10e-12)
-relax!(sim)
-run!(sim, 1e-9)
-writetable(sim.table, "out.txt")
+sim = togpu(Simulation(mesh, rp; outdir = "disc.out"))
+setmag!(sim, VortexConfig(mesh)); relax!(sim)
+tableadd!(sim, q_maxtorque())         # TableAdd
+tableadd!(sim, q_vortexcore())
+tableautosave!(sim, 5e-12)            # TableAutosave
+setcurrent!(sim, (0, 0, jz); zhangli = false,
+            slonczewski = true, fixedlayer = p)
+run!(sim, 40e-9)                      # RK45, MaxErr 1e-5
 \end{lstlisting}
+%
+The table and OVF snapshots are written with \mumax's autosave rule, and every
+run logs its wall-clock start and end time, the device, and its step and
+evaluation counts. \texttt{togpu} moves the whole simulation to the GPU. Table
+columns that have no GPU method, such as the energies, are then evaluated on a
+host copy of the state. The solver is chosen by name, e.g.\
+\texttt{run!(sim, t; solver = :rk4, fixdt = 5e-14)}.
 
 % ==========================================================================
 \section{GPU acceleration through multiple dispatch}
@@ -594,7 +625,9 @@ $1/32$ of the \texttt{Float32} rate. The \texttt{Float32} run reproduces the
 (Sec.~\ref{sec:discstt}). The remaining factor of two in wall time comes from the
 number of evaluations: the fixed-step fourth-order Runge--Kutta integration at
 $50$~fs used here needs $3.2\times10^{6}$, \mumax's adaptive fifth-order
-Runge--Kutta $1.8\times10^{6}$.
+Runge--Kutta $1.8\times10^{6}$. \JuliaMag's port of that adaptive solver
+(Sec.~\ref{sec:solvers}), now its default, takes its step sizes by the same rule;
+the runs in Table~\ref{tab:perf} predate it and use the fixed step.
 
 \begin{table}[t]
   \centering
@@ -602,8 +635,7 @@ Runge--Kutta $1.8\times10^{6}$.
   evaluation: one right-hand side of the LLG equation with the Slonczewski
   torque. The \JuliaMag{} runs use fixed-step RK4 at $50$~fs, \mumax{} its
   default adaptive RK45. The two \mumax{} timings were taken on the two machines
-  used (identical GPUs) and agree to $0.4\%$; the \texttt{Float64} wall time of the
-  current version is $40\times$ the measured $290$~s per simulated nanosecond.}
+  used (identical GPUs) and agree to $0.4\%$.}
   \label{tab:perf}
   \begin{tabular}{lccc}
     \hline
@@ -611,7 +643,7 @@ Runge--Kutta $1.8\times10^{6}$.
     \hline
     \JuliaMag{} broadcast version, \texttt{Float64} & $7.5$  & $3.2\times10^{6}$ & $25\,902$ \\
     \JuliaMag{} broadcast version, \texttt{Float32} & $5.4$  & --- & --- \\
-    \JuliaMag{} kernels, \texttt{Float64}           & $3.54$ & $3.2\times10^{6}$ & $11\,600$ \\
+    \JuliaMag{} kernels, \texttt{Float64}           & $3.54$ & $3.2\times10^{6}$ & $11\,504$ \\
     \JuliaMag{} kernels, \texttt{Float32}           & $1.11$ & $3.2\times10^{6}$ & $4\,008$ \\
     \mumax{} (\texttt{Float32})                     & $1.11$ & $1.8\times10^{6}$ & $2\,025$ \\
     \hline
@@ -665,8 +697,8 @@ positive saturation and relaxing at each step with the energy minimizer.
 Figure~\ref{fig:std2hyst} shows $H_c/M_s$ and $H_s/M_s$ against
 $d/\ell_{\mathrm{ex}}$ overlaid on the \oommf{} reference; at
 $d/\ell_{\mathrm{ex}}=5$, for instance, we obtain
-$H_c/M_s = 0.0560$ and $H_s/M_s = 0.0570$ versus the reference $0.0561$ and
-$0.0574$, the small $H_s$ offset set by the field-step resolution.
+$H_c/M_s = 0.0561$ and $H_s/M_s = 0.0575$ versus the reference $0.0561$ and
+$0.0574$; $H_s$ is resolved only to the field step, $\Delta H/M_s = 10^{-3}$.
 
 \begin{figure}[t]
   \centering
@@ -685,7 +717,7 @@ reversal. A $500\times125\times3$~nm Permalloy film ($M_s=8\times10^5$~A/m,
 $A=1.3\times10^{-11}$~J/m, $\alpha=0.02$) is relaxed to its equilibrium S-state,
 then field~1, $\mu_0\bm{H}=(-24.6, 4.3, 0)$~mT, is applied and the spatially
 averaged magnetization $\langle\vm\rangle(t)$ is recorded for 1~ns. We relax the
-S-state with the energy minimizer (375 steps) and integrate the switching with
+S-state with the energy minimizer (406 steps) and integrate the switching with
 \texttt{Tsit5}.
 
 Figure~\ref{fig:std4} shows the result overlaid with \mumax{} and \oommf{}
@@ -805,8 +837,8 @@ the codes over $0$--$7$~ns.}
    $\max|\Delta\langle\vm\rangle|$ \\
 \midrule
 Slonczewski                 & $973.5$ & $973.5$ & $4.3\times10^{-5}$ \\
-Slonczewski + Zhang--Li     & $930.8$ & $930.8$ & $4.5\times10^{-5}$ \\
-free gyration, no current   & $969.8$ & $969.8$ & $1.1\times10^{-4}$ \\
+Slonczewski + Zhang--Li     & $930.8$ & $930.8$ & $4.0\times10^{-5}$ \\
+free gyration, no current   & $969.8$ & $969.8$ & $8.9\times10^{-5}$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -834,12 +866,12 @@ deviation of $\langle\vm\rangle$ in free gyration comes from its initial state,
 which each code relaxes with its own energy minimizer
 ($\Delta\langle m_x\rangle = 8\times10^{-5}$ at $t=0$). Halving the time step
 (tested on the edge-smoothed disc) leaves the frequency unchanged to
-$0.01$~MHz and $\langle\vm\rangle$ to below $10^{-6}$, the precision of the
+$0.01$~MHz and $\langle\vm\rangle$ to below $10^{-7}$, the precision of the
 output tables, so the fixed-step integration is converged. The frequency is
-measured from $\langle\vm\rangle$; the core position, which \JuliaMag{} locates
+measured from $\langle\vm\rangle$. The core position, which \JuliaMag{} locates
 with the algorithm of \mumax's \texttt{ext\_corepos} (maximum $|m_z|$ over all
-layers, refined by parabolic interpolation), is compared in the $40$~ns series
-below.
+layers, refined by parabolic interpolation), agrees with \mumax's to
+$0.006$~nm rms in all three runs, on orbits of radius up to $14$~nm.
 
 \paragraph{The Zhang--Li term with a perpendicular current.}
 With $\bm{j} = j_z\hat{\bm{z}}$, Eq.~\eqref{eq:zhangli} reduces to
@@ -955,23 +987,49 @@ and continuing from the previous state. Figure~\ref{fig:vortex} shows the result
 Here $\langle\vm\rangle$ is the average over the disc's cells (the empty cells
 excluded, as in mumax$^3$'s table); an average over the whole rectangular box would
 be diluted by the disc's area fraction $\approx\pi/4$. At zero field the centred
-vortex gives $\langle m_x\rangle=0$; the field displaces the core along a nearly
-linear, reversible branch until the vortex is expelled between 55 and 60~mT and
+vortex gives $\langle m_x\rangle=0$. The field displaces the core along a nearly
+linear, reversible branch until the vortex is expelled between 55 and 60~mT, and
 the disc jumps to its nearly saturated branch ($\langle m_x\rangle=0.994$ at
-150~mT). On the return sweep the quasi-uniform state persists through zero field
-(remanence $\langle m_x\rangle=0.961$) until the vortex renucleates between $-10$
-and $-15$~mT, closing the $S$-shaped loop. The disc must be wide and thin for the reversible
-core-displacement branch to appear --- the signature that distinguishes a vortex
-loop from a square one --- which is exactly the regime where an accurate
-demagnetizing field matters most.
+150~mT). The disc must be wide and thin for this reversible core-displacement
+branch to appear --- the signature that distinguishes a vortex loop from a square
+one --- which is exactly the regime where an accurate demagnetizing field
+matters most.
+
+On the return sweep the quasi-uniform state persists through zero field
+(remanence $\langle m_x\rangle=0.961$) and loses stability at $-15$~mT. Which
+state replaces it is not fixed by the energy landscape alone. The loss of
+stability is a bifurcation, and the state the minimizer reaches depends on
+arbitrarily small asymmetries.
+
+The problem is symmetric under the mirror $y\to-y$, and \JuliaMag{} preserves
+that symmetry exactly: the state at $-10$~mT is mirror-symmetric to
+$3\times10^{-6}$. Along this symmetric path the disc reverses directly to the
+opposite quasi-uniform state at $-15$~mT. On the ascending branch of the same
+run, rounding errors break the symmetry and a vortex renucleates at $+15$~mT.
+
+A random perturbation of amplitude $10^{-6}$ added to $\vm$ before each
+relaxation (dashed curves) makes the outcome depend on the random seed. In one
+realization the vortex renucleates at zero field; in another the disc reverses
+at $-10$~mT. Tilting the field by $0.1^\circ$ or $1^\circ$ from $x$ gives yet other
+switching fields, $-10$ and $-20$~mT. An earlier version of the code, in which the odd
+components of the demagnetizing kernel were not yet set exactly to zero on their
+symmetry planes (Sec.~\ref{sec:demag}), renucleated the vortex at $-15$~mT.
+
+The reversible branch and the annihilation field are the same in every variant.
+The renucleation field, however, is set by the thermal fluctuations or the
+imperfections of a real disc, so the zero-temperature quasi-static loop
+resolves the competing states but not which one a sample selects.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/vortex_hysteresis.png}
   \caption{In-plane hysteresis loop of a magnetic vortex in a
-  $500~\mathrm{nm}\times20~\mathrm{nm}$ Permalloy disc. The reversible
-  core-displacement branch, the annihilation jump to the saturated branch, and
-  the renucleation on the return sweep are all resolved.}
+  $500~\mathrm{nm}\times20~\mathrm{nm}$ Permalloy disc, relaxed with the energy
+  minimizer at each field step. Solid: the deterministic, mirror-symmetric
+  calculation. Dashed: two realizations with a random $10^{-6}$ perturbation
+  before each relaxation. The reversible core-displacement branch and the
+  annihilation at 55--60~mT are common to all; the state reached after the
+  quasi-uniform state becomes unstable on the return sweep is not.}
   \label{fig:vortex}
 \end{figure}
 
@@ -1056,16 +1114,15 @@ with such surrogates directly, without a foreign-function boundary. Second, the
 LLG dynamics themselves can be learned or extrapolated: neural ordinary
 differential equations have been used to forecast the outcome of spintronic
 experiments~\cite{chen2022}, and the same \texttt{DifferentialEquations.jl}
-ecosystem~\cite{diffeq} that supplies \JuliaMag's time integrator also provides
+ecosystem~\cite{diffeq} that supplies \JuliaMag's \texttt{Tsit5} integrator also provides
 the adjoint-sensitivity and neural-ODE machinery on which such approaches are
 built. Positioning \JuliaMag{} within this ecosystem --- rather than as an
 isolated, hand-optimized binary --- is, in our view, its most significant
 long-term advantage.
 
 Immediate development priorities are multi-backend GPU execution through
-\texttt{KernelAbstractions.jl}, adaptive time stepping with the spin-transfer
-torques (which accounts for the remaining factor of two in wall time against
-\mumax{}), and nudged-elastic-band and eigenmode solvers, alongside the
+\texttt{KernelAbstractions.jl} and nudged-elastic-band and eigenmode solvers,
+alongside the
 documentation of finite-temperature (stochastic) dynamics in the spirit of
 Brown~\cite{brown1963}. The code is open source and available at
 \url{https://github.com/rlnovak/juliamag}.

@@ -14,7 +14,7 @@
 using JuliaMag
 using Printf
 using Statistics
-using Plots
+include(joinpath(@__DIR__, "makie_shim.jl"))   # Plots-style API on CairoMakie
 
 function mz_at(mesh, mat, TK; dt = 2e-15, warmup = 3e-10, nsamp = 2000, gap = 40)
     sim = Simulation(mesh, mat; demag = false)
@@ -34,15 +34,26 @@ function main()
     mat  = Material(Msat = 8e5, Aex = 1.3e-11, alpha = 0.5, Ku = Ku, anisU = (0, 0, 1))
 
     Ts = [0.0, 50.0, 100.0, 150.0, 200.0, 300.0, 500.0]
-    mzs = Float64[]
+    mzs = Float64[]; sds = Float64[]
     println(" T (K)   ⟨mz⟩    (KuV/kBT)")
     KuV = Ku * JuliaMag.cellvolume(mesh)
     for TK in Ts
-        mz, _ = TK == 0 ? (1.0, 0.0) : mz_at(mesh, mat, TK)
-        push!(mzs, mz)
+        mz, sd = TK == 0 ? (1.0, 0.0) : mz_at(mesh, mat, TK)
+        push!(mzs, mz); push!(sds, sd)
         ratio = TK == 0 ? Inf : KuV / (JuliaMag.kB * TK)
         @printf("  %5.0f   %.4f   %.2f\n", TK, mz, ratio); flush(stdout)
     end
+
+    # Table: T, time-averaged ⟨mz⟩, its standard deviation over the samples, KuV/kBT.
+    tbl = joinpath(@__DIR__, "thermal_demagnetization.txt")
+    open(tbl, "w") do io
+        println(io, "# Thermal demagnetization of a uniaxial nanodot (1 cell, 5 nm, Ku = $Ku J/m^3, Msat = 8e5 A/m, alpha = 0.5)")
+        println(io, "# T[K]\tmz_mean\tmz_std\tKuV/kBT")
+        for (TK, mz, sd) in zip(Ts, mzs, sds)
+            @printf(io, "%.1f\t%.6f\t%.6f\t%.6g\n", TK, mz, sd, TK == 0 ? Inf : KuV / (JuliaMag.kB * TK))
+        end
+    end
+    println("Wrote table  → ", tbl)
 
     gr()
     plt = plot(Ts, mzs; marker = :circle, lw = 2, legend = false,

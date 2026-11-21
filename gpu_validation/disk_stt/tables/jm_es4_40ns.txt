@@ -1,4 +1,4 @@
-# JuliaMag(GPU) — single 128 nm × 16 nm disk, Slonczewski STT only, Jtot=40 mA, EdgeSmooth 4
+# JuliaMag(GPU, Float64) — single 128 nm × 16 nm disk, Slonczewski STT only, Jtot=40 mA, EdgeSmooth 4
 # t (s)	mx ()	my ()	mz ()	maxTorque (T)	E_demag (J)	E_exch (J)	E_Zeeman (J)	E_total (J)	Jz (A/m2)	core_x (m)	core_y (m)
 0.000000e+00	-0.0000000	0.0000000	0.0178109	2.961503e-02	4.831868e-19	3.630534e-18	-0.000000e+00	4.113721e-18	3.108495e+12	-2.11748e-16	2.11740e-16
 5.000000e-12	0.0123563	0.0042914	0.0178078	3.962656e-02	4.880480e-19	3.631099e-18	-0.000000e+00	4.119147e-18	3.108495e+12	-8.23949e-12	1.89079e-10

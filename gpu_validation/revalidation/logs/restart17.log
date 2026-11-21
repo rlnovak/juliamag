@@ -1,0 +1,23 @@
+2026-11-20 13:39:25 start
+t=0: core 1.0247e-02  body 1.3518e-02
+t=10 ps: core 1.0263e-02  body 4.8979e-03  (13 s)
+t=20 ps: core 1.0302e-02  body 4.1581e-03  (23 s)
+t=30 ps: core 1.0378e-02  body 4.1799e-03  (33 s)
+t=40 ps: core 1.0365e-02  body 4.1970e-03  (42 s)
+t=50 ps: core 1.0352e-02  body 4.2636e-03  (52 s)
+t=60 ps: core 1.0303e-02  body 4.2204e-03  (62 s)
+t=70 ps: core 1.0258e-02  body 4.2158e-03  (71 s)
+t=80 ps: core 1.0235e-02  body 4.2281e-03  (81 s)
+t=90 ps: core 1.0228e-02  body 4.2135e-03  (91 s)
+t=100 ps: core 1.0289e-02  body 4.2617e-03  (101 s)
+t=110 ps: core 1.0343e-02  body 4.2799e-03  (110 s)
+t=120 ps: core 1.0366e-02  body 4.3821e-03  (120 s)
+t=130 ps: core 1.0356e-02  body 4.4168e-03  (130 s)
+t=140 ps: core 1.0309e-02  body 4.4059e-03  (139 s)
+t=150 ps: core 1.0214e-02  body 4.4118e-03  (149 s)
+t=160 ps: core 1.0145e-02  body 4.3642e-03  (159 s)
+t=170 ps: core 1.0127e-02  body 4.3863e-03  (168 s)
+t=180 ps: core 1.0147e-02  body 4.4061e-03  (178 s)
+t=190 ps: core 1.0185e-02  body 4.4714e-03  (188 s)
+t=200 ps: core 1.0208e-02  body 4.4399e-03  (197 s)
+2026-11-20 13:42:53 done rc=0

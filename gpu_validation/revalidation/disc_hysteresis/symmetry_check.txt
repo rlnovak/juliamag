@@ -1,0 +1,10 @@
+state at -10 mT: <m> = (0.9518, -0.0000, 0.0000)
+  asym C2 (x,y)→(−x,−y), (mx,my,mz)       4.026e-01
+  asym C2 (x,y)→(−x,−y), (−mx,−my,mz)     2.000e+00
+  asym x→−x, (mx,−my,mz)                  4.026e-01
+  asym x→−x, (−mx,my,−mz)                 2.000e+00
+  asym y→−y, (mx,−my,mz)                  2.743e-06
+  asym y→−y, (−mx,my,−mz)                 2.000e+00
+unperturbed      at -15 mT: <m> = (-0.9488, -0.0000, -0.0000)
+perturbed 1e-6   at -15 mT: <m> = (-0.3399, 0.0000, 0.0012)
+perturbed 1e-3   at -15 mT: <m> = (-0.9413, 0.0328, 0.0000)

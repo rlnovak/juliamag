@@ -23,7 +23,7 @@ using JuliaMag
 using CUDA
 using CUDA.CUFFT
 using LinearAlgebra: mul!
-import JuliaMag: exchange!, anisotropy!, zeeman!, torque!, normalize!, average,
+import JuliaMag: exchange!, anisotropy!, zeeman!, torque!, normalize!, average, maxtorque,
                  demagfield!, dmi!, dmi_interfacial!, dmi_bulk!, zhanglitorque!, slonczewskitorque!,
                  vortexcore, skyrmionpos, domainwallpos, topologicalcharge, _interp_max,
                  thermalfield!, cellvolume,
@@ -178,6 +178,14 @@ end
 function normalize!(m::CuField{T}) where {T}
     _launch(_k_normalize!, _ncells(m), m, _ncells(m))
     return m
+end
+
+# Largest per-cell norm max |dm| (convergence and error-control reductions).
+function maxtorque(dm::CuField{T}) where {T}
+    N = _ncells(dm)
+    d2 = CuArray{T}(undef, N)
+    _launch(_k_norm2!, N, d2, dm, N)
+    return sqrt(maximum(d2))
 end
 
 # Reductions accumulate in Float64, as the CPU methods do (also for Float32 m).
@@ -550,7 +558,39 @@ function JuliaMag.togpu(w::World{T}) where {T}
     gmat  = w.material isa RegionParams ? togpu(w.material) : w.material
     Bbuf  = CuArray(w._Bbuf)
     World{T,typeof(gplan),typeof(gmat),typeof(Bbuf)}(
-        w.mesh, gmat, gplan, w.Bext, Bbuf)
+        w.mesh, gmat, gplan, w.Bext, Bbuf, w.current)   # the SpinCurrent is plain numbers
+end
+
+# --- Simulation on the GPU ---------------------------------------------------
+
+JuliaMag.deviceinfo(m::CuArray) = begin
+    dev = CUDA.device()
+    string("GPU ", CUDA.deviceid(dev), " (", CUDA.name(dev), ", compute capability ",
+           CUDA.capability(dev), ", CUDA runtime ", CUDA.runtime_version(), ")")
+end
+
+"""
+    togpu(sim::Simulation) -> Simulation
+
+The same simulation on the GPU: the World and the magnetization are moved to the
+device; the settings, the table and the output schedule are kept, and the CPU World
+stays as the host World of the table columns that have no GPU method (energies).
+"""
+function JuliaMag.togpu(sim::JuliaMag.Simulation)
+    sim.m isa CuArray && return sim
+    return JuliaMag._rebuild(sim, togpu(sim.world), CuArray(sim.m), sim.world)
+end
+
+"""
+    tocpu(sim::Simulation) -> Simulation
+
+The simulation back on the CPU (its host World and a host copy of the state).
+"""
+function JuliaMag.tocpu(sim::JuliaMag.Simulation)
+    sim.m isa Array && return sim
+    hw = sim.hostworld
+    hw.current = sim.world.current
+    return JuliaMag._rebuild(sim, hw, Array(sim.m), hw)
 end
 
 end # module

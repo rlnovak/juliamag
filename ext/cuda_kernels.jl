@@ -276,6 +276,15 @@ function _k_zhangli!(τ, m, Nx, Ny, Nz, wx::T, wy::T, wz::T, usex, usey, usez,
 end
 
 # --- Normalize (src/magnetization.jl) ----------------------------------------
+# Squared norm of every cell vector (for the max-norm reductions of the solvers).
+function _k_norm2!(d2, a, N)
+    n = _tid()
+    n > N && return nothing
+    b = 3 * (n - Int32(1))
+    @inbounds d2[n] = a[b+1]^2 + a[b+2]^2 + a[b+3]^2
+    return nothing
+end
+
 function _k_normalize!(m, N)
     n = _tid()
     n > N && return nothing

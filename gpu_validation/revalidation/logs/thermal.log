@@ -1,0 +1,12 @@
+2026-11-20 12:44:56 start on labmac03 (CPU): /home/rlnovak/JuliaMag/reval/examples/thermal_demagnetization.jl
+ T (K)   ⟨mz⟩    (KuV/kBT)
+      0   1.0000   Inf
+     50   0.9956   72.43
+    100   0.9886   36.21
+    150   0.9780   24.14
+    200   0.9480   18.11
+    300   0.9516   12.07
+    500   0.9398   7.24
+Wrote table  → /home/rlnovak/JuliaMag/reval/examples/thermal_demagnetization.txt
+Wrote figure → /home/rlnovak/JuliaMag/reval/examples/thermal_demagnetization.png
+2026-11-20 12:45:26 done rc=0

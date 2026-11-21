@@ -14,6 +14,7 @@ module JuliaMag
 using Random: AbstractRNG
 import Random
 using LinearAlgebra: mul!
+using Printf: @sprintf
 
 # --- Constants -------------------------------------------------------------
 include("constants.jl")
@@ -76,16 +77,20 @@ include("demag_field.jl")
 export DemagPlan, demagfield!
 
 # --- Dynamics --------------------------------------------------------------
+include("current.jl")
+export SpinCurrent, sttparams, applycurrent!
 include("effective_field.jl")
-export World, setexternalfield!, effectivefield!
+export World, setexternalfield!, effectivefield!, setcurrent!
 include("llg.jl")
-export torque!, maxtorque
+export torque!, maxtorque, llgrhs!
 include("solver.jl")
 export Solver, step!, runtime!, relax!
 include("minimizer.jl")
 export Minimizer, minimizestep!, minimize!
 include("integrator.jl")
 export Integrator, advance!, relaxate!, currenttime, state
+include("timestepper.jl")
+export TimeStepper, advanceto!
 
 # --- Energies --------------------------------------------------------------
 include("energy.jl")
@@ -115,6 +120,7 @@ export material, materialnames
 # --- Simulation wrapper ----------------------------------------------------
 include("simulation.jl")
 export Simulation, setmag!, savequantities!, savenow!, run!, runcurrent!
+export setsolver!, settemperature!, setoutdir!, tableautosave!, save!, autosave!, deviceinfo
 
 # --- Finite-temperature (Langevin) dynamics --------------------------------
 include("thermal.jl")

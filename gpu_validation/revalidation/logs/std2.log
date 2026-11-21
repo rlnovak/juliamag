@@ -1,0 +1,17 @@
+2026-11-20 12:44:56 start on labmac03 (CPU): /home/rlnovak/JuliaMag/reval/examples/stdproblem2.jl
+Standard Problem 2 — lex = 5.686 nm
+
+ d/lex     mx        my      (minimizer steps)
+    0.5   1.0000    0.0000    (421)
+    1.0   1.0000    0.0000    (286)
+    2.0   1.0000    0.0000    (212)
+    5.0   0.9999    0.0000    (266)
+   10.0   0.9989    0.0000    (1819)
+   15.0   0.9786    0.0792    (324)
+   20.0   0.9702    0.0817    (264)
+   25.0   0.9657    0.0789    (307)
+   30.0   0.9628    0.0756    (325)
+Wrote data table → /home/rlnovak/JuliaMag/reval/examples/stdproblem2.txt
+
+Wrote comparison figure → /home/rlnovak/JuliaMag/reval/examples/stdproblem2_compare.png
+2026-11-20 12:45:23 done rc=0

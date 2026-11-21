@@ -1,0 +1,24 @@
+2026-11-20 12:44:56 start on labmac03 (CPU): /home/rlnovak/JuliaMag/reval/examples/stdproblem4.jl
+Standard Problem 4
+Mesh: 160 × 40 × 1 cells (6400 total)
+  cell size: 3.125 × 3.125 × 3.0 nm
+  world size: 500.0 × 125.0 × 3.0 nm
+  pbc: (0, 0, 0)
+  exchange length = 5.69 nm (cell 3.125 nm is safely below it)
+
+Relaxing to the S-state (energy minimizer)…
+  relaxed after 406 steps, ⟨m⟩ = (0.9668, 0.1256, -0.0000)
+
+Integrating the switching for 1 ns (OrdinaryDiffEq/Tsit5)…
+  t = 0.13 ns  ⟨m⟩ = (0.2111, 0.7521, -0.1123)
+  t = 0.25 ns  ⟨m⟩ = (-0.6847, -0.4165, 0.0192)
+  t = 0.37 ns  ⟨m⟩ = (-0.6775, 0.3283, 0.0151)
+  t = 0.50 ns  ⟨m⟩ = (-0.9180, -0.2275, 0.0470)
+  t = 0.63 ns  ⟨m⟩ = (-0.9088, 0.0092, -0.0666)
+  t = 0.75 ns  ⟨m⟩ = (-0.9413, 0.2751, -0.0454)
+  t = 0.88 ns  ⟨m⟩ = (-0.9195, 0.3733, 0.0209)
+  t = 1.00 ns  ⟨m⟩ = (-0.9850, 0.1227, 0.0434)
+
+Wrote table  → /home/rlnovak/JuliaMag/reval/examples/stdproblem4.txt
+Wrote figure → /home/rlnovak/JuliaMag/reval/examples/stdproblem4.png
+2026-11-20 12:45:49 done rc=0

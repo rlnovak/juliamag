@@ -44,21 +44,34 @@ Under construction. Roadmap:
 - [x] Geometries / regions
 - [x] OVF I/O and output tables
 - [x] GPU (CuArray), Float64 and Float32
+- [x] mumax3-style driver layer: mumax3's solvers by name (Euler, Heun, RK23, RK4,
+      Dormand–Prince RK45 with MaxErr/FixDt/Headroom) plus Tsit5; spin currents and
+      temperature in every solver; `TableAdd`/`TableAutosave`/`AutoSave`-style
+      output; run log with wall-clock times and device; whole simulations on the GPU
+      (`togpu(sim)`)
 
 ## Usage
+
+A script reads like a mumax3 input file (see the [manual](docs/manual.md), Sec. 4):
 
 ```julia
 using JuliaMag
 
-# µMAG standard problem 4 geometry: 500 × 125 × 3 nm
+# µMAG standard problem 4: a 500 × 125 × 3 nm Permalloy film
 mesh = Mesh((160, 40, 1), (3.125e-9, 3.125e-9, 3e-9))
+mat  = Material(Msat = 8.0e5, Aex = 1.3e-11, alpha = 0.02)
 
-# Permalloy
-mat = Material(Msat = 8.0e5, Aex = 1.3e-11, alpha = 0.02)
-
-m = uniform(mesh, (1, 0, 0))
-average(m)   # (1.0, 0.0, 0.0)
+sim = Simulation(mesh, mat; outdir = "std4.out")   # table.txt and OVF files go here
+setmag!(sim, UniformConfig(1, 1, 1))
+relax!(sim)                                         # minimize(): the S-state
+setexternalfield!(sim, (-24.6e-3, 4.3e-3, 0))       # field 1
+tableadd!(sim, q_maxtorque()); tableautosave!(sim, 2.5e-12)
+run!(sim, 1e-9)                                     # Dormand–Prince RK45, MaxErr 1e-5
 ```
+
+`run!(sim, t; solver = :rk4, fixdt = 5e-14)` picks another of mumax3's solvers;
+`setcurrent!(sim, J; …)` adds Zhang–Li and/or Slonczewski torques to every solver;
+`togpu(sim)` runs the same script on a CUDA GPU.
 
 ## Standard problem 4
 
@@ -79,7 +92,7 @@ julia --project=examples examples/stdproblem4.jl
 Compared directly against **both** mumax3 and OOMMF reference runs
 ([`compare_mumax3.jl`](examples/compare_mumax3.jl)), the curves coincide to
 within max |Δ| ≈ 0.004 (RMS ≲ 0.002) for all three components over the full
-nanosecond — JuliaMag as solid lines, mumax3 as circles, OOMMF as open squares:
+nanosecond — JuliaMag in blue, mumax3 in red, OOMMF as open triangles:
 
 ![JuliaMag vs mumax3 vs OOMMF](examples/stdproblem4_compare.png)
 

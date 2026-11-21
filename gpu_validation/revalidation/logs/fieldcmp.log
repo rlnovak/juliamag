@@ -1,0 +1,18 @@
+2026-11-20 12:45:01 start on labmac04 (CPU): /home/rlnovak/juliamag/gpu_validation/disk_stt/juliamag/fieldcmp.jl /home/rlnovak/JuliaMag/bench/fields
+
+===== EdgeSmooth = 0 =====
+geometry: max|fill_JM - vol_mumax| = 0.000e+00   (#cells vol>0: mumax 25824, JM 25824)
+B_demag  max|ΔB| inside=3.747e-07 T  bulk=3.747e-07  edge=n/a   (peak|B|=4.852e-01 T, max rel=7.72e-07)
+         worst cell (1, 29, 6) vol=1.000  mumax=[-0.036225, 0.017201, -0.00065365]  JM=[-0.036225, 0.017202, -0.00065362]
+B_exch   max|ΔB| inside=3.272e-07 T  bulk=3.272e-07  edge=n/a   (peak|B|=1.421e+00 T, max rel=2.30e-07)
+         worst cell (33, 32, 2) vol=1.000  mumax=[-0.2419, -0.31412, -1.3196]  JM=[-0.2419, -0.31412, -1.3196]
+JM energies on mumax m: E_demag=7.1783e-19  E_exch=3.6270e-18  E_total=4.3448e-18
+
+===== EdgeSmooth = 4 =====
+geometry: max|fill_JM - vol_mumax| = 0.000e+00   (#cells vol>0: mumax 26400, JM 26400)
+B_demag  max|ΔB| inside=3.772e-07 T  bulk=3.592e-07  edge=3.772e-07   (peak|B|=4.852e-01 T, max rel=7.77e-07)
+         worst cell (1, 29, 3) vol=0.750  mumax=[-0.023123, -0.040444, -5.0738e-6]  JM=[-0.023123, -0.040443, -5.0595e-6]
+B_exch   max|ΔB| inside=3.212e-07 T  bulk=3.212e-07  edge=1.317e-08   (peak|B|=1.421e+00 T, max rel=2.26e-07)
+         worst cell (33, 33, 5) vol=1.000  mumax=[0.23894, -0.25072, -1.2675]  JM=[0.23894, -0.25072, -1.2675]
+JM energies on mumax m: E_demag=4.8318e-19  E_exch=3.6305e-18  E_total=4.1137e-18
+2026-11-20 12:45:16 done rc=0

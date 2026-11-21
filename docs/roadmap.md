@@ -4,7 +4,7 @@ Where JuliaMag stands and where it can go next, including a comparison with
 [MicroMagnetic.jl](https://github.com/MagneticSimulation/MicroMagnetic.jl), the
 other Julia micromagnetic simulator.
 
-## Current state (2026-08)
+## Current state (2026-11)
 
 Validated CPU + GPU micromagnetic solver:
 
@@ -13,14 +13,21 @@ Validated CPU + GPU micromagnetic solver:
   finite-temperature (Langevin) dynamics.
 - **Geometry:** shapes + boolean composition + transforms; edge smoothing
   (fractional fill); polycrystalline Voronoi grains; multi-region materials.
-- **Solvers:** energy minimizer (Barzilai–Borwein/Cayley), adaptive time
-  integration (Tsit5), fixed-step RK/Heun.
+- **Solvers:** energy minimizer (Barzilai–Borwein/Cayley); mumax3's explicit
+  solvers step for step (Euler, Heun, RK23, RK4, Dormand–Prince RK45 with
+  MaxErr/FixDt/Headroom) with spin currents and temperature in the right-hand
+  side; OrdinaryDiffEq's Tsit5.
 - **GPU:** the whole pipeline runs on CUDA via a package extension (dispatch on
-  `CuArray`), validated on hardware (labmac04, Quadro P1000).
-- **Validation:** µMAG standard problems 2, 4, 5 vs mumax3 and OOMMF; a second
-  round adapted from magnum.np demos.
-- **Tooling:** data tables, OVF I/O, feature trackers, material library, a
-  `Simulation` wrapper, a QML desktop GUI, a Colab benchmark notebook, a paper.
+  `CuArray`), one mumax3-style kernel per term, Float64 and Float32, validated on
+  hardware (labmac03/04, Quadro P1000); a whole `Simulation` moves with `togpu`.
+- **Validation:** µMAG standard problems 2, 4, 5 vs mumax3 and OOMMF; a
+  current-driven vortex in a disc vs mumax3 (fields, 7 ns and 40 ns dynamics); a
+  second round adapted from magnum.np demos. All re-run after the November 2026
+  fixes and GPU rewrite (`gpu_validation/revalidation/`).
+- **Tooling:** mumax3-style driver layer (`tableadd!`/`tableautosave!`,
+  `autosave!`/`save!` of OVF, output directory, run log with wall-clock times and
+  device), feature trackers, material library, a QML desktop GUI, a Colab
+  benchmark notebook, a paper.
 
 ## Comparison with MicroMagnetic.jl
 
@@ -119,6 +126,22 @@ low-to-medium effort — these make the package usable like mumax3 for productio
    whole box — see the normalization bug below. `q_maxtorque` still reports
    max |dm/dt| in rad/s from the LLG torque only; to match mumax3's `maxTorque` it must
    be in T (÷ γLL) and include the active spin torques, as the 40 ns driver does by hand.
+
+**Status (2026-11-20): all six items done.** `src/timestepper.jl` implements
+mumax3's Euler, Heun, RK23, RK4 and Dormand–Prince RK45 operation for operation
+(stage normalization, error norm, `adaptDt` with Headroom, MinDt/MaxDt, FixDt,
+the end-of-run alarm), on the CPU and the GPU; the spin current lives in the
+`World` (`setcurrent!`, `SpinCurrent`), so `llgrhs!` — and with it every solver,
+adaptive or not, and the `maxTorque` column — includes the Zhang-Li / Slonczewski
+torques; `settemperature!` adds the thermal field to the fixed-step solvers;
+`setsolver!` / `run!(…; solver)` pick the solver by name (`:tsit5` kept); the table
+and OVF autosaves follow mumax3's `needSave` rule, stream to `outdir`, and
+`q_maxtorque` reports tesla including the spin torques; every `run!` logs its
+wall-clock start/end, device and work counters; `togpu(sim)` moves a whole
+simulation to the GPU. Tests: `test/test_timestepper.jl` (orders 1–5, analytic
+damped precession, adaptDt, STT via `run!` = hand-written RK4 loops, schedules,
+OVF, log) and `gpu_validation/test_gpu.jl` (`stepper_terms`). The 40 ns disc in
+the new API: `gpu_validation/disk_stt/juliamag/disk_40mA_sim.jl`.
 
 Items 4 and 5 are trivial and should land first (a small `runinfo`/logging helper
 the drivers call); 1–3 and 6 are the substantial driver refactor (6 is the
@@ -240,9 +263,7 @@ JuliaMag value within 2 ps; a full `MaxErr = 1e-7` run agrees to 0.2% rms). Deta
 
 ## Near-term priorities
 
-The **driver ergonomics group above** (adaptive stepping with STT, named solvers,
-OVF autosave, run logging) is now the top near-term priority — it came directly
-from a real production run and removes the biggest friction in using JuliaMag for
-actual experiments. After that, the **KernelAbstractions migration** (multi-backend
-GPU) and **NEB** most broaden JuliaMag's reach for the least architectural
-disruption; both have a clean reference in MicroMagnetic.jl.
+The **driver ergonomics group above** is done (2026-11-20). Next: the
+**KernelAbstractions migration** (multi-backend GPU — the CUDA kernels are now
+per-term and translate mechanically), then **NEB/GNEB** and the **eigenmode/FMR**
+solver; all three have a clean reference in MicroMagnetic.jl.

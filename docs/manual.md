@@ -299,6 +299,10 @@ end
 writetable(sim.table, "skyrmion_track.txt")
 ```
 
+The same run with the general driver: `setcurrent!(sim, J)` (Zhang–Li by default),
+`tableautosave!(sim, 20e-12)` and `run!(sim, 1e-9)`, with an adaptive solver.
+`runcurrent!` is the older fixed-step route, kept for existing scripts.
+
 `runcurrent!(sim, J, duration; every)` integrates the LLG with the Zhang–Li
 spin-transfer torque of the current `J` added to the right-hand side, saving a
 table row every `every` seconds. (An applied *field* goes through
@@ -348,27 +352,121 @@ which drives a vortex with a current and matches mumax3 to 9×10⁻⁵.
 
 ---
 
-## 4. Choosing what to save
+## 4. Running a simulation: solvers, currents and output
 
-`savequantities!(sim, q1, q2, …; every = Δt)` sets the table columns and the
-auto-save interval. The available quantities:
+A `Simulation` script follows the shape of a mumax3 input file. Each mumax3 verb
+has a JuliaMag counterpart:
+
+| mumax3 | JuliaMag |
+|--------|----------|
+| `m = vortex(1, 1)` | `setmag!(sim, VortexConfig(mesh))` |
+| `B_ext = vector(bx, by, bz)` | `setexternalfield!(sim, (bx, by, bz))` |
+| `J = …`, `FixedLayer`, `Pol`, `Lambda`, `EpsilonPrime`, `xi` | `setcurrent!(sim, J; …)` (with the material's `pol`, `xi`, `lambda`, `epsilonPrime`) |
+| `Temp = 300` | `settemperature!(sim, 300)` |
+| `SetSolver(5)`, `MaxErr`, `FixDt`, `MinDt`, `MaxDt`, `Headroom` | `setsolver!(sim, :rk45; maxerr, fixdt, mindt, maxdt, headroom)` |
+| `minimize()` | `relax!(sim)` |
+| `run(1e-9)` | `run!(sim, 1e-9)` |
+| `TableAdd(maxTorque)`, `TableAutosave(5e-12)`, `TableSave()` | `tableadd!(sim, q_maxtorque())`, `tableautosave!(sim, 5e-12)`, `tablesave!(sim)` |
+| `AutoSave(m, 1e-10)`, `Save(m)` | `autosave!(sim, 1e-10)`, `save!(sim)` |
+| output directory `script.out/` | `Simulation(…; outdir = "run.out")` or `setoutdir!(sim, dir)` |
+
+A complete current-driven run:
+
+```julia
+using JuliaMag
+mesh = Mesh((64, 64, 8), (2e-9, 2e-9, 2e-9))
+mat  = Material(Msat = 8e5, Aex = 1.08e-11, alpha = 0.01, pol = 0.37, lambda = 1.0,
+                epsilonPrime = 0.01)
+rp = RegionParams(mesh, mat); setregion!(rp, 0; Msat = 0.0)
+setgeometry!(rp, Cylinder(128e-9, 32e-9); id = 1, edgesmooth = 4)
+
+sim = Simulation(mesh, rp; outdir = "disc.out")
+setmag!(sim, VortexConfig(mesh; circ = 1, pol = 1))
+relax!(sim)
+
+tableadd!(sim, q_maxtorque()); tableadd!(sim, q_vortexcore())
+tableautosave!(sim, 5e-12)                      # streamed to disc.out/table.txt
+autosave!(sim, 1e-9)                            # disc.out/m000000.ovf, m000001.ovf, …
+setcurrent!(sim, (0, 0, 3.1e12); zhangli = false, slonczewski = true,
+            fixedlayer = (cos(20π/180), sin(20π/180), 0))
+run!(sim, 40e-9)                                # adaptive Dormand–Prince, MaxErr 1e-5
+```
+
+**Solvers.** `run!` integrates with the solver chosen by name:
+
+| name | method | error estimate |
+|------|--------|----------------|
+| `:rk45` (default) | Dormand–Prince, FSAL (mumax3 solver 5) | embedded 4th order |
+| `:rk23` | Bogacki–Shampine, FSAL (mumax3 solver 3) | embedded 2nd order |
+| `:rk4` | classic Runge–Kutta (mumax3 solver 4) | \|k1 − k4\|·Δt |
+| `:heun` | Heun (mumax3 solver 2) | embedded Euler |
+| `:euler` | Euler (mumax3 solver 1) | adaptive: Δt = MaxErr / max torque |
+| `:tsit5` | Tsitouras 5(4), OrdinaryDiffEq | `abstol`, `reltol` |
+
+The first five reproduce mumax3's stages, normalizations, error norm and
+step-size control operation for operation. The step is accepted when
+`err < maxerr`, and the next one is `Δt·clamp(headroom·(maxerr/err)^(1/p), ½, 2)`,
+clipped so that no step crosses the end of the run. `setsolver!(sim, :rk4;
+fixdt = 5e-14)` fixes the step. Keywords given to `run!` (`run!(sim, 1e-9; solver =
+:rk23, maxerr = 1e-6)`) apply to that run only. `sim.nsteps`, `sim.nundone`,
+`sim.nevals` and `sim.peakerr` count the work, as mumax3's `NSteps`, `NUndone`,
+`NEvals` and `PeakErr` do.
+
+**Spin-polarized current.** `setcurrent!(sim, J; zhangli = true, slonczewski =
+false, fixedlayer, thickness, params)` stores a uniform current density `J`
+[A/m²]. Every solver then adds the chosen spin torques to the LLG right-hand side
+(`llgrhs!`). This includes the adaptive ones: a current-driven run no longer needs
+a hand-written fixed-step loop. The Slonczewski torque uses `J[3]`, the
+fixed-layer polarization `fixedlayer` and the free-layer `thickness` (default:
+the mesh thickness).
+
+Unlike mumax3, each torque is switched on explicitly. mumax3 adds the Zhang–Li
+term whenever `J` is set unless `DisableZhangLiTorque = true`, and with a
+perpendicular current that term shifts a vortex gyration frequency by about 4%
+(paper, Sec. "Current-driven vortex in a disc"). The STT parameters come from one
+`Material`: the material itself, or for a `RegionParams` the first magnetic
+region (`sttparams`). `setcurrent!(sim, nothing)` removes the current.
+
+**Output.**
+- **The table.** It always starts with `t` and ⟨m⟩, the magnet average (fill
+  weighted, empty cells excluded, as mumax3's table `m`); add columns with
+  `tableadd!`.
+- **The save schedule.** `tableautosave!(sim, Δt)` and `autosave!(sim, Δt)` follow
+  mumax3's rule: a row or an OVF file is written after the first step at which
+  `t − t₀ ≥ (n+1)·Δt`, starting with the current state. With an adaptive step the
+  rows therefore fall on the steps, not on exact multiples of `Δt`, as in mumax3.
+  With a fixed step that divides `Δt` they land on the multiples exactly.
+- **No schedule.** Without an autosave interval, `run!` saves a row at its start
+  and end.
+- **Files.** With an output directory, the table is streamed to `table.txt` as
+  rows are saved, and OVF files are numbered per name from `000000`.
+- **The run log.** Every `run!` prints its wall-clock start and end time, the
+  device (CPU model, or GPU name and compute capability), the precision, the
+  solver and, at the end, the steps, undone steps and evaluations. Pass
+  `verbose = false` to `Simulation` to silence it, or `log = io` to redirect it.
+
+The available table quantities:
 
 | Quantity | Columns | Meaning |
 |----------|---------|---------|
-| `q_time()` | `t` | simulated time [s] |
-| `q_m()` | `mx, my, mz` | averaged magnetization |
+| `q_time()` | `t` | simulated time [s] (always present) |
+| `q_m()` | `mx, my, mz` | magnet-averaged magnetization (always present) |
 | `q_m_region(id)` | `mx, my, mz` | averaged over one region |
 | `q_energy()` | `E_total` | total energy [J] |
 | `q_exchangeenergy()`, `q_demagenergy()`, `q_zeemanenergy()`, `q_anisenergy()` | one each | per-term energies |
-| `q_maxtorque()` | `maxTorque` | max torque [rad/s] |
+| `q_maxtorque()` | `maxTorque` | max \|dm/dt\|/γ of the full right-hand side (spin torques included) [T], as mumax3 |
 | `q_Bext()` | `B_extx,y,z` | applied field [T] |
-| `q_vortexcore()` | `x, y, z, polarity` | vortex core |
+| `q_vortexcore()` | `x, y, z, polarity` | vortex core (mumax3 `ext_corepos`) |
 | `q_skyrmionpos()` | `x, y, z` | skyrmion centroid |
 | `q_dwpos()` | `x, y, z` | domain-wall position |
 | `q_topocharge()` | `Q` | topological charge |
 
-Write the accumulated table with `writetable(sim.table, "out.txt")` — a
-tab-separated file with a header line, readable by any plotting tool.
+A custom column is a `Quantity(name, unit, ncomp, (world, m, t) -> values;
+device = false)`. Set `device = true` only if the function also works on a GPU
+state; otherwise a GPU simulation evaluates it on a host copy.
+`savequantities!(sim, q…; every = Δt)` remains as a one-call shorthand for
+`tableadd!` + `tableautosave!`. `writetable(sim, "out.txt")` writes the in-memory
+table.
 
 ---
 
@@ -477,6 +575,15 @@ runthermal!(sim, 1e-9, 300.0; dt = 2e-15, every = 1e-11)   # 1 ns at 300 K
 writetable(sim.table, "thermal.txt")
 ```
 
+The same run through the general driver, with the table autosave and any solver
+that takes a fixed step (Heun is mumax3's choice for thermal runs):
+
+```julia
+settemperature!(sim, 300.0)
+tableautosave!(sim, 1e-11)
+run!(sim, 1e-9; solver = :heun, fixdt = 2e-15)   # an adaptive step is refused at T > 0
+```
+
 `runthermal!(sim, duration, T; dt, every)` needs a small step — `dt` around
 1e-15–1e-14 s — because the thermal kick per step must stay modest; a strongly
 damped material equilibrates faster. Region-wise temperatures use each region's
@@ -522,6 +629,18 @@ field and `runthermal!`, and the feature trackers (`vortexcore`, `skyrmionpos`,
 (multi-material) parameters work too — `togpu(::World)` materializes a
 `RegionParams` into per-cell device arrays, so a multilayer or a patterned sample
 runs on the GPU unchanged.
+
+A whole `Simulation` moves with `togpu(sim)`. The script is otherwise unchanged:
+`relax!`, `run!` (every solver), `setcurrent!`, the table and the OVF output work
+on the device. Table columns without a GPU method, such as the energies, are
+evaluated on a host copy of the state. `tocpu(sim)` brings the simulation back.
+
+```julia
+sim = togpu(Simulation(mesh, rp; outdir = "run.out"))
+setmag!(sim, VortexConfig(mesh)); relax!(sim)
+tableadd!(sim, q_energy()); tableautosave!(sim, 5e-12)
+run!(sim, 1e-9)        # log: "device: GPU 0 (Quadro P1000, compute capability 6.1, …)"
+```
 
 The magnetization stays on the device until you bring it back with `tocpu(m)` (or
 `Array(m)`); do that before saving an OVF, computing an energy, or feeding a state

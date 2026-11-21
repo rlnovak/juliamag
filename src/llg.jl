@@ -55,7 +55,25 @@ function maxtorque(dm::AbstractArray{T,4}) where {T}
     mx = zero(T)
     @inbounds for k in axes(dm, 4), j in axes(dm, 3), i in axes(dm, 2)
         t2 = dm[1, i, j, k]^2 + dm[2, i, j, k]^2 + dm[3, i, j, k]^2
-        t2 > mx && (mx = t2)
+        (t2 > mx || isnan(t2)) && (mx = t2)      # a NaN cell makes the result NaN
+        isnan(mx) && break
     end
     return sqrt(mx)
+end
+
+"""
+    llgrhs!(dm, m, world) -> dm
+
+The full right-hand side dm/dt [rad/s] of the LLG equation for state `m`: the LLG
+torque of the effective field plus the spin-transfer torques of `world.current`
+(mumax3's SetTorque: LL torque + AddSTTorque). Every time integrator and the
+`maxTorque` table column evaluate this one function, so a current set with
+[`setcurrent!`](@ref) is seen by all of them. Uses `world._Bbuf` as the field buffer.
+"""
+function llgrhs!(dm::AbstractArray{T,4}, m::AbstractArray{T,4}, w) where {T}
+    B = w._Bbuf
+    effectivefield!(B, m, w)
+    torque!(dm, m, B, damping(w.material))
+    applycurrent!(dm, m, w)
+    return dm
 end

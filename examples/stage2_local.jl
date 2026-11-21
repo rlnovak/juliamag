@@ -45,10 +45,13 @@ function langevin_demo()
         JuliaMag.setexternalfield!(sim.world, (μ0 * H, 0.0, 0.0))   # B = μ0 H [T]
         # Relax the ensemble under the thermal field, then average over spins and a
         # few snapshots (ensemble average dominates; time-averaging just de-noises).
-        runthermal!(sim, 2e-9, T; dt = 1e-15)               # long thermalization
+        # Thermalize for 20 ns: at ξ = 1 (μ0H = 4 mT) the relaxation time 1/(α γ' μ0 H)
+        # is 3.4 ns, and the earlier 2 ns left ⟨mx⟩ 0.1 below L(ξ). The field is weak,
+        # so dt = 1e-14 s resolves the precession and the thermal kicks.
+        runthermal!(sim, 20e-9, T; dt = 1e-14)
         acc = Float64[]
         for _ in 1:40
-            runthermal!(sim, 40 * 1e-15, T; dt = 1e-15)
+            runthermal!(sim, 40 * 1e-14, T; dt = 1e-14)
             push!(acc, average(sim.m)[1])                   # spatial mean over 4096 spins
         end
         mx = mean(acc); L = langevin(ξ)

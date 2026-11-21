@@ -1,0 +1,4 @@
+2026-11-20 12:44:56 start on labmac03 (CPU): /home/rlnovak/juliamag/gpu_validation/benchmarks/std5_energies.jl
+relaxed ⟨m⟩ = (-0.00000, -0.00000, 0.02677)
+done. final ⟨m⟩ = (-0.23488, -0.09453, 0.02296)
+2026-11-20 12:46:29 done rc=0

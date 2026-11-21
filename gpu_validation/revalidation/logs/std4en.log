@@ -1,0 +1,4 @@
+2026-11-20 12:44:56 start on labmac03 (CPU): /home/rlnovak/juliamag/gpu_validation/benchmarks/std4_energies.jl
+S-state ⟨m⟩ = (0.966819, 0.125557, -0.000000)
+done. final ⟨m⟩ = (-0.984955, 0.122681, 0.043428)
+2026-11-20 12:45:40 done rc=0

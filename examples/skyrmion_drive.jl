@@ -16,7 +16,7 @@
 
 using JuliaMag
 using Printf
-using Plots
+include(joinpath(@__DIR__, "makie_shim.jl"))   # Plots-style API on CairoMakie
 
 # Unwrap a periodic coordinate stream of period L: undo the ±L jumps at re-entry
 # so x(t) is a continuous line whose slope is the true velocity.

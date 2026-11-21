@@ -77,12 +77,17 @@ my) and 0.045% (mz) rms with Zhang–Li. Time-step convergence: dt = 5×10⁻¹�
 max |Δ⟨m⟩| < 10⁻⁶ (the table print precision). Edge smoothing lowers the frequency by
 ≈1% (mumax3 with Zhang–Li: 930.8 → 922.0 MHz; JuliaMag Slonczewski only: 973.5 → 963.6 MHz).
 
-The vortex-core positions in these tables differ by 2–4% between the codes;
-frequencies are therefore taken from ⟨m⟩. The cause was two bugs in JuliaMag's
-`vortexcore`, both fixed after these tables were produced: its sub-cell interpolation
-read `f1 - 2f0 + f2`, where Julia parses `2f0` as the Float32 literal 2.0 (offsets
-shrunk ~10×), and it searched only the bottom layer, while mumax3's `ext_corepos`
-takes the max |m_z| over all layers. The 40 ns series uses the fixed tracker.
+The first version of these tables had vortex-core positions 2–4% off mumax3's, from
+two bugs in JuliaMag's `vortexcore` (fixed in 01a62ff/3daa142): its sub-cell
+interpolation read `f1 - 2f0 + f2`, where Julia parses `2f0` as the Float32 literal
+2.0 (offsets shrunk ~10×), and it searched only the bottom layer, while mumax3's
+`ext_corepos` takes the max |m_z| over all layers. The tables were re-run on
+2026-11-20 with the fixed tracker and the rewritten GPU kernels
+(`gpu_validation/revalidation/`): ⟨m⟩ is unchanged (≤ 4×10⁻⁶; 0 for the
+Slonczewski run), and the core now agrees with `ext_corepos` to 0.006 nm rms
+(Slonczewski), 0.003 nm (Slonczewski + Zhang–Li) and 0.006 nm (free gyration), on
+orbits up to 14 nm. Max |Δ⟨m⟩| vs mumax3 over 0–7 ns: 4.3×10⁻⁵, 4.0×10⁻⁵, 8.9×10⁻⁵.
+Frequencies are still taken from ⟨m⟩.
 
 **40 ns series** (EdgeSmooth 4, Slonczewski only; tables `jm_es4_40ns.txt`,
 `mumax_stt_es4_noZL_40ns.txt`, `mumax_stt_es4_noZL_40ns_maxerr1e-7.txt`):

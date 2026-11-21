@@ -1,0 +1,15 @@
+2026-11-20 12:44:56 start on labmac03 (CPU): /home/rlnovak/JuliaMag/reval/examples/stdproblem2_hysteresis.jl
+Standard Problem 2 hysteresis — lex = 5.686 nm
+
+ d/lex    Hc/Ms     Hs/Ms
+    1.0   0.05700   0.05750
+    5.0   0.05611   0.05750
+   10.0   0.05456   0.05550
+   15.0   0.05204   0.05250
+   20.0   0.05005   0.05050
+   25.0   0.04710   0.04750
+   30.0   0.04606   0.04650
+Wrote data table → /home/rlnovak/JuliaMag/reval/examples/stdproblem2_hysteresis.txt
+
+Wrote figure → /home/rlnovak/JuliaMag/reval/examples/stdproblem2_hysteresis.png
+2026-11-20 12:49:19 done rc=0

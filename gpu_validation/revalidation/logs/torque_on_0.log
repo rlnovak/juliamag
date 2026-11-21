@@ -1,0 +1,16 @@
+2026-11-20 13:39:45 start
+B_eff     max|Δ| = 4.480e-07 T (2.31e-07 of max|ref| 1.940e+00) at (29, 29, 5) fill 1.000
+LLtorque  max|Δ| = 3.942e-07 T (8.86e-06 of max|ref| 4.451e-02) at (29, 29, 5) fill 1.000
+STTorque  max|Δ| = 6.602e-09 T (2.23e-07 of max|ref| 2.961e-02) at (12, 12, 5) fill 1.000
+torque    max|Δ| = 3.964e-07 T (2.61e-05 of max|ref| 1.519e-02) at (29, 29, 5) fill 1.000
+mumax3    max|τ| = 1.51875e-02 T at cell (28, 31, 1), fill 1.000, m = (0.065, -0.077, 0.995)
+JuliaMag  max|τ| = 1.51874e-02 T at cell (28, 31, 1), fill 1.000, m = (0.065, -0.077, 0.995)
+  mumax3 |τ| 1.5188e-02  JM 1.5187e-02  cell (28, 31, 1)  fill 1.000  r = 9.5 nm
+  mumax3 |τ| 1.5062e-02  JM 1.5062e-02  cell (28, 31, 8)  fill 1.000  r = 9.5 nm
+  mumax3 |τ| 1.5025e-02  JM 1.5025e-02  cell (29, 31, 8)  fill 1.000  r = 7.6 nm
+  mumax3 |τ| 1.4984e-02  JM 1.4984e-02  cell (28, 31, 7)  fill 1.000  r = 9.5 nm
+  mumax3 |τ| 1.4976e-02  JM 1.4975e-02  cell (29, 31, 2)  fill 1.000  r = 7.6 nm
+  mumax3 |τ| 1.4931e-02  JM 1.4932e-02  cell (29, 32, 7)  fill 1.000  r = 7.1 nm
+  mumax3 |τ| 1.4903e-02  JM 1.4903e-02  cell (29, 31, 1)  fill 1.000  r = 7.6 nm
+  mumax3 |τ| 1.4891e-02  JM 1.4891e-02  cell (28, 32, 8)  fill 1.000  r = 9.1 nm
+2026-11-20 13:39:59 done rc=0

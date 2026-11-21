@@ -197,14 +197,38 @@ ill-posed there.
 |---|---|---|
 | broadcast version, Float64 | 7.5 | 25 902 |
 | broadcast version, Float32 | 5.4 | — |
-| kernels, Float64 | 3.54 (FFTs 2.8: FP64 at 1/32 rate) | 11 600 (290 s/ns) |
+| kernels, Float64 | 3.54 (FFTs 2.8: FP64 at 1/32 rate) | 11 504 (measured 2026-11-20) |
 | kernels, Float32 | **1.11** | **4 008** |
 | mumax3 (Float32) | 1.11 | 2 025 |
 
-Per evaluation JuliaMag Float32 = mumax3. The remaining 2× in wall time is the
-number of evaluations: fixed RK4 at 50 fs (3.2e6) vs mumax3's adaptive RK45
-(1.8e6) — adaptive stepping with STT is the next item. Old timings on labmac04,
-new on labmac03 (same GPU model): mumax3 takes 2017 s and 2025 s on the two.
+Per evaluation, JuliaMag in Float32 costs the same as mumax3. The remaining 2× in
+wall time comes from the number of evaluations: fixed-step RK4 at 50 fs needs
+3.2e6, mumax3's adaptive RK45 1.8e6. Old timings were taken on labmac04 and the
+new ones on labmac03 (same GPU model); mumax3 takes 2017 s and 2025 s on the two.
+
+## Result 9 — re-validation and the mumax3-style driver layer
+
+- **Re-validation.** Every older validation problem was re-run with the rewritten
+  code (`revalidation/README.md`). Every result is unchanged to the printed digits
+  or to the sampling noise, except two:
+  - the vortex-hysteresis return branch, which turned out to be a symmetry-breaking
+    bifurcation of the zero-temperature loop;
+  - the vortex-core positions of the 7 ns disc runs, now taken with the fixed
+    tracker: 0.006 nm rms from mumax3's `ext_corepos`.
+- **Driver layer.** `src/timestepper.jl` ports mumax3's Euler, Heun, RK23, RK4 and
+  RK45 step for step, as broadcasts plus per-term kernels, so they run on the GPU
+  unchanged.
+  - The spin current lives in the `World`, so every solver includes it.
+  - `togpu(sim)` moves a whole `Simulation` to the device.
+  - `test_gpu.jl` gained `stepper_terms`, which checks the following against the
+    CPU, in both precisions:
+    - `llgrhs!` with the Zhang–Li and Slonczewski torques;
+    - each solver over 100 fixed steps;
+    - 5 ps of adaptive RK45, comparing m and the last step size;
+    - a GPU `Simulation`: its table (GPU and host columns) and its OVF autosave.
+  - `disk_stt/juliamag/disk_40mA_sim.jl` is the 40 ns disc written in the new API
+    (RK45, MaxErr 1e-5, like mumax3). Its GPU run is queued on labmac03 behind
+    another project's jobs (`~/JuliaMag/item3/`).
 
 ## Files
 

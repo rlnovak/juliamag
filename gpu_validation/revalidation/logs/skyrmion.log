@@ -1,0 +1,8 @@
+2026-11-20 12:44:56 start on labmac03 (CPU): /home/rlnovak/JuliaMag/reval/examples/skyrmion_drive.jl
+relaxed skyrmion at (0.0, -0.0) nm, Q = -0.94
+t = 1.00 ns  →  (x, y) = (122.2, 20.9) nm
+t = 2.00 ns  →  (x, y) = (-55.5, 41.7) nm
+t = 3.00 ns  →  (x, y) = (67.0, 62.5) nm
+skyrmion velocity vx = -177.7 m/s  (net Δx = -533.0 nm over 3.0 ns)
+Wrote figure → /home/rlnovak/JuliaMag/reval/examples/skyrmion_drive.png
+2026-11-20 12:53:01 done rc=0
