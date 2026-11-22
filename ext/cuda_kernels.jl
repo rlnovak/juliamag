@@ -276,13 +276,53 @@ function _k_zhangli!(τ, m, Nx, Ny, Nz, wx::T, wy::T, wz::T, usex, usey, usez,
 end
 
 # --- Normalize (src/magnetization.jl) ----------------------------------------
-# Squared norm of every cell vector (for the max-norm reductions of the solvers).
-function _k_norm2!(d2, a, N)
+# Max-norm reduction: acc[1] and acc[2] ← max(acc[i], max_n |s·a_n|²) (or
+# |s·(a_n − b_n)|² if diff), as unsigned bit patterns of the float type. Each warp
+# reduces its 32 values with shuffles, the first warp reduces the warps' results
+# from shared memory, and one thread per block makes one atomic max per slot.
+# Threads past N take part with 0 (the block size is a multiple of 32, so warps are
+# full).
+function _k_accmaxnorm2!(acc, a, b, s, N, diff::Bool)
     n = _tid()
-    n > N && return nothing
-    b = 3 * (n - Int32(1))
-    @inbounds d2[n] = a[b+1]^2 + a[b+2]^2 + a[b+3]^2
+    v = zero(s)
+    if n <= N
+        o = 3 * (n - Int32(1))
+        @inbounds begin
+            x = a[o+1]; y = a[o+2]; z = a[o+3]
+            if diff
+                x -= b[o+1]; y -= b[o+2]; z -= b[o+3]
+            end
+        end
+        x *= s; y *= s; z *= s
+        v = x * x + y * y + z * z
+    end
+    U = eltype(acc)
+    u = _warpmax(reinterpret(U, v))
+    lane = CUDA.laneid()
+    wid = (threadIdx().x - Int32(1)) ÷ Int32(32) + Int32(1)
+    sh = CuStaticSharedArray(U, 32)
+    lane == Int32(1) && (@inbounds sh[wid] = u)
+    sync_threads()
+    if wid == Int32(1)
+        nw = blockDim().x ÷ Int32(32)
+        u = lane <= nw ? (@inbounds sh[lane]) : zero(U)
+        u = _warpmax(u)
+        if lane == Int32(1)
+            CUDA.atomic_max!(pointer(acc, 1), u)
+            CUDA.atomic_max!(pointer(acc, 2), u)
+        end
+    end
     return nothing
+end
+
+# Max over the 32 lanes of a warp (the result is valid in lane 1).
+@inline function _warpmax(u)
+    d = Int32(16)
+    while d > Int32(0)
+        u = max(u, CUDA.shfl_down_sync(CUDA.FULL_MASK, u, d))
+        d >>= Int32(1)
+    end
+    return u
 end
 
 function _k_normalize!(m, N)

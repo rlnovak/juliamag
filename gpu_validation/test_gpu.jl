@@ -217,6 +217,22 @@ function stepper_terms(label, mesh, params, T)
     m = setconfig(T, mesh, VortexConfig(mesh)); clearempty!(m, params)
     Random.seed!(7); τ = randommag!(zeromag(T, mesh)) .* T(1e9)
     check("$label maxtorque", [maxtorque(togpu(τ))], [maxtorque(τ)], T == Float64 ? 1e-14 : 1e-6)
+    # Error accumulator: atomic-max reduction on the bit patterns vs the CPU loop,
+    # difference form with a scale, the peak slot, NaN stickiness.
+    τ2 = randommag!(zeromag(T, mesh)) .* T(3e8)
+    ac = JuliaMag._newacc(τ); ag = JuliaMag._newacc(togpu(τ))
+    for (x, y, s) in ((τ, nothing, 1e-13), (τ, τ2, 2e-13), (τ2, nothing, 1e-13))
+        JuliaMag._acc_reset!(ac); JuliaMag._acc_max!(ac, x, y, s)
+        JuliaMag._acc_reset!(ag); JuliaMag._acc_max!(ag, togpu(x), y === nothing ? nothing : togpu(y), s)
+        check("$label error accumulator (this step, peak)", collect(JuliaMag._acc_read(ag)),
+              collect(JuliaMag._acc_read(ac)), T == Float64 ? 1e-14 : 1e-6)
+    end
+    τn = copy(τ); τn[2, end, 1, 1] = T(NaN); ag = JuliaMag._newacc(togpu(τ))
+    JuliaMag._acc_max!(ag, togpu(τn), nothing, 1.0)
+    JuliaMag._acc_reset!(ag); JuliaMag._acc_max!(ag, togpu(τ), nothing, 1.0)
+    r = JuliaMag._acc_read(ag)
+    check("$label accumulator: NaN sticky in the peak only", [Float64(!isnan(r[1]) && isnan(r[2]))], [1.0], 0)
+    check("$label maxtorque with a NaN cell is NaN", [Float64(isnan(maxtorque(togpu(τn))))], [1.0], 0)
     w = World(mesh, params; demag = true, Bext = (0.02, 0, 0))
     setcurrent!(w, (2e11, -1e11, 4e11); zhangli = true, slonczewski = true,
                 fixedlayer = (cos(0.3), sin(0.3), 0.2), thickness = 3e-9)
@@ -229,7 +245,14 @@ function stepper_terms(label, mesh, params, T)
         tc = TimeStepper(w, mc; solver = s, fixdt = 2e-14); advanceto!(tc, 2e-12)
         tg = TimeStepper(wg, mg; solver = s, fixdt = 2e-14); advanceto!(tg, 2e-12)
         check("$label $s fixed step, 100 steps, m", mg, mc, tol)
+        check("$label $s fixed step, lasterr/peakerr (device-side)",
+              [JuliaMag.lasterr(tg), JuliaMag.peakerr(tg)],
+              [JuliaMag.lasterr(tc), JuliaMag.peakerr(tc)], T == Float64 ? 1e-8 : 2e-3)
     end
+    mn = copy(m); mn[1, cld(size(m, 2), 2), cld(size(m, 3), 2), 1] = T(NaN)   # a cell inside the magnet
+    tg = TimeStepper(wg, togpu(mn); solver = :heun, fixdt = 2e-14)
+    diverged = try advanceto!(tg, 2e-13); false catch e; occursin("diverged", sprint(showerror, e)) end
+    check("$label fixed step on a NaN state stops with an error", [Float64(diverged)], [1.0], 0)
     mc = copy(m); mg = togpu(m)
     tc = TimeStepper(w, mc; solver = :rk45); advanceto!(tc, 5e-12)
     tg = TimeStepper(wg, mg; solver = :rk45); advanceto!(tg, 5e-12)

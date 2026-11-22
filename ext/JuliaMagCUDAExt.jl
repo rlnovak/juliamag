@@ -180,12 +180,35 @@ function normalize!(m::CuField{T}) where {T}
     return m
 end
 
-# Largest per-cell norm max |dm| (convergence and error-control reductions).
+# Largest per-cell norm max |dm| (convergence and error-control reductions): one
+# kernel into a two-slot device accumulator, no N-sized temporary.
 function maxtorque(dm::CuField{T}) where {T}
-    N = _ncells(dm)
-    d2 = CuArray{T}(undef, N)
-    _launch(_k_norm2!, N, d2, dm, N)
-    return sqrt(maximum(d2))
+    acc = JuliaMag._newacc(dm)
+    JuliaMag._acc_max!(acc, dm, nothing, one(T))
+    v = JuliaMag._acc_read(acc)[1]
+    CUDA.unsafe_free!(acc)
+    return T(sqrt(v))
+end
+
+# Error accumulator of the time steppers (src/timestepper.jl) on the device: the
+# IEEE bit patterns of the squared norms in a CuVector{UInt32/UInt64}, updated with
+# atomic max (unsigned order = value order for non-negative floats; NaN above all).
+_ubits(::Type{Float32}) = UInt32
+_ubits(::Type{Float64}) = UInt64
+_fbits(::Type{UInt32}) = Float32
+_fbits(::Type{UInt64}) = Float64
+JuliaMag._newacc(m::CuArray{T}) where {T} = CUDA.zeros(_ubits(T), 2)
+JuliaMag._acc_reset!(acc::CuVector{U}) where {U<:Unsigned} = (fill!(view(acc, 1:1), zero(U)); acc)
+function JuliaMag._acc_read(acc::CuVector{U}) where {U<:Unsigned}
+    h = Array(acc)
+    F = _fbits(U)
+    return (Float64(reinterpret(F, h[1])), Float64(reinterpret(F, h[2])))
+end
+function JuliaMag._acc_max!(acc::CuVector{U}, a::CuField{T}, b, scale) where {U<:Unsigned,T}
+    U === _ubits(T) || throw(ArgumentError("accumulator $(U) does not match $(T)"))
+    N = _ncells(a)
+    _launch(_k_accmaxnorm2!, N, acc, a, b === nothing ? a : b, T(scale), N, b !== nothing)
+    return acc
 end
 
 # Reductions accumulate in Float64, as the CPU methods do (also for Float32 m).

@@ -90,7 +90,7 @@ export Minimizer, minimizestep!, minimize!
 include("integrator.jl")
 export Integrator, advance!, relaxate!, currenttime, state
 include("timestepper.jl")
-export TimeStepper, advanceto!
+export TimeStepper, advanceto!, lasterr, peakerr, lasttorque
 
 # --- Energies --------------------------------------------------------------
 include("energy.jl")

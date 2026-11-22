@@ -19,8 +19,16 @@
 # accepted step and order+2 after a rejected one, then bounded by MinDt/MaxDt and
 # clipped so as not to cross the end of the run (mumax3's alarm).
 #
-# Every operation is a broadcast or a per-term kernel (llgrhs!, normalize!,
-# maxtorque), so the stepper runs unchanged on a CuArray.
+# Every operation is a broadcast or a per-term kernel (llgrhs!, normalize!, the
+# error reductions below), so the stepper runs unchanged on a CuArray.
+#
+# Error reductions: the largest per-cell |Δm| estimate of a step is reduced into a
+# two-slot accumulator (this step, peak), on the device for a GPU array. An adaptive
+# step reads it back once (it needs err to accept the step and choose the next one,
+# as mumax3 does); a fixed step never waits for it: the error stays on the device
+# and is read only when lasterr/peakerr are asked for, and at the end of advanceto!,
+# where a non-finite error stops the run. LastTorque is computed on demand from the
+# stage that holds it (lasttorque(ts)) instead of after every step.
 #
 # Finite temperature: a fresh thermal field (thermalfield!) is drawn for every step
 # and held through all of its stages; FSAL is disabled, as in mumax3. The noise
@@ -47,9 +55,12 @@ Defaults are mumax3's: `MaxErr = 1e-5`, `Headroom = 0.8`, initial `Dt = 1e-15` s
 `temperature > 0` [K] adds a thermal field (fixed step required).
 
 Advance it with [`step!`](@ref) or [`advanceto!`](@ref). Counters: `nsteps`,
-`nundone`, `nevals`; `lasterr`, `peakerr`; `lasttorque` [rad/s].
+`nundone`, `nevals`; [`lasterr`](@ref)`(ts)`, [`peakerr`](@ref)`(ts)` (error of the
+last accepted step and the largest one; with a fixed step they live on the device
+during a run, so read them through these functions, not the fields), and
+[`lasttorque`](@ref)`(ts)` [rad/s].
 """
-mutable struct TimeStepper{T<:AbstractFloat,W,A<:AbstractArray{T,4},R}
+mutable struct TimeStepper{T<:AbstractFloat,W,A<:AbstractArray{T,4},R,C}
     world::W
     m::A
     solver::Symbol
@@ -65,9 +76,11 @@ mutable struct TimeStepper{T<:AbstractFloat,W,A<:AbstractArray{T,4},R}
     nsteps::Int
     nundone::Int
     nevals::Int
-    lasterr::Float64
+    lasterr::Float64             # host copies (adaptive: per step; fixed: on demand)
     peakerr::Float64
-    lasttorque::Float64
+    ltidx::Int                   # stage holding the last accepted torque (0: none)
+    acc::C                       # error accumulator: (this step, peak), squared
+    accfixed::Bool               # acc holds fixed-step (dt-scaled) values
     k::Vector{A}                 # stage torques
     m0::A                        # state at the start of the step
     err::A                       # error estimate / scratch
@@ -90,10 +103,11 @@ function TimeStepper(world, m::AbstractArray{T,4}; solver::Symbol = :rk45, maxer
         throw(ArgumentError("Euler with temperature needs fixdt > 0"))
     k = [similar(m) for _ in 1:_nstage(solver)]
     Bth = temperature > 0 ? similar(m) : nothing
-    TimeStepper{T,typeof(world),typeof(m),typeof(rng)}(
+    acc = _newacc(m)
+    TimeStepper{T,typeof(world),typeof(m),typeof(rng),typeof(acc)}(
         world, m, solver, Float64(t), fixdt > 0 ? Float64(fixdt) : Float64(dt), Float64(fixdt),
         Float64(maxerr), Float64(mindt), Float64(maxdt), Float64(headroom), Float64(temperature),
-        rng, 0, 0, 0, 0.0, 0.0, 0.0, k, similar(m), similar(m), Bth, false, Inf)
+        rng, 0, 0, 0, 0.0, 0.0, 0, acc, false, k, similar(m), similar(m), Bth, false, Inf)
 end
 
 # One evaluation of the right-hand side (mumax3's torqueFn): LLG + spin torques, with
@@ -109,12 +123,93 @@ function _eval!(dm, m, ts::TimeStepper)
     return dm
 end
 
-# Largest per-cell norm |a| (mumax3 MaxVecNorm) and |a − b| (MaxVecDiff), in Float64.
+# Largest per-cell norm |a| (mumax3 MaxVecNorm), in Float64.
 _maxvecnorm(a) = Float64(maxtorque(a))
-function _maxvecdiff(a, b, scratch)
-    @. scratch = a - b
-    return Float64(maxtorque(scratch))
+
+# --- Error accumulator -------------------------------------------------------
+# Two running maxima of the squared per-cell norm of s·a or s·(a − b) (s = the step,
+# so the values are squared errors |Δm|²): acc[1] for the current step (reset before
+# it), acc[2] the peak since the stepper was built. A NaN is sticky in both. On the
+# CPU a Vector{T}; the CUDA extension keeps the IEEE bit patterns in a device vector
+# and updates them with atomic max (for non-negative floats, and NaN above them, the
+# unsigned order of the bits is the order of the values), so nothing is copied to
+# the host until _acc_read.
+_newacc(m::AbstractArray{T}) where {T} = zeros(T, 2)
+_acc_reset!(acc::Vector) = (acc[1] = zero(eltype(acc)); acc)
+_acc_clear!(acc) = fill!(acc, zero(eltype(acc)))         # both slots (any backend)
+_acc_read(acc::Vector) = (Float64(acc[1]), Float64(acc[2]))
+function _acc_max!(acc::Vector{T}, a::AbstractArray{T,4}, b, scale) where {T}
+    s = T(scale)
+    mx = acc[1]
+    @inbounds for k in axes(a, 4), j in axes(a, 3), i in axes(a, 2)
+        x, y, z = a[1, i, j, k], a[2, i, j, k], a[3, i, j, k]
+        if b !== nothing
+            x -= b[1, i, j, k]; y -= b[2, i, j, k]; z -= b[3, i, j, k]
+        end
+        x *= s; y *= s; z *= s
+        v = x * x + y * y + z * z
+        (v > mx || isnan(v)) && (mx = v)
+        isnan(mx) && break
+    end
+    acc[1] = mx
+    (mx > acc[2] || isnan(mx)) && (acc[2] = mx)
+    return acc
 end
+
+# Error of the step just computed, max|a|·dt or max|a − b|·dt over the cells. An
+# adaptive step reads it (one device→host copy), with the arithmetic of mumax3 and of
+# the earlier code (norm in T, then × dt in Float64), so the accepted step sequence
+# is unchanged. A fixed step is accepted whatever its error (mumax3): its error,
+# scaled by dt on the device, stays there and the function returns 0.
+function _steperr!(ts::TimeStepper{T}, a, b = nothing) where {T}
+    fixed = ts.fixdt != 0
+    if fixed != ts.accfixed                  # the peak slot is only meaningful within a mode
+        _acc_clear!(ts.acc)
+        ts.accfixed = fixed
+    end
+    _acc_reset!(ts.acc)
+    if fixed
+        _acc_max!(ts.acc, a, b, ts.dt)
+        return 0.0
+    end
+    _acc_max!(ts.acc, a, b, one(T))
+    return Float64(sqrt(T(_acc_read(ts.acc)[1]))) * ts.dt
+end
+
+# Fixed step: copy the device-side errors to the host fields. A non-finite error
+# means the magnetization diverged; the steps were accepted (as in mumax3), so the
+# run stops here with an error instead of continuing on NaN.
+function _syncerr!(ts::TimeStepper)
+    (ts.fixdt == 0 || !ts.accfixed) && return ts
+    e1, e2 = _acc_read(ts.acc)
+    if !isfinite(e2)
+        _acc_clear!(ts.acc)                  # do not poison later runs of this stepper
+        ts.lasterr = ts.peakerr = 0.0
+        error("the magnetization diverged during a fixed-step run (non-finite error " *
+              "estimate by t = $(ts.t) s): reduce fixdt")
+    end
+    ts.lasterr = sqrt(e1)
+    ts.peakerr = max(ts.peakerr, sqrt(e2))
+    return ts
+end
+
+"""
+    lasterr(ts), peakerr(ts)
+
+Error estimate (largest per-cell |Δm|) of the last accepted step, and the largest
+over all accepted steps of this stepper (mumax3's LastErr and PeakErr).
+"""
+lasterr(ts::TimeStepper) = (_syncerr!(ts); ts.lasterr)
+peakerr(ts::TimeStepper) = (_syncerr!(ts); ts.peakerr)
+
+"""
+    lasttorque(ts)
+
+Largest per-cell torque |dm/dt| [rad/s] at the end of the last accepted step
+(mumax3's LastTorque), computed on demand; NaN before the first step. After a
+rejected step it is the torque at the current (unchanged) state.
+"""
+lasttorque(ts::TimeStepper) = ts.ltidx == 0 ? NaN : _maxvecnorm(ts.k[ts.ltidx])
 
 # mumax3 adaptDt (engine/run.go), followed by the alarm clip done by the caller.
 function _adaptdt!(ts::TimeStepper, corr::Float64)
@@ -176,14 +271,17 @@ end
 function _step_euler!(ts::TimeStepper{T}) where {T}
     m, dy0 = ts.m, ts.k[1]
     _eval!(dy0, m, ts)
-    ts.lasttorque = _maxvecnorm(dy0)
     if ts.fixdt == 0
-        ts.lasttorque > 0 || error("Euler: zero torque, cannot choose an adaptive step")
-        ts.dt = ts.maxerr / ts.lasttorque
+        τ = _maxvecnorm(dy0)
+        τ > 0 || error("Euler: zero torque, cannot choose an adaptive step")
+        ts.dt = ts.maxerr / τ
         ts.t + ts.dt > ts.alarm && (ts.dt = ts.alarm - ts.t)
+        _setlasterr!(ts, ts.dt * τ)
+    else
+        _steperr!(ts, dy0)                       # stays on the device
     end
     h = T(ts.dt)
-    _setlasterr!(ts, ts.dt * ts.lasttorque)
+    ts.ltidx = 1
     @. m = m + h * dy0
     normalize!(m)
     ts.t += ts.dt
@@ -199,19 +297,20 @@ function _step_heun!(ts::TimeStepper{T}) where {T}
     _eval!(dy0, m, ts)
     @. m = m + h * dy0
     _eval!(dy, m, ts)
-    err = _maxvecdiff(dy0, dy, ts.err) * ts.dt
+    err = _steperr!(ts, dy0, dy)
     if isfinite(err) && _accept(ts, err)
         @. m = m + T(0.5) * h * dy - T(0.5) * h * dy0
         normalize!(m)
         ts.t += ts.dt
         ts.nsteps += 1
+        ts.fixdt == 0 && _setlasterr!(ts, err)
         _adaptdt!(ts, _corr(ts, err, 2))
-        _setlasterr!(ts, err)
-        ts.lasttorque = _maxvecnorm(dy)
+        ts.ltidx = 2
         return true
     else
         @. m = m - h * dy0
         _adaptdt!(ts, _corr(ts, err, 3))
+        ts.ltidx = 1                             # dy (k[2]) was overwritten; dy0 is at m
         return false
     end
 end
@@ -227,19 +326,20 @@ function _step_rk4!(ts::TimeStepper{T}) where {T}
     @. m = m + T(1/2) * h * k1;  normalize!(m);  _eval!(k2, m, ts)
     @. m = m0 + T(1/2) * h * k2; normalize!(m);  _eval!(k3, m, ts)
     @. m = m0 + h * k3;          normalize!(m);  _eval!(k4, m, ts)
-    err = _maxvecdiff(k1, k4, ts.err) * ts.dt
+    err = _steperr!(ts, k1, k4)
     if isfinite(err) && _accept(ts, err)
         @. m = m0 + T(1/6) * h * k1 + T(1/3) * h * k2 + T(1/3) * h * k3 + T(1/6) * h * k4
         normalize!(m)
         ts.t += ts.dt
         ts.nsteps += 1
+        ts.fixdt == 0 && _setlasterr!(ts, err)
         _adaptdt!(ts, _corr(ts, err, 4))
-        _setlasterr!(ts, err)
-        ts.lasttorque = _maxvecnorm(k4)
+        ts.ltidx = 4
         return true
     else
         copyto!(m, m0)
         _adaptdt!(ts, _corr(ts, err, 5))
+        ts.ltidx = 1                             # k4 was overwritten; k1 is at m
         return false
     end
 end
@@ -258,10 +358,10 @@ function _step_rk23!(ts::TimeStepper{T}) where {T}
     _eval!(k4, m, ts)
     e = ts.err
     @. e = T(7/24 - 2/9) * k1 + T(1/4 - 1/3) * k2 + T(1/3 - 4/9) * k3 + T(1/8) * k4
-    err = _maxvecnorm(e) * ts.dt
+    err = _steperr!(ts, e)
     if isfinite(err) && _accept(ts, err)
-        _setlasterr!(ts, err)
-        ts.lasttorque = _maxvecnorm(k4)
+        ts.fixdt == 0 && _setlasterr!(ts, err)
+        ts.ltidx = 1
         ts.t += ts.dt
         ts.nsteps += 1
         _adaptdt!(ts, _corr(ts, err, 3))
@@ -300,10 +400,10 @@ function _step_rk45!(ts::TimeStepper{T}) where {T}
     @. e = T(35/384 - 5179/57600) * k1 + T(500/1113 - 7571/16695) * k3 +
            T(125/192 - 393/640) * k4 + T(-2187/6784 + 92097/339200) * k5 +
            T(11/84 - 187/2100) * k6 + T(-1/40) * k7
-    err = _maxvecnorm(e) * ts.dt
+    err = _steperr!(ts, e)
     if isfinite(err) && _accept(ts, err)
-        _setlasterr!(ts, err)
-        ts.lasttorque = _maxvecnorm(k7)
+        ts.fixdt == 0 && _setlasterr!(ts, err)
+        ts.ltidx = 1                                                   # k7, copied to k1
         ts.t += ts.dt
         ts.nsteps += 1
         _adaptdt!(ts, _corr(ts, err, 5))
@@ -350,5 +450,6 @@ function advanceto!(ts::TimeStepper, tend::Real; onstep = _ -> nothing)
         end
         step!(ts) && onstep(ts)
     end
+    _syncerr!(ts)                                  # fixed step: errors to the host, NaN check
     return ts
 end

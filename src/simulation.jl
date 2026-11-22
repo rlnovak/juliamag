@@ -318,6 +318,11 @@ function autosave!(sim::Simulation, period::Real; name::AbstractString = "m")
 end
 
 # mumax3 DoOutput: every autosave that is due.
+# Whether some autosave (OVF or table) is due at sim.t.
+_outputdue(sim::Simulation) =
+    any(a -> _needsave(a[2], a[3], a[4], sim.t), sim.ovf) ||
+    _needsave(sim.table.autosave, sim.table.start, sim.table.count, sim.t)
+
 function _dooutput!(sim::Simulation)
     for a in sim.ovf
         if _needsave(a[2], a[3], a[4], sim.t)
@@ -431,15 +436,21 @@ function _run!(sim::Simulation, duration::Real)
         _run_tsit5!(sim, t_end)
     else
         ts = _stepper!(sim)
-        advanceto!(ts, t_end; onstep = function (ts)
+        try
+            advanceto!(ts, t_end; onstep = function (ts)
+                sim.t = ts.t
+                # a fixed step keeps its error on the device: check it (NaN) before
+                # writing output, not only at the end of the run
+                _outputdue(sim) && _syncerr!(ts)
+                _dooutput!(sim)
+            end)
+        finally                                # also when the run stops with an error
             sim.t = ts.t
-            _dooutput!(sim)
-        end)
-        sim.t = ts.t
-        sim.dt = ts.dt
-        sim.nsteps += ts.nsteps; sim.nundone += ts.nundone; sim.nevals += ts.nevals
-        sim.lasterr = ts.lasterr; sim.peakerr = max(sim.peakerr, ts.peakerr)
-        ts.nsteps = ts.nundone = ts.nevals = 0
+            sim.dt = ts.dt
+            sim.nsteps += ts.nsteps; sim.nundone += ts.nundone; sim.nevals += ts.nevals
+            sim.lasterr = ts.lasterr; sim.peakerr = max(sim.peakerr, ts.peakerr)
+            ts.nsteps = ts.nundone = ts.nevals = 0
+        end
     end
     legacy && tablesave!(sim)
     _logend(sim, time() - wall0, sim.nsteps - s0, sim.nundone - u0, sim.nevals - e0)

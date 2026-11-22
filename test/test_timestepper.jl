@@ -272,6 +272,80 @@ _macro_world(α; B0 = 0.1) = World(Mesh((1, 1, 1), (5e-9, 5e-9, 5e-9)),
         @test ts.nsteps == 0
     end
 
+    @testset "error accumulator: running maxima, NaN sticky" begin
+        a = randn(3, 5, 4, 2); b = randn(3, 5, 4, 2)
+        n2(x) = maximum(sum(abs2, x; dims = 1))
+        acc = JuliaMag._newacc(a)
+        JuliaMag._acc_max!(acc, a, nothing, 2.0)
+        @test acc[1] ≈ n2(2 .* a) && acc[2] == acc[1]
+        JuliaMag._acc_reset!(acc)
+        JuliaMag._acc_max!(acc, a, b, 0.5)
+        @test acc[1] ≈ n2(0.5 .* (a .- b))
+        @test acc[2] ≈ max(n2(2 .* a), n2(0.5 .* (a .- b)))             # peak kept
+        a[2, 3, 2, 1] = NaN
+        JuliaMag._acc_reset!(acc); JuliaMag._acc_max!(acc, a, nothing, 1.0)
+        @test isnan(acc[1]) && isnan(acc[2])
+        JuliaMag._acc_reset!(acc); JuliaMag._acc_max!(acc, b, nothing, 1.0)
+        @test !isnan(acc[1]) && isnan(acc[2])                            # peak stays NaN
+    end
+
+    @testset "fixed step: errors kept on the device, read on demand" begin
+        mesh = Mesh((6, 6, 1), (5e-9, 5e-9, 5e-9))
+        w = World(mesh, Material(Msat = 8e5, Aex = 1.3e-11, alpha = 0.02); demag = false,
+                  Bext = (0.0, 0.05, 0.0))
+        m = uniform(mesh, (1, 0, 0)); m[3, 2, 3, 1] = 0.3; normalize!(m)
+        for (solver, i, j) in ((:rk4, 1, 4), (:heun, 1, 2))
+            ts = TimeStepper(w, copy(m); solver, fixdt = 1e-13)
+            peak = 0.0
+            for _ in 1:20
+                step!(ts)
+                e = 1e-13 * maximum(sqrt.(sum(abs2, ts.k[i] .- ts.k[j]; dims = 1)))
+                peak = max(peak, e)
+                @test JuliaMag.lasterr(ts) ≈ e rtol = 1e-12
+            end
+            @test JuliaMag.peakerr(ts) ≈ peak rtol = 1e-12
+            @test ts.nundone == 0
+        end
+        # LastTorque on demand: for RK45 (FSAL) it is the torque at the new state
+        ts = TimeStepper(w, copy(m); solver = :rk45)
+        @test isnan(JuliaMag.lasttorque(ts))
+        advanceto!(ts, 5e-12)
+        dm = similar(ts.m); llgrhs!(dm, ts.m, w)
+        @test JuliaMag.lasttorque(ts) ≈ maxtorque(dm) rtol = 1e-12
+    end
+
+    @testset "fixed step: a diverging state stops the run (no endless retries)" begin
+        w = _macro_world(0.0)
+        for solver in (:heun, :rk4, :rk45, :euler)
+            m = uniform(w.mesh, (1, 0, 0))
+            ts = TimeStepper(w, m; solver, fixdt = 1e-13)
+            m[1, 1, 1, 1] = NaN
+            err = try advanceto!(ts, 1e-12); nothing catch e; e end
+            @test err isa ErrorException && occursin("diverged", err.msg)
+            @test ts.nsteps == 10                       # accepted, as in mumax3, then stopped
+            # the stepper is not poisoned: a fresh state runs on it normally
+            ts.m .= uniform(w.mesh, (1, 0, 0)); ts.fsal = false
+            advanceto!(ts, 2e-12)
+            @test isfinite(peakerr(ts)) && lasterr(ts) >= 0
+        end
+        # mode switch on one stepper: the fixed-step peak is not polluted by the
+        # unscaled adaptive values
+        ts = TimeStepper(w, uniform(w.mesh, (0.6, 0.8, 0)); solver = :rk4)
+        advanceto!(ts, 1e-12)
+        ts.fixdt = ts.dt = 1e-14
+        advanceto!(ts, 1.2e-12)
+        @test peakerr(ts) < 1e-3
+
+        # in a Simulation the NaN is caught at the first output, and sim.t is kept
+        sim = Simulation(Mesh((4, 4, 1), (5e-9, 5e-9, 5e-9)), material("Permalloy");
+                         demag = false, Bext = (0, 0, 0.1), verbose = false)
+        setmag!(sim, UniformConfig(1, 0, 0))
+        tableautosave!(sim, 1e-12)
+        sim.m[2, 2, 2, 1] = NaN
+        @test_throws ErrorException run!(sim, 10e-12; solver = :heun, fixdt = 1e-13)
+        @test sim.t ≈ 1e-12 && sim.nsteps == 10
+    end
+
     @testset "run!(sim, t; abstol, reltol) keeps the Tsit5 meaning" begin
         io = IOBuffer()
         sim = Simulation(Mesh((4, 4, 1), (5e-9, 5e-9, 5e-9)), material("Permalloy");
