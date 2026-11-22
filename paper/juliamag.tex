@@ -622,20 +622,29 @@ costs the same as a \mumax{} one, $1.11$~ms. In double precision the demagnetizi
 FFTs take $2.8$ of the $3.5$~ms, because this GPU executes \texttt{Float64} at
 $1/32$ of the \texttt{Float32} rate. The \texttt{Float32} run reproduces the
 \texttt{Float64} one to $3.6\times10^{-6}$ in $\langle\vm\rangle$ over $40$~ns
-(Sec.~\ref{sec:discstt}). The remaining factor of two in wall time comes from the
-number of evaluations: the fixed-step fourth-order Runge--Kutta integration at
-$50$~fs used here needs $3.2\times10^{6}$, \mumax's adaptive fifth-order
-Runge--Kutta $1.8\times10^{6}$. \JuliaMag's port of that adaptive solver
-(Sec.~\ref{sec:solvers}), now its default, takes its step sizes by the same rule;
-the runs in Table~\ref{tab:perf} predate it and use the fixed step.
+(Sec.~\ref{sec:discstt}). With the fixed-step fourth-order Runge--Kutta
+integration at $50$~fs, \JuliaMag{} needs $3.2\times10^{6}$ evaluations, \mumax's
+adaptive fifth-order Runge--Kutta $1.8\times10^{6}$, hence a factor of two in
+wall time. \JuliaMag's port of that adaptive solver (Sec.~\ref{sec:solvers}),
+now its default, makes the same number of evaluations to $0.1\%$ and cuts the
+\texttt{Float32} wall time from $4\,008$ to $2\,830$~s. The remaining factor of
+$1.4$ is overhead outside the right-hand side. About $230$~s go to the $8\,000$
+table rows, whose energies and core position are evaluated on the CPU. The rest,
+about $2$~ms per step of six evaluations, is the integrator's own work: the stage combinations,
+and two norm reductions per step whose results the host waits for before it
+chooses the next step. This overhead does not change the physics and is the
+next target for optimization.
 
 \begin{table}[t]
   \centering
   \caption{Cost of the $40$~ns current-driven disc run on a Quadro P1000. Per
   evaluation: one right-hand side of the LLG equation with the Slonczewski
-  torque. The \JuliaMag{} runs use fixed-step RK4 at $50$~fs, \mumax{} its
-  default adaptive RK45. The two \mumax{} timings were taken on the two machines
-  used (identical GPUs) and agree to $0.4\%$.}
+  torque, measured alone for \JuliaMag{}, and as wall time over evaluations
+  for \mumax{}. The \JuliaMag{} runs use fixed-step RK4 at $50$~fs or the
+  adaptive RK45 port with $\mathrm{MaxErr}=10^{-5}$, \mumax{} its default
+  adaptive RK45. The two \mumax{} timings were taken on the two machines used
+  (identical GPUs) and agree to $0.4\%$. All wall times include writing a
+  table row every $5$~ps.}
   \label{tab:perf}
   \begin{tabular}{lccc}
     \hline
@@ -643,8 +652,10 @@ the runs in Table~\ref{tab:perf} predate it and use the fixed step.
     \hline
     \JuliaMag{} broadcast version, \texttt{Float64} & $7.5$  & $3.2\times10^{6}$ & $25\,902$ \\
     \JuliaMag{} broadcast version, \texttt{Float32} & $5.4$  & --- & --- \\
-    \JuliaMag{} kernels, \texttt{Float64}           & $3.54$ & $3.2\times10^{6}$ & $11\,504$ \\
-    \JuliaMag{} kernels, \texttt{Float32}           & $1.11$ & $3.2\times10^{6}$ & $4\,008$ \\
+    \JuliaMag{} kernels, RK4, \texttt{Float64}      & $3.54$ & $3.2\times10^{6}$ & $11\,504$ \\
+    \JuliaMag{} kernels, RK4, \texttt{Float32}      & $1.11$ & $3.2\times10^{6}$ & $4\,008$ \\
+    \JuliaMag{} kernels, RK45, \texttt{Float64}     & $3.54$ & $1.8\times10^{6}$ & $7\,146$ \\
+    \JuliaMag{} kernels, RK45, \texttt{Float32}     & $1.11$ & $1.8\times10^{6}$ & $2\,830$ \\
     \mumax{} (\texttt{Float32})                     & $1.11$ & $1.8\times10^{6}$ & $2\,025$ \\
     \hline
   \end{tabular}
@@ -949,6 +960,21 @@ orbit phase). Its largest deviations from \mumax{} equal those of the
 \texttt{Float64} run to within $5\times10^{-7}$: the comparison with \mumax{} is
 limited by the difference between the two time integrations, not by the
 floating-point precision.
+
+That difference disappears when \JuliaMag{} integrates with its port of
+\mumax's adaptive Dormand--Prince solver (Sec.~\ref{sec:solvers}) at the same
+tolerance, $\mathrm{MaxErr}=10^{-5}$. The step-size control then makes
+$302\,206$ accepted steps and $1\,813\,249$ evaluations in \texttt{Float32}
+($302\,205$ and $1\,813\,243$ in \texttt{Float64}), against \mumax's $302\,912$
+and $1\,815\,341$. The maximum torque now levels off exactly as \mumax's does:
+over $39$--$40$~ns it averages $12.882$~mT in \texttt{Float32} and $12.880$~mT in
+\texttt{Float64}, against $12.882$~mT in \mumax{}. The plateau is thus a property
+of the integrator and its tolerance, reproduced by an independent implementation
+of the same scheme. The other quantities agree with \mumax{} at least as well
+as with the fixed step: the frequency is the same $962.318$~MHz, the largest
+deviation of $\langle\vm\rangle$ is $3.4\times10^{-5}$ (rms $2\times10^{-6}$),
+the total energy agrees to $1.7\times10^{-5}$ relative, and the core positions
+to $0.005$~nm rms.
 
 \begin{figure*}[t]
   \centering

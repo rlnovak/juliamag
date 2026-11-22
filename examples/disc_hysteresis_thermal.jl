@@ -13,9 +13,12 @@
 # field step relaxes within the dwell time; α sets the relaxation rate, not the
 # equilibrium, and the thermal field uses the same α (fluctuation–dissipation).
 # Ms and A keep their room-temperature values at every T. The sweep rate,
-# 5 mT per dwell (1e7 T/s for 0.5 ns), is many orders of magnitude above an
+# 5 mT per dwell (2.5e6 T/s for 2 ns), is many orders of magnitude above an
 # experiment's, so the switching fields are upper bounds for thermally activated
-# switching.
+# switching. The 2 ns dwell comes from a convergence check on the virgin branch at
+# 50 K (gpu_validation/thermal_hysteresis/phase1): 0.5 and 1 ns lag the T = 0 branch
+# at low field and delay the annihilation by 5 mT; dt = 1e-13 s is converged at 50
+# and 300 K.
 #
 # Integration: Heun with a fixed step (mumax3's choice for thermal runs). Each field
 # step logs ⟨m⟩ at the end of the dwell and its average over the last quarter.
@@ -25,7 +28,7 @@
 #   T       temperature [K]
 #   SEED    random seed (CUDA.seed! on the GPU, Random.seed! on the CPU)
 #   OUT     table path (default disc_hysteresis_T<T>_seed<SEED>.txt next to this file)
-#   DWELL   time per field step [s] (default 0.5e-9)
+#   DWELL   time per field step [s] (default 2e-9)
 #   DT      fixed time step [s] (default 1e-13)
 #   ALPHA   damping (default 0.5)
 #   DEVICE  gpu | cpu (default gpu)
@@ -37,7 +40,7 @@ using JuliaMag, Printf, Random, Statistics
 TK     = parse(Float64, ARGS[1])
 SEED   = parse(Int, ARGS[2])
 OUT    = length(ARGS) >= 3 ? ARGS[3] : joinpath(@__DIR__, @sprintf("disc_hysteresis_T%g_seed%d.txt", TK, SEED))
-DWELL  = length(ARGS) >= 4 ? parse(Float64, ARGS[4]) : 0.5e-9
+DWELL  = length(ARGS) >= 4 ? parse(Float64, ARGS[4]) : 2e-9
 DT     = length(ARGS) >= 5 ? parse(Float64, ARGS[5]) : 1e-13
 ALPHA  = length(ARGS) >= 6 ? parse(Float64, ARGS[6]) : 0.5
 DEVICE = length(ARGS) >= 7 ? ARGS[7] : "gpu"

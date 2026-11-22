@@ -126,6 +126,46 @@ moving-average detrend. On the 6 ns windows of the table above, using 1/f_FFT in
 moves the frequencies by ≤ 0.12 MHz, identically in both codes; on 2 ns windows the
 Hilbert fit is unusable, hence the orbit-phase method in `plot_disk40_compare.py`.
 
+**Adaptive RK45 in JuliaMag (driver layer, 2026-11-21).** The 40 ns run was
+repeated with JuliaMag's port of mumax3's Dormand–Prince solver (`setsolver!(:rk45)`,
+`MaxErr = 1e-5`) through the new `Simulation` API (`juliamag/disk_40mA_sim.jl`). It ran
+on labmac03, GPU 1, alone on that GPU, with code `1e26350`. The tables are in
+`tables/item3/`, together with the chain script and log.
+
+| run | accepted steps (undone) | evaluations | wall (s) |
+|---|---|---|---|
+| mumax3 RK45 (bench, `mumax3_bench_labmac03.txt`) | 302 912 | 1 815 341 | 2 025 |
+| JuliaMag RK45, Float32 | 302 206 (2) | 1 813 249 | 2 830 |
+| JuliaMag RK45, Float64 | 302 205 (2) | 1 813 243 | 7 146 |
+| JuliaMag RK4 fixed 50 fs, Float32, 1 ns | 20 000 | 80 000 | 120.5 |
+
+Against mumax3 (`python ../../examples/plot_disk40_compare.py tables/item3/f32_rk45_40ns.txt tables/mumax_stt_es4_noZL_40ns.txt`):
+- **Frequency:** 962.318 MHz in both codes; in 2 ns windows they differ by ≤ 0.001 MHz.
+- **⟨m⟩:** max |Δ| 3.0×10⁻⁵ in Float32 and 3.4×10⁻⁵ in Float64; rms ≤ 1.9×10⁻⁶. The fixed-step RK4 run gave 3.7×10⁻⁵.
+- **E_total:** 1.7×10⁻⁵ relative.
+- **Core:** rms ≤ 0.005 nm.
+- **Float32 vs Float64:** ⟨m⟩ 3.5×10⁻⁵, core 0.005 nm rms.
+
+The maxTorque plateau is now reproduced. Mean over 39–40 ns:
+
+| run | maxTorque (mT) |
+|---|---|
+| mumax3 RK45 `MaxErr` 1e-5 | 12.882 |
+| JuliaMag RK45 1e-5, Float32 / Float64 | 12.882 / 12.880 |
+| mumax3 RK45 `MaxErr` 1e-7 | 1.684 |
+| JuliaMag RK4 fixed | 1.682 |
+
+This confirms that the plateau comes from the integrator and its tolerance.
+
+**Wall time.** The evaluation count now matches mumax3, but the wall time is still 1.4× mumax3's.
+- About 230 s go to the 8 000 table rows: 28.5 ms per row, energies and the vortex core on the CPU.
+- About 2 ms per step goes to the stepper itself, on top of the 6 × 1.11 ms of right-hand sides. That covers the stage combinations, the normalizations, and two `maxtorque` reductions per step (error norm and LastTorque). Each reduction allocates and makes the host wait for the GPU.
+- The 1 ns fixed-step RK4 run of the new stepper reproduces the legacy Float32 run (`jm32_es4_40ns.txt`, 0–1 ns), which had the same step:
+  - ⟨m⟩ to 2×10⁻⁷ and the core to 5×10⁻⁵ nm.
+  - maxTorque to 7×10⁻⁴ relative: the new column includes the STT torque.
+- The fixed-step RK4 path of the new stepper costs about 5.5 ms per step, against 4.78 ms in the legacy `runcurrent!` loop.
+- This is an open optimization: fuse the reductions, use no allocations, and skip both reductions for fixed steps.
+
 ## Physical model
 
 The Zhang–Li term with a perpendicular current acts only through ∂z m across the

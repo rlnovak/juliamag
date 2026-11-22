@@ -108,3 +108,19 @@ The +0.018 at ξ = 1 is about 2σ of the sampling error. The per-spin variance
 of mx is about 0.28 there, so the ensemble mean over 4096 spins has σ ≈ 0.008.
 The 40 snapshots span 0.4 ps, much less than the 3.4 ns correlation time, so they
 count as one sample. Depinning and the helix are unchanged.
+
+## Re-run with the driver-layer commit (`1e26350`)
+
+The campaign above ran with `36a619c`. To show that the driver layer (item 3) changed
+no physics, every CPU job was re-run on 2026-11-20/21 with the exact commit `1e26350`.
+- **Code.** Unpacked with `git archive` into `~/juliamag_1e26350` on labmac03 and labmac04, with the md5 of `src ext` checked.
+- **Outputs.** `~/JuliaMag/reval_1e26350`.
+- **Results.**
+  - **Deterministic problems** (std 2, std 4, std 5, energies, skyrmion, depinning, helix, fieldcmp, torques, restart17): the tables are byte-identical to the committed ones.
+  - **Langevin stage 2:** a second independent realization (20 ns thermalization) gives ⟨mx⟩ = 0.313, 0.539, 0.796, 0.901, 0.951 for ξ = 1, 2, 5, 10, 20, against L(ξ) = 0.313, 0.537, 0.800, 0.900, 0.950. All are within 0.004.
+  - **Disc at dt = 2.5×10⁻¹⁴ s, ES 4, 7 ns** (re-run on labmac03 after its reboot killed the first attempt):
+    - ⟨m⟩ is identical to the old table and to the dt = 5×10⁻¹⁴ s run in every printed digit.
+    - The core is identical to the dt = 5×10⁻¹⁴ s run. It is 0.66 nm away from the old table, which used the pre-fix core tracker.
+
+The GPU validation of the driver layer (adaptive RK45 on the 40 ns disc against mumax3)
+is in `../disk_stt/README.md`.

@@ -265,13 +265,17 @@ JuliaMag value within 2 ps; a full `MaxErr = 1e-7` run agrees to 0.2% rms). Deta
 
 Runs first; they use the GPUs while the code work below proceeds.
 
-**0a. GPU validation of the driver layer** (queued on labmac03,
-`~/JuliaMag/item3/logs/chain.sh`, behind another project's queue).
-- `test_gpu.jl` with `stepper_terms`.
-- The 40 ns disc with adaptive RK45 in Float32 and Float64 (`disk_40mA_sim.jl`):
-  number of evaluations and wall time against mumax3 (1.8e6 evaluations,
-  2 025 s), and the physics against the fixed-step run.
-- Fills the open line of the paper's performance table.
+**0a. GPU validation of the driver layer: DONE 2026-11-21**
+(`gpu_validation/disk_stt/README.md`, tables in `gpu_validation/disk_stt/tables/item3/`).
+- `test_gpu.jl` 542/542, including all five solvers GPU vs CPU.
+- The 40 ns disc with adaptive RK45, MaxErr 1e-5:
+  - Float32: 1 813 249 evaluations, 2 830 s.
+  - Float64: 1 813 243 evaluations, 7 146 s.
+  - mumax3: 1 815 341 evaluations, 2 025 s.
+  - Physics as with the fixed step; mumax3's maxTorque plateau (12.882 mT) is now reproduced.
+- Open: the 1.4× wall-time gap is stepper overhead, about 2 ms per step.
+  - Cause: two allocating, host-synchronizing `maxtorque` reductions per step, plus the stage combinations.
+  - Fix: fuse the reductions and skip them for fixed steps. This also speeds the thermal (Heun) runs.
 
 **0b. Vortex hysteresis at finite temperature** (paper, Sec. "Vortex
 hysteresis in a disc").
@@ -281,8 +285,9 @@ hysteresis in a disc").
   - The damping is raised (α = 0.5, quasi-static protocol): α sets the
     relaxation rate, not the equilibrium, and the fluctuation–dissipation
     field uses the same α.
-  - The dwell per step is chosen after a convergence check (0.5 vs 1 ns per step
-    on one realization).
+  - Dwell and step fixed by phase 1 (`gpu_validation/thermal_hysteresis/`):
+    2 ns per field step (0.5 and 1 ns lag on the reversible branch and delay the
+    annihilation); dt = 1e-13 s converged at 50 K and 300 K.
 - **Ensemble.** T = 50 K and 300 K, N ≈ 8 realizations each, with seeds set
   through `CUDA.seed!` per realization.
 - **Report.** The mean loop and the distribution of the renucleation and
@@ -291,9 +296,9 @@ hysteresis in a disc").
   - The simulated sweep rate (~10⁷ T/s) is many orders above experiment, so the
     switching fields are upper bounds on thermally activated switching.
   - Msat and A are kept at their room-temperature values at 50 K.
-- **Cost estimate.** About 0.5 h of GPU time per loop, so about 8 h in all.
-- **Prerequisite.** A driver `examples/disc_hysteresis_thermal.jl`, smoke-tested
-  on the CPU.
+- **Cost.** About 3.2 h of GPU time per loop, about 50 GPU-hours in all.
+- **Status.** Phase 2 running on labmac03 since 2026-11-22 00:21:
+  `run_phase2.sh`, two chains, about 25 h.
 
 **1. KernelAbstractions.jl: multi-backend GPU.**
 - **Kernels.** Rewrite the ~20 per-term CUDA kernels of `ext/cuda_kernels.jl`
