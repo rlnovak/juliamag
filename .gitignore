@@ -4,3 +4,5 @@ Manifest.toml
 *.out
 .vscode/
 .claude/
+__pycache__/
+*.pyc
