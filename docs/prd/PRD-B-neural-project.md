@@ -27,6 +27,20 @@ skyrmions/DMI. The formal project (Artefact A) runs for 12 months.
 
 ## 2. Decision record: what changed from the source plan
 
+> **Open decision (2026-11-23, later the same day): Julia or Python.** The author is
+> not settled on the language. Python (PyTorch) is the dominant, professional
+> deep-learning stack: more mature tooling (`neuraloperator`, TensorRT,
+> quantization), direct comparability with NeuralMAG, and more weight on the job
+> market. Julia gives tighter integration with JuliaMag and the differentiable
+> project.
+>
+> The first session of this project decides. Options include a hybrid: training in
+> PyTorch, with JuliaMag as the data generator and the inference host, through
+> ONNX or a Python bridge such as PythonCall.jl.
+>
+> The table below describes the Julia route; the source plan (chatB) describes the
+> Python route.
+
 The source plan (chatB) was written for Python: PyTorch, `neuraloperator`, mumax3
 and `discretisedfield` for the ground truth, Weights & Biases, TensorRT. On
 2026-11-23 the author decided that the project is part of JuliaMag, with the

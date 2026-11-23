@@ -34,6 +34,16 @@ with respect to:
 
 ## 2. Decision record
 
+> **Open decision (2026-11-23, later the same day).** The author now leans toward a
+> new, almost independent project instead of a fork. The first session of this
+> project decides between three options:
+> - a fork;
+> - an independent package that depends on JuliaMag for validation only;
+> - an independent package that reuses selected JuliaMag kernels.
+>
+> The fork-specific parts below (§5.1, M0) are to be revised accordingly. The rest
+> of this PRD (physics, AD design, milestones from M1 on) applies to all three.
+
 - **2026-11-23, the author decided on a fork.** The differentiable version is
   developed as a fork of this repository; the traditional code stays the
   reference.
