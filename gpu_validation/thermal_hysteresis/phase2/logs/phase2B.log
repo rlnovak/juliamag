@@ -1,0 +1,156 @@
+2026-11-22 00:12:14 waiting for an idle GPU (10 checks): bash /home/rlnovak/JuliaMag/thermal_loop/phase2/logs/phase2B.sh
+2026-11-22 00:21:17 GPU 1 (GPU-6016255c-f6db-366f-3488-3a7be8a33db5) idle, starting on labmac03: bash /home/rlnovak/JuliaMag/thermal_loop/phase2/logs/phase2B.sh
+2026-11-22 00:21:17 step: /home/rlnovak/opt/julia-1.11.9/bin/julia --project=/home/rlnovak/juliamag_309980f /home/rlnovak/juliamag_309980f/examples/disc_hysteresis_thermal.jl 50 2 /home/rlnovak/JuliaMag/thermal_loop/phase2/loop_T50_seed2.txt 2e-9 1e-13 0.5 gpu Float32
+T = 50 K, seed 2, GPU 0 (Quadro P1000, compute capability 6.1.0, CUDA runtime 12.2.0)
+  step  10/153  B =  +45.0 mT  ⟨mx⟩ = +0.743  wall 738 s
+  step  20/153  B =  +95.0 mT  ⟨mx⟩ = +0.988  wall 1481 s
+  step  30/153  B = +145.0 mT  ⟨mx⟩ = +0.992  wall 2225 s
+  step  40/153  B = +110.0 mT  ⟨mx⟩ = +0.990  wall 2970 s
+  step  50/153  B =  +60.0 mT  ⟨mx⟩ = +0.983  wall 3710 s
+  step  60/153  B =  +10.0 mT  ⟨mx⟩ = +0.921  wall 4455 s
+  step  70/153  B =  -40.0 mT  ⟨mx⟩ = -0.700  wall 5197 s
+  step  80/153  B =  -90.0 mT  ⟨mx⟩ = -0.988  wall 5941 s
+  step  90/153  B = -140.0 mT  ⟨mx⟩ = -0.992  wall 6682 s
+  step 100/153  B = -115.0 mT  ⟨mx⟩ = -0.990  wall 7425 s
+  step 110/153  B =  -65.0 mT  ⟨mx⟩ = -0.984  wall 8168 s
+  step 120/153  B =  -15.0 mT  ⟨mx⟩ = -0.947  wall 8916 s
+  step 130/153  B =  +35.0 mT  ⟨mx⟩ = +0.645  wall 9661 s
+  step 140/153  B =  +85.0 mT  ⟨mx⟩ = +0.987  wall 10404 s
+  step 150/153  B = +135.0 mT  ⟨mx⟩ = +0.992  wall 11144 s
+done: /home/rlnovak/JuliaMag/thermal_loop/phase2/loop_T50_seed2.txt, 3060093 steps, 6120186 evaluations, wall 11368 s
+2026-11-22 03:31:28 step rc=0
+2026-11-22 03:31:28 step: /home/rlnovak/opt/julia-1.11.9/bin/julia --project=/home/rlnovak/juliamag_309980f /home/rlnovak/juliamag_309980f/examples/disc_hysteresis_thermal.jl 300 102 /home/rlnovak/JuliaMag/thermal_loop/phase2/loop_T300_seed102.txt 2e-9 1e-13 0.5 gpu Float32
+T = 300 K, seed 102, GPU 0 (Quadro P1000, compute capability 6.1.0, CUDA runtime 12.2.0)
+  step  10/153  B =  +45.0 mT  ⟨mx⟩ = +0.738  wall 735 s
+  step  20/153  B =  +95.0 mT  ⟨mx⟩ = +0.982  wall 1479 s
+  step  30/153  B = +145.0 mT  ⟨mx⟩ = +0.986  wall 2219 s
+  step  40/153  B = +110.0 mT  ⟨mx⟩ = +0.983  wall 2961 s
+  step  50/153  B =  +60.0 mT  ⟨mx⟩ = +0.976  wall 3703 s
+  step  60/153  B =  +10.0 mT  ⟨mx⟩ = +0.916  wall 4448 s
+  step  70/153  B =  -40.0 mT  ⟨mx⟩ = -0.697  wall 5192 s
+  step  80/153  B =  -90.0 mT  ⟨mx⟩ = -0.981  wall 5937 s
+  step  90/153  B = -140.0 mT  ⟨mx⟩ = -0.985  wall 6680 s
+  step 100/153  B = -115.0 mT  ⟨mx⟩ = -0.984  wall 7420 s
+  step 110/153  B =  -65.0 mT  ⟨mx⟩ = -0.978  wall 8162 s
+  step 120/153  B =  -15.0 mT  ⟨mx⟩ = -0.939  wall 8908 s
+  step 130/153  B =  +35.0 mT  ⟨mx⟩ = +0.638  wall 9651 s
+  step 140/153  B =  +85.0 mT  ⟨mx⟩ = +0.980  wall 10394 s
+  step 150/153  B = +135.0 mT  ⟨mx⟩ = +0.985  wall 11136 s
+done: /home/rlnovak/JuliaMag/thermal_loop/phase2/loop_T300_seed102.txt, 3060093 steps, 6120186 evaluations, wall 11358 s
+2026-11-22 06:41:29 step rc=0
+2026-11-22 06:41:29 step: /home/rlnovak/opt/julia-1.11.9/bin/julia --project=/home/rlnovak/juliamag_309980f /home/rlnovak/juliamag_309980f/examples/disc_hysteresis_thermal.jl 50 4 /home/rlnovak/JuliaMag/thermal_loop/phase2/loop_T50_seed4.txt 2e-9 1e-13 0.5 gpu Float32
+T = 50 K, seed 4, GPU 0 (Quadro P1000, compute capability 6.1.0, CUDA runtime 12.2.0)
+  step  10/153  B =  +45.0 mT  ⟨mx⟩ = +0.743  wall 735 s
+  step  20/153  B =  +95.0 mT  ⟨mx⟩ = +0.988  wall 1479 s
+  step  30/153  B = +145.0 mT  ⟨mx⟩ = +0.992  wall 2220 s
+  step  40/153  B = +110.0 mT  ⟨mx⟩ = +0.990  wall 2963 s
+  step  50/153  B =  +60.0 mT  ⟨mx⟩ = +0.983  wall 3706 s
+  step  60/153  B =  +10.0 mT  ⟨mx⟩ = +0.847  wall 4444 s
+  step  70/153  B =  -40.0 mT  ⟨mx⟩ = -0.978  wall 5191 s
+  step  80/153  B =  -90.0 mT  ⟨mx⟩ = -0.988  wall 5935 s
+  step  90/153  B = -140.0 mT  ⟨mx⟩ = -0.992  wall 6679 s
+  step 100/153  B = -115.0 mT  ⟨mx⟩ = -0.990  wall 7424 s
+  step 110/153  B =  -65.0 mT  ⟨mx⟩ = -0.984  wall 8168 s
+  step 120/153  B =  -15.0 mT  ⟨mx⟩ = -0.942  wall 8910 s
+  step 130/153  B =  +35.0 mT  ⟨mx⟩ = +0.646  wall 9654 s
+  step 140/153  B =  +85.0 mT  ⟨mx⟩ = +0.987  wall 10399 s
+  step 150/153  B = +135.0 mT  ⟨mx⟩ = +0.992  wall 11141 s
+done: /home/rlnovak/JuliaMag/thermal_loop/phase2/loop_T50_seed4.txt, 3060093 steps, 6120186 evaluations, wall 11363 s
+2026-11-22 09:51:36 step rc=0
+2026-11-22 09:51:36 step: /home/rlnovak/opt/julia-1.11.9/bin/julia --project=/home/rlnovak/juliamag_309980f /home/rlnovak/juliamag_309980f/examples/disc_hysteresis_thermal.jl 300 104 /home/rlnovak/JuliaMag/thermal_loop/phase2/loop_T300_seed104.txt 2e-9 1e-13 0.5 gpu Float32
+T = 300 K, seed 104, GPU 0 (Quadro P1000, compute capability 6.1.0, CUDA runtime 12.2.0)
+  step  10/153  B =  +45.0 mT  ⟨mx⟩ = +0.741  wall 736 s
+  step  20/153  B =  +95.0 mT  ⟨mx⟩ = +0.982  wall 1481 s
+  step  30/153  B = +145.0 mT  ⟨mx⟩ = +0.986  wall 2226 s
+  step  40/153  B = +110.0 mT  ⟨mx⟩ = +0.983  wall 2970 s
+  step  50/153  B =  +60.0 mT  ⟨mx⟩ = +0.976  wall 3714 s
+  step  60/153  B =  +10.0 mT  ⟨mx⟩ = +0.909  wall 4452 s
+  step  70/153  B =  -40.0 mT  ⟨mx⟩ = -0.696  wall 5197 s
+  step  80/153  B =  -90.0 mT  ⟨mx⟩ = -0.981  wall 5940 s
+  step  90/153  B = -140.0 mT  ⟨mx⟩ = -0.986  wall 6684 s
+  step 100/153  B = -115.0 mT  ⟨mx⟩ = -0.984  wall 7430 s
+  step 110/153  B =  -65.0 mT  ⟨mx⟩ = -0.977  wall 8175 s
+  step 120/153  B =  -15.0 mT  ⟨mx⟩ = -0.939  wall 8918 s
+  step 130/153  B =  +35.0 mT  ⟨mx⟩ = +0.650  wall 9657 s
+  step 140/153  B =  +85.0 mT  ⟨mx⟩ = +0.981  wall 10401 s
+  step 150/153  B = +135.0 mT  ⟨mx⟩ = +0.985  wall 11163 s
+done: /home/rlnovak/JuliaMag/thermal_loop/phase2/loop_T300_seed104.txt, 3060093 steps, 6120186 evaluations, wall 11406 s
+2026-11-22 13:02:25 step rc=0
+2026-11-22 13:02:25 step: /home/rlnovak/opt/julia-1.11.9/bin/julia --project=/home/rlnovak/juliamag_309980f /home/rlnovak/juliamag_309980f/examples/disc_hysteresis_thermal.jl 50 6 /home/rlnovak/JuliaMag/thermal_loop/phase2/loop_T50_seed6.txt 2e-9 1e-13 0.5 gpu Float32
+T = 50 K, seed 6, GPU 0 (Quadro P1000, compute capability 6.1.0, CUDA runtime 12.2.0)
+  step  10/153  B =  +45.0 mT  ⟨mx⟩ = +0.742  wall 799 s
+  step  20/153  B =  +95.0 mT  ⟨mx⟩ = +0.988  wall 1607 s
+  step  30/153  B = +145.0 mT  ⟨mx⟩ = +0.992  wall 2411 s
+  step  40/153  B = +110.0 mT  ⟨mx⟩ = +0.990  wall 3217 s
+  step  50/153  B =  +60.0 mT  ⟨mx⟩ = +0.983  wall 4025 s
+  step  60/153  B =  +10.0 mT  ⟨mx⟩ = +0.920  wall 4831 s
+  step  70/153  B =  -40.0 mT  ⟨mx⟩ = -0.699  wall 5640 s
+  step  80/153  B =  -90.0 mT  ⟨mx⟩ = -0.988  wall 6449 s
+  step  90/153  B = -140.0 mT  ⟨mx⟩ = -0.992  wall 7248 s
+  step 100/153  B = -115.0 mT  ⟨mx⟩ = -0.990  wall 8029 s
+  step 110/153  B =  -65.0 mT  ⟨mx⟩ = -0.984  wall 8810 s
+  step 120/153  B =  -15.0 mT  ⟨mx⟩ = -0.944  wall 9589 s
+  step 130/153  B =  +35.0 mT  ⟨mx⟩ = +0.976  wall 10367 s
+  step 140/153  B =  +85.0 mT  ⟨mx⟩ = +0.987  wall 11145 s
+  step 150/153  B = +135.0 mT  ⟨mx⟩ = +0.992  wall 11920 s
+done: /home/rlnovak/JuliaMag/thermal_loop/phase2/loop_T50_seed6.txt, 3060093 steps, 6120186 evaluations, wall 12153 s
+2026-11-22 16:25:42 step rc=0
+2026-11-22 16:25:42 step: /home/rlnovak/opt/julia-1.11.9/bin/julia --project=/home/rlnovak/juliamag_309980f /home/rlnovak/juliamag_309980f/examples/disc_hysteresis_thermal.jl 300 106 /home/rlnovak/JuliaMag/thermal_loop/phase2/loop_T300_seed106.txt 2e-9 1e-13 0.5 gpu Float32
+T = 300 K, seed 106, GPU 0 (Quadro P1000, compute capability 6.1.0, CUDA runtime 12.2.0)
+  step  10/153  B =  +45.0 mT  ⟨mx⟩ = +0.741  wall 767 s
+  step  20/153  B =  +95.0 mT  ⟨mx⟩ = +0.981  wall 1522 s
+  step  30/153  B = +145.0 mT  ⟨mx⟩ = +0.986  wall 2247 s
+  step  40/153  B = +110.0 mT  ⟨mx⟩ = +0.984  wall 2970 s
+  step  50/153  B =  +60.0 mT  ⟨mx⟩ = +0.976  wall 3696 s
+  step  60/153  B =  +10.0 mT  ⟨mx⟩ = +0.913  wall 4420 s
+  step  70/153  B =  -40.0 mT  ⟨mx⟩ = -0.697  wall 5147 s
+  step  80/153  B =  -90.0 mT  ⟨mx⟩ = -0.981  wall 6430 s
+  step  90/153  B = -140.0 mT  ⟨mx⟩ = -0.986  wall 7772 s
+  step 100/153  B = -115.0 mT  ⟨mx⟩ = -0.984  wall 9093 s
+  step 110/153  B =  -65.0 mT  ⟨mx⟩ = -0.977  wall 10451 s
+  step 120/153  B =  -15.0 mT  ⟨mx⟩ = -0.943  wall 11912 s
+  step 130/153  B =  +35.0 mT  ⟨mx⟩ = +0.648  wall 13363 s
+  step 140/153  B =  +85.0 mT  ⟨mx⟩ = +0.980  wall 14821 s
+  step 150/153  B = +135.0 mT  ⟨mx⟩ = +0.985  wall 16174 s
+done: /home/rlnovak/JuliaMag/thermal_loop/phase2/loop_T300_seed106.txt, 3060093 steps, 6120186 evaluations, wall 16554 s
+2026-11-22 21:02:21 step rc=0
+2026-11-22 21:02:21 step: /home/rlnovak/opt/julia-1.11.9/bin/julia --project=/home/rlnovak/juliamag_309980f /home/rlnovak/juliamag_309980f/examples/disc_hysteresis_thermal.jl 50 8 /home/rlnovak/JuliaMag/thermal_loop/phase2/loop_T50_seed8.txt 2e-9 1e-13 0.5 gpu Float32
+T = 50 K, seed 8, GPU 0 (Quadro P1000, compute capability 6.1.0, CUDA runtime 12.2.0)
+  step  10/153  B =  +45.0 mT  ⟨mx⟩ = +0.742  wall 1256 s
+  step  20/153  B =  +95.0 mT  ⟨mx⟩ = +0.988  wall 2520 s
+  step  30/153  B = +145.0 mT  ⟨mx⟩ = +0.992  wall 3785 s
+  step  40/153  B = +110.0 mT  ⟨mx⟩ = +0.990  wall 5130 s
+  step  50/153  B =  +60.0 mT  ⟨mx⟩ = +0.983  wall 6475 s
+  step  60/153  B =  +10.0 mT  ⟨mx⟩ = +0.921  wall 7928 s
+  step  70/153  B =  -40.0 mT  ⟨mx⟩ = -0.697  wall 9377 s
+  step  80/153  B =  -90.0 mT  ⟨mx⟩ = -0.988  wall 10641 s
+  step  90/153  B = -140.0 mT  ⟨mx⟩ = -0.992  wall 11905 s
+  step 100/153  B = -115.0 mT  ⟨mx⟩ = -0.990  wall 12701 s
+  step 110/153  B =  -65.0 mT  ⟨mx⟩ = -0.984  wall 13436 s
+  step 120/153  B =  -15.0 mT  ⟨mx⟩ = -0.945  wall 14676 s
+  step 130/153  B =  +35.0 mT  ⟨mx⟩ = +0.977  wall 15943 s
+  step 140/153  B =  +85.0 mT  ⟨mx⟩ = +0.987  wall 17203 s
+  step 150/153  B = +135.0 mT  ⟨mx⟩ = +0.991  wall 18472 s
+done: /home/rlnovak/JuliaMag/thermal_loop/phase2/loop_T50_seed8.txt, 3060093 steps, 6120186 evaluations, wall 18852 s
+2026-11-23 02:17:17 step rc=0
+2026-11-23 02:17:17 step: /home/rlnovak/opt/julia-1.11.9/bin/julia --project=/home/rlnovak/juliamag_309980f /home/rlnovak/juliamag_309980f/examples/disc_hysteresis_thermal.jl 300 108 /home/rlnovak/JuliaMag/thermal_loop/phase2/loop_T300_seed108.txt 2e-9 1e-13 0.5 gpu Float32
+T = 300 K, seed 108, GPU 0 (Quadro P1000, compute capability 6.1.0, CUDA runtime 12.2.0)
+  step  10/153  B =  +45.0 mT  ⟨mx⟩ = +0.740  wall 1246 s
+  step  20/153  B =  +95.0 mT  ⟨mx⟩ = +0.981  wall 2510 s
+  step  30/153  B = +145.0 mT  ⟨mx⟩ = +0.986  wall 3767 s
+  step  40/153  B = +110.0 mT  ⟨mx⟩ = +0.983  wall 5031 s
+  step  50/153  B =  +60.0 mT  ⟨mx⟩ = +0.977  wall 6290 s
+  step  60/153  B =  +10.0 mT  ⟨mx⟩ = +0.915  wall 7552 s
+  step  70/153  B =  -40.0 mT  ⟨mx⟩ = -0.697  wall 8613 s
+  step  80/153  B =  -90.0 mT  ⟨mx⟩ = -0.981  wall 9388 s
+  step  90/153  B = -140.0 mT  ⟨mx⟩ = -0.985  wall 10157 s
+  step 100/153  B = -115.0 mT  ⟨mx⟩ = -0.984  wall 10921 s
+  step 110/153  B =  -65.0 mT  ⟨mx⟩ = -0.977  wall 11659 s
+  step 120/153  B =  -15.0 mT  ⟨mx⟩ = -0.938  wall 12401 s
+  step 130/153  B =  +35.0 mT  ⟨mx⟩ = +0.970  wall 13140 s
+  step 140/153  B =  +85.0 mT  ⟨mx⟩ = +0.981  wall 13881 s
+  step 150/153  B = +135.0 mT  ⟨mx⟩ = +0.985  wall 14620 s
+done: /home/rlnovak/JuliaMag/thermal_loop/phase2/loop_T300_seed108.txt, 3060093 steps, 6120186 evaluations, wall 14841 s
+2026-11-23 06:25:24 step rc=0
+2026-11-23 06:25:24 done
+2026-11-23 06:25:24 done rc=0

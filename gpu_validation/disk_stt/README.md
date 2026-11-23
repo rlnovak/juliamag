@@ -166,6 +166,32 @@ This confirms that the plateau comes from the integrator and its tolerance.
 - The fixed-step RK4 path of the new stepper costs about 5.5 ms per step, against 4.78 ms in the legacy `runcurrent!` loop.
 - This is an open optimization: fuse the reductions, use no allocations, and skip both reductions for fixed steps.
 
+**Stepper overhead after the reduction rewrite (`6c53fbb`).**
+`juliamag/bench_stepper.jl` measures the stepper without output on the 64×64×8 disc,
+Float32, labmac03 GPU 1, 2026-11-23. Old code `1e26350` and new code `6c53fbb` run
+in the same chain. Tables: `tables/stepper_bench/chain.log`.
+
+| stepper | ms/step old → new | overhead per step old → new (beyond n × RHS) |
+|---|---|---|
+| RK45 adaptive | 9.10 → 8.36 | 2.44 → 1.78 ms |
+| RK4 fixed 50 fs | 5.26 → 4.76 | 0.82 → 0.37 ms |
+| Heun fixed 50 fs | 2.74 → 2.32 | 0.52 → 0.12 ms |
+| RK23 adaptive | 4.39 → 4.18 | 1.06 → 0.89 ms |
+
+- The bare RHS costs 1.10 ms.
+- The new fixed-step RK4 equals the legacy hand-written loop (4.78 ms/step).
+- The remaining RK45 overhead is the 6 stage combinations and normalizations.
+- mumax3 spends 6.69 ms per RK45 step, table included.
+
+**`test_gpu.jl` with the new checks:** 625/630. The 5 failures are the RK45
+fixed-step lasterr/peakerr comparison, and they are rounding, not a bug:
+- The embedded estimate Σcᵢkᵢ (Σcᵢ = 0) at dt = 2e-14 is 1.9×10⁸ times smaller than
+  max|k|·dt, so its rounding floor is eps(T)·1.9×10⁸.
+  - In Float64 that floor is 2×10⁻⁸, matching the observed CPU/GPU difference.
+  - In Float32 the estimate is pure noise: the CPU Float32 value is 30× the Float64
+    one.
+- The check now scales its tolerance with that floor.
+
 ## Physical model
 
 The Zhang–Li term with a perpendicular current acts only through ∂z m across the

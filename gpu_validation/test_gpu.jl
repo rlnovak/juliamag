@@ -245,9 +245,13 @@ function stepper_terms(label, mesh, params, T)
         tc = TimeStepper(w, mc; solver = s, fixdt = 2e-14); advanceto!(tc, 2e-12)
         tg = TimeStepper(wg, mg; solver = s, fixdt = 2e-14); advanceto!(tg, 2e-12)
         check("$label $s fixed step, 100 steps, m", mg, mc, tol)
+        # The embedded error estimate is a cancellation Σ cᵢkᵢ (Σ cᵢ = 0): its rounding
+        # floor is ~eps(T)·max|k|·dt, so with a small fixed step (RK45 here: err/(|k|dt)
+        # ~ 5e-9) CPU and GPU agree only to eps(T)·|k|dt/err relative.
+        floor = 20 * eps(T) * maxtorque(tc.k[1]) * 2e-14 / JuliaMag.peakerr(tc)
         check("$label $s fixed step, lasterr/peakerr (device-side)",
               [JuliaMag.lasterr(tg), JuliaMag.peakerr(tg)],
-              [JuliaMag.lasterr(tc), JuliaMag.peakerr(tc)], T == Float64 ? 1e-8 : 2e-3)
+              [JuliaMag.lasterr(tc), JuliaMag.peakerr(tc)], max(T == Float64 ? 1e-8 : 2e-3, floor))
     end
     mn = copy(m); mn[1, cld(size(m, 2), 2), cld(size(m, 3), 2), 1] = T(NaN)   # a cell inside the magnet
     tg = TimeStepper(wg, togpu(mn); solver = :heun, fixdt = 2e-14)

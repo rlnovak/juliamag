@@ -299,15 +299,22 @@ hysteresis in a disc").
     switching fields are upper bounds on thermally activated switching.
   - Msat and A are kept at their room-temperature values at 50 K.
 - **Cost.** About 3.2 h of GPU time per loop, about 50 GPU-hours in all.
-- **Status.** Phase 2 running on labmac03 since 2026-11-22 00:21:
-  `run_phase2.sh`, two chains, about 25 h.
+- **Status: DONE 2026-11-23** (`gpu_validation/thermal_hysteresis/README.md`).
+  Paper: new paragraph and Fig. `vortex_hysteresis_thermal`.
+  - Every finite-T switch goes through a vortex, mostly after a C-shaped
+    precursor that the symmetric T = 0 run cannot reach.
+  - Two vortex classes: annihilation at 60–65 mT or expulsion at 25–35 mT.
+  - The 50 K and 300 K switching fields agree within the scatter.
+  - Open (optional): re-run one loop of each class with OVF output to show the
+    core positions.
 
 **0c. Stepper overhead: DONE 2026-11-22** (`6c53fbb`).
 - A device-side error accumulator: one host wait per adaptive step, none per fixed step.
 - `lasterr`/`peakerr`/`lasttorque` exported.
 - A fixed-step NaN now stops the run instead of retrying forever.
 - CPU bit-identical to the previous stepper.
-- The GPU check and timing (`bench_stepper.jl`, new vs `1e26350`) are queued on labmac03 behind phase 2.
+- GPU timing done 2026-11-23: overhead per step RK45 2.44 → 1.78 ms, RK4 0.82 → 0.37 ms, Heun 0.52 → 0.12 ms.
+- `test_gpu` 625/630, with the 5 RK45 fixed-step error checks at the rounding floor of a cancelling estimator; the tolerance is fixed, and the re-run is queued.
 
 **Gate.** Items 1–2 start only after 0b has finished and the paper (and the code,
 if needed) has been updated with its results (decision of 2026-11-23).

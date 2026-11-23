@@ -630,10 +630,30 @@ now its default, makes the same number of evaluations to $0.1\%$ and cuts the
 \texttt{Float32} wall time from $4\,008$ to $2\,830$~s. The remaining factor of
 $1.4$ is overhead outside the right-hand side. About $230$~s go to the $8\,000$
 table rows, whose energies and core position are evaluated on the CPU. The rest,
-about $2$~ms per step of six evaluations, is the integrator's own work: the stage combinations,
-and two norm reductions per step whose results the host waits for before it
-chooses the next step. This overhead does not change the physics and is the
-next target for optimization.
+about $2$~ms per step of six evaluations, is the integrator's own work: the stage
+combinations, and two norm reductions per step whose results the host waits for
+before it chooses the next step.
+
+We have since merged those two reductions into one kernel. It accumulates with
+atomic operations on the device, and the host reads the result once per adaptive
+step and never during a fixed-step run. A benchmark of the stepper alone on the
+same disc mesh, with no table output, measures the cost per step on top of the
+right-hand sides:
+
+\begin{center}
+\begin{tabular}{lcc}
+  \hline
+  stepper & before (ms) & after (ms) \\
+  \hline
+  RK45, adaptive & $2.4$ & $1.8$ \\
+  RK4, fixed step & $0.82$ & $0.37$ \\
+  Heun, fixed step & $0.52$ & $0.12$ \\
+  \hline
+\end{tabular}
+\end{center}
+
+\noindent The accepted steps are bit-identical to before. The remaining overhead
+of the RK45 step is in its six stage combinations and normalizations.
 
 \begin{table}[t]
   \centering
@@ -1046,6 +1066,64 @@ The renucleation field, however, is set by the thermal fluctuations or the
 imperfections of a real disc, so the zero-temperature quasi-static loop
 resolves the competing states but not which one a sample selects.
 
+\paragraph{Finite temperature.}
+To let thermal fluctuations select the state, instead of rounding errors, we
+repeated the loop with the stochastic LLG equation at $50$ and $300$~K, with eight
+independent realizations at each temperature (Fig.~\ref{fig:vortexT}).
+\begin{itemize}
+  \item \emph{Thermal field.} Brown's thermal field~\cite{brown1963}, integrated
+  with the Heun scheme at a fixed step of $0.1$~ps, in single precision on the
+  GPU. In an ensemble of non-interacting macrospins the same field reproduces the
+  Langevin function, $\langle m_x\rangle=L(\xi)$ for $\xi=1$--$20$, within the
+  sampling error (at most $0.018$, about $2\sigma$, over two independent ensembles).
+  \item \emph{Protocol.} At each $5$~mT step the dynamics runs for $2$~ns, with
+  the damping raised to $\alpha=0.5$; $\alpha$ sets the relaxation rate, not the
+  equilibrium. $\langle\vm\rangle$ is averaged over the last quarter of each step.
+  \item \emph{Convergence.} On the virgin branch at $50$~K this protocol
+  reproduces the zero-temperature reversible branch within the thermal noise.
+  Dwells of $0.5$ and $1$~ns lag behind it and delay the annihilation by one field
+  step. A step of $0.05$~ps gives the same branch within the noise at both
+  temperatures.
+  \item \emph{Caveats.} $M_s$ and $A$ keep their room-temperature values. The
+  sweep rate, $2.5\times10^{6}$~T/s, exceeds experimental rates by many orders of
+  magnitude, so the switching fields below are upper bounds for thermally
+  activated switching.
+\end{itemize}
+
+The virgin branch and the annihilation field do not change: the vortex is expelled
+at $61\pm2$~mT at $50$~K and at $60$~mT in every $300$~K realization. Spin waves
+lower the saturated $\langle m_x\rangle$ by $0.0013$ at $50$~K and $0.0076$ at
+$300$~K. The ratio, $6.1$, matches the ratio of the temperatures, as expected for
+a thermal reduction linear in $T$.
+
+The return branches change in kind. In 28 of the 32 branches (16 loops, two
+branches each), $\langle m_y\rangle$ grows to $0.15$--$0.48$ before the switch:
+the fluctuations break the mirror symmetry and the disc relaxes into a C-shaped
+state, which the symmetric zero-temperature calculation cannot reach. Its
+remanence is $\langle m_x\rangle=0.70$--$0.86$, against $0.961$ at $T=0$.
+
+Every one of the 32 switches then goes through a vortex. The direct reversal of
+the deterministic descending branch never occurs. The switching fields are
+$\mp15.0\pm3.8$~mT on the descending and ascending branches at $50$~K, and
+$-13.1\pm5.9$ and $+11.9\pm4.6$~mT at $300$~K (mean and standard deviation over
+realizations, at a field resolution of $5$~mT). The difference between the two
+temperatures is within the statistical uncertainty of eight realizations.
+
+The nucleated vortex falls into one of two classes:
+\begin{itemize}
+  \item In 21 cases, $\langle m_x\rangle$ joins the reversible branch of the
+  virgin curve, and the vortex is annihilated at $60$--$65$~mT, as on the virgin
+  branch.
+  \item In the other 11, $\langle m_x\rangle$ just after nucleation lies well above
+  that branch ($0.69$--$0.73$ at $20$~mT, against $0.44$), and the vortex is
+  expelled already at $25$--$35$~mT.
+\end{itemize}
+All 11 short-lived vortices come from a C state, but C states also lead to the
+first class (17 cases), so the precursor alone does not decide the outcome. This
+is consistent with a core that nucleates far from the centre and leaves before
+it can relax to its equilibrium position. Resolving the core trajectory needs
+snapshots of $\vm$, which these runs did not store.
+
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{figures/vortex_hysteresis.png}
@@ -1058,6 +1136,20 @@ resolves the competing states but not which one a sample selects.
   quasi-uniform state becomes unstable on the return sweep is not.}
   \label{fig:vortex}
 \end{figure}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/vortex_hysteresis_thermal.png}
+  \caption{The disc loop at finite temperature: stochastic LLG, $2$~ns per
+  $5$~mT step, $\alpha=0.5$, eight realizations per temperature (blue), against
+  the deterministic zero-temperature loop (red). (a)~$50$~K. (b)~$300$~K.
+  (c)~Switching fields of every loop. $\blacktriangledown$~descending,
+  $\blacktriangle$~ascending branch; filled: through a vortex, open: direct reversal.
+  The line spans the field range over which the vortex survives, and the square
+  marks the annihilation on the virgin branch. Red rows: the zero-temperature
+  variants of Fig.~\ref{fig:vortex}, plus the tilted-field loops.}
+  \label{fig:vortexT}
+\end{figure*}
 
 \subsection{Current-driven skyrmion on an infinite wire}
 \label{sec:skyrmion}
@@ -1111,8 +1203,12 @@ comparison also showed that \mumax{} adds the Zhang--Li torque to a
 current-perpendicular simulation by default, and that its maximum-torque output
 at the default tolerance reflects integration error late in a long run.
 Beyond the benchmarks, the same interface handles a vortex hysteresis
-loop on a non-rectangular disc and a current-driven skyrmion on a periodic
-infinite wire (Section~\ref{sec:applications}). Three architectural choices carry
+loop on a non-rectangular disc, at zero and at finite temperature, and a
+current-driven skyrmion on a periodic infinite wire
+(Section~\ref{sec:applications}). At zero temperature the renucleation of the
+vortex is a symmetry-breaking bifurcation, selected by round-off. At finite
+temperature the fluctuations select it: the disc always passes through a vortex,
+usually after a C-shaped precursor. Three architectural choices carry
 the design: a
 component-first $(3,N_x,N_y,N_z)$ data layout, multiple dispatch on an abstract
 array type, and a single $(x,y,z)$ index convention with the origin at the sample
@@ -1146,11 +1242,10 @@ built. Positioning \JuliaMag{} within this ecosystem --- rather than as an
 isolated, hand-optimized binary --- is, in our view, its most significant
 long-term advantage.
 
-Immediate development priorities are multi-backend GPU execution through
-\texttt{KernelAbstractions.jl} and nudged-elastic-band and eigenmode solvers,
-alongside the
-documentation of finite-temperature (stochastic) dynamics in the spirit of
-Brown~\cite{brown1963}. The code is open source and available at
+Immediate development priorities are a geodesic nudged-elastic-band solver
+for energy barriers and a linear eigenmode solver for ferromagnetic-resonance
+spectra, followed by multi-backend GPU execution through
+\texttt{KernelAbstractions.jl}. The code is open source and available at
 \url{https://github.com/rlnovak/juliamag}.
 
 \section*{Acknowledgments}

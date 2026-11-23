@@ -30,7 +30,7 @@ Virgin branch (0 → 150 mT, 31 steps), 50 K, seed 1, labmac03, commit `309980f`
 - **Time step.** dt = 1e-13 s and 5e-14 s agree within the noise.
 - **Saturated branch.** ⟨mx⟩ lies 0.0013 below T = 0 (spin waves).
 
-## Phase 2: ensemble (`phase2/`, running)
+## Phase 2: ensemble (`phase2/`, done 2026-11-23)
 
 `run_phase2.sh` on labmac03, launched 2026-11-22 00:12, started 00:21.
 - **Runs.** Full loops, dwell 2 ns, dt 1e-13 s.
@@ -51,6 +51,54 @@ Virgin branch (0 → 150 mT, 31 steps), 50 K, seed 1, labmac03, commit `309980f`
 - **60 mT.** Both runs annihilate during this step, at different random times (⟨mx⟩ 0.896 vs 0.853). Both are saturated at 65 mT.
 
 dt = 1e-13 s is therefore used at both temperatures.
+
+**Run time.** All 16 loops ended with rc = 0 (chain B at 06:25, chain A at 07:33 on
+2026-11-23). From 2026-11-22 12:53 another project's mumax3 queue shared both GPUs,
+so some loops took up to 5.5 h instead of 3.2 h. Only the timing was affected.
+
+### Results
+
+`python phase2/plot_phase2.py` prints the per-loop table and the ensemble
+statistics, and draws `phase2/phase2_loops.png` (also
+`paper/figures/vortex_hysteresis_thermal.png`).
+
+Definitions used by the script:
+- **B_sw:** the field step with the largest jump of ⟨mx⟩ on a branch.
+- **State:** "vortex" when ⟨mx⟩ stays in the vortex range for at least two steps.
+  The ⟨mz⟩ of the core (~±1–5×10⁻³) confirms it.
+- **B_ann:** the first field after the switch where ⟨mx⟩ saturates (|⟨mx⟩| > 0.95).
+
+| | 50 K (N = 8) | 300 K (N = 8) | T = 0 deterministic |
+|---|---|---|---|
+| virgin annihilation | 61 ± 2 mT | 60 mT (all) | 60 mT |
+| descending switch | −15.0 ± 3.8 mT | −13.1 ± 5.9 mT | −15 mT, direct reversal |
+| ascending switch | +15.0 ± 3.8 mT | +11.9 ± 4.6 mT | +15 mT, vortex |
+| switches through a vortex | 16/16 | 16/16 | 1/2 |
+
+**Saturated branch.** The thermal reduction of ⟨mx⟩ relative to T = 0 is 0.0013
+(50 K) and 0.0076 (300 K), a ratio of 6.1: linear in T.
+
+**Symmetry breaking before the switch.** In 28 of the 32 branches, |⟨my⟩| grows to
+0.15–0.48 before the switch: a C-shaped state that the mirror-symmetric T = 0
+calculation cannot reach. Its remanence is ⟨mx⟩ = 0.70–0.86, against 0.961 at T = 0.
+In the other 4, ⟨my⟩ ≈ 0, a symmetric precursor.
+
+**Two classes of nucleated vortex:**
+- **Equilibrium vortex** (21/32): ⟨mx⟩ follows the virgin reversible branch
+  (0.44 at 20 mT, 0.51 at 25 mT, …), and the vortex is annihilated at 60–65 mT.
+- **Short-lived vortex** (11/32): ⟨mx⟩ just after nucleation lies well above that
+  branch (0.69–0.73 at 20 mT), and the vortex is expelled at 25–35 mT. All 11 come
+  from a C state, but C states also lead to the first class (17 cases); the 4
+  symmetric precursors all give the first class.
+- The likely explanation is a core that nucleates far from the centre and leaves
+  before relaxing. Confirming it needs m snapshots. The GPU random stream is
+  deterministic, so any loop can be re-run with OVF output: about 2.5 h to reach
+  the switch.
+
+**Temperature dependence.** The 50 K vs 300 K differences in the switching fields
+are within the standard error of the mean (1.3–2.1 mT). The finite-T loops differ
+from the T = 0 one in kind (a vortex every time, mostly after a C precursor), not
+measurably between 50 and 300 K.
 
 ## Caveats for the paper
 
