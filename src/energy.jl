@@ -100,6 +100,68 @@ function zeemanenergy(m::AbstractArray{T,4}, Bext, mesh::Mesh, params::AbstractP
 end
 
 """
+    energy!(B, m, world) -> E   [J, Float64]
+
+The effective field of `m` into `B` ([`effectivefield!`](@ref)) and the total
+energy, from that field in a single reduction. Every self-interaction term
+(exchange, anisotropy, DMI, demag) is quadratic in m and enters with -1/2, and
+Zeeman is linear and enters with -1, so
+
+    E = -1/2 · V · Σ_cells Msat (m · (B_eff + B_ext))
+
+with the same per-cell weights as the term energies (Msat·fill for a region
+material). It equals [`totalenergy`](@ref) to rounding, and costs one field
+evaluation instead of one per term. Used by the energy-path (GNEB) and eigenmode
+solvers, where E and its gradient −V·Msat·B_eff are needed together. Accumulated and
+returned in Float64 (barriers are small differences of large totals).
+"""
+function energy!(B::AbstractArray{T,4}, m::AbstractArray{T,4}, w::World{T}) where {T}
+    effectivefield!(B, m, w)
+    return _energy_from_field(m, B, w.Bext, w.material, w.mesh)
+end
+
+"""
+    isconservative(world) -> Bool
+
+Whether the effective field is exactly the gradient of the energy,
+B_eff = −(1/(V·Msat)) ∂E/∂m, cell by cell. That is what energy-path (GNEB) methods
+need. It holds for exchange, uniaxial anisotropy, demag (also with fractional cells)
+and Zeeman. Two discretizations taken from mumax3 break it, by a few percent of the
+boundary terms; the dynamics is unaffected:
+- exchange on edge-smoothed cells: the field uses the region's Msat, the energy
+  weights it by Msat·fill;
+- DMI next to an open boundary or an empty cell: mumax3's DMI boundary condition makes
+  the discrete operator non-symmetric. Interfacial DMI acts in x and y only, so it
+  is conservative when x and y are periodic and no cell is empty.
+"""
+function isconservative(w::World)
+    p = w.material
+    partial = p isa RegionParams && any(f -> 0 < f < 1, p.fill)
+    empty = p isa RegionParams && any(iszero, (msat(p, i, j, k) for i in 1:w.mesh.size[1],
+                                               j in 1:w.mesh.size[2], k in 1:w.mesh.size[3]))
+    partial && return false
+    if hasdmi(p)
+        empty && return false
+        dirs = hasdbulk(p) ? (1, 2, 3) : (1, 2)
+        any(d -> !isperiodic(w.mesh, d) && w.mesh.size[d] > 1, dirs) && return false
+    end
+    return true
+end
+
+function _energy_from_field(m::AbstractArray{T,4}, B::AbstractArray{T,4}, Bext,
+                            params::AbstractParams, mesh::Mesh) where {T}
+    ex, ey, ez = T(Bext[1]), T(Bext[2]), T(Bext[3])
+    Nx, Ny, Nz = mesh.size
+    s = 0.0
+    @inbounds for k in 1:Nz, j in 1:Ny, i in 1:Nx
+        mb = m[1,i,j,k] * (B[1,i,j,k] + ex) + m[2,i,j,k] * (B[2,i,j,k] + ey) +
+             m[3,i,j,k] * (B[3,i,j,k] + ez)
+        s += Float64(msat(params, i, j, k)) * Float64(mb)
+    end
+    return -0.5 * cellvolume(mesh) * s
+end
+
+"""
     totalenergy(m, world) -> E   [J]
 
 Sum of every active energy term for state `m` under `world`. This is the

@@ -60,6 +60,35 @@ present `anisotropyenergy`. A test pins this down.
   (open/periodic, regions, DMI).
 - GPU: test_gpu checks energy and linear field against the CPU.
 
+**Status, 2026-11-23: DONE.**
+- `energy!`, `linearfield!` and `isconservative` are in place, with
+  `test/test_energy_gradient.jl` (42 tests) and checks in `test_gpu.jl`.
+
+**Finding: the gradient check exposes two non-conservative discretizations,**
+both inherited from mumax3 on purpose. The central-difference test, which is exact
+for a quadratic E, gives a relative error of about 1e-13 for exchange, anisotropy,
+demag (also with fractional cells), Zeeman, and region interfaces. It fails by
+2–6 % in two cases:
+1. **Exchange on edge-smoothed cells.** The field uses the region's Msat, but the
+   energy weights it by Msat·fill, so the operator F·L is not symmetric.
+2. **DMI next to an open boundary** (or, by the same mechanism, an empty cell).
+   mumax3's boundary condition makes the discrete operator non-symmetric.
+   - Interfacial DMI with x and y periodic is exact.
+
+In both cases the field drives the dynamics correctly. The reported energy,
+however, is not the exact potential of that field.
+
+**Consequence for GNEB:**
+- GNEB needs an exact (E, ∇E) pair. It runs on `isconservative(world)` systems,
+  which include every validation case below (the macrospin, an unsmoothed
+  ellipse, a periodic skyrmion film), and warns otherwise.
+- A later option is the symmetrized operator ½(L + Lᵀ). For the fill case, Lᵀ is
+  the exchange of fill·m, which is cheap. The DMI boundary transpose needs
+  derivation.
+
+**Eigenmodes** are not affected: they linearize the dynamics, and the operator need
+not be symmetric. The Krylov method must then be a general one, not Lanczos.
+
 ---
 
 ## 1. GNEB: minimum-energy paths and barriers

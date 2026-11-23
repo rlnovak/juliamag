@@ -72,6 +72,22 @@ setexternalfield!(w::World{T}, Bext) where {T} = (w.Bext = NTuple{3,T}(Bext); w)
 Assemble the total effective field of state `m` into `B` [T].
 """
 function effectivefield!(B::AbstractArray{T,4}, m::AbstractArray{T,4}, w::World{T}) where {T}
+    linearfield!(B, m, w)
+    if any(!iszero, w.Bext)
+        zeeman!(B, w.Bext; add = true)
+    end
+    return B
+end
+
+"""
+    linearfield!(B, δm, world)
+
+The field of the self-interaction terms only (exchange, anisotropy, DMI, demag:
+every term but Zeeman) for `δm`, into `B` [T]. Each of these fields is linear in its
+argument, so this is the linear operator B_lin with B_eff(m) = B_lin(m) + B_ext;
+`δm` need not be a unit vector field (eigenmodes, energy Hessian).
+"""
+function linearfield!(B::AbstractArray{T,4}, m::AbstractArray{T,4}, w::World{T}) where {T}
     exchange!(B, m, w.mesh, w.material; add = false)      # first term writes
     if hasku(w.material)
         anisotropy!(B, m, w.mesh, w.material; add = true)
@@ -81,9 +97,6 @@ function effectivefield!(B::AbstractArray{T,4}, m::AbstractArray{T,4}, w::World{
     end
     if w.demagplan !== nothing
         _demag!(B, m, w; add = true)
-    end
-    if any(!iszero, w.Bext)
-        zeeman!(B, w.Bext; add = true)
     end
     return B
 end

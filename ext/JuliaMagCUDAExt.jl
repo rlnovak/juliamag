@@ -446,6 +446,27 @@ function JuliaMag.average_magnet(m::CuField{T}, p::GpuRegionParams{T}) where {T}
     return (T(s(1) / W), T(s(2) / W), T(s(3) / W))
 end
 
+# Total energy from the effective field (src/energy.jl energy!): one Float64
+# reduction of Msat·m·(B + Bext) with the CPU's per-cell weights (Msat·fill).
+function JuliaMag._energy_from_field(m::CuField{T}, B::CuField{T}, Bext,
+                                     p::GpuRegionParams{T}, mesh::Mesh) where {T}
+    ex, ey, ez = T(Bext[1]), T(Bext[2]), T(Bext[3])
+    f(mx, my, mz, bx, by, bz, ms) =
+        Float64(ms) * Float64(mx * (bx + ex) + my * (by + ey) + mz * (bz + ez))
+    s = mapreduce(f, +, (@view m[1:1,:,:,:]), (@view m[2:2,:,:,:]), (@view m[3:3,:,:,:]),
+                  (@view B[1:1,:,:,:]), (@view B[2:2,:,:,:]), (@view B[3:3,:,:,:]), p.Msat;
+                  init = 0.0)
+    return -0.5 * cellvolume(mesh) * s
+end
+function JuliaMag._energy_from_field(m::CuField{T}, B::CuField{T}, Bext,
+                                     p::Material, mesh::Mesh) where {T}
+    ex, ey, ez = T(Bext[1]), T(Bext[2]), T(Bext[3])
+    f(mx, my, mz, bx, by, bz) = Float64(mx * (bx + ex) + my * (by + ey) + mz * (bz + ez))
+    s = mapreduce(f, +, (@view m[1:1,:,:,:]), (@view m[2:2,:,:,:]), (@view m[3:3,:,:,:]),
+                  (@view B[1:1,:,:,:]), (@view B[2:2,:,:,:]), (@view B[3:3,:,:,:]); init = 0.0)
+    return -0.5 * cellvolume(mesh) * Float64(p.Msat) * s
+end
+
 # Gather a per-region LUT into a per-cell (1,Nx,Ny,Nz) array via the region map.
 function _percell(lut::Vector{T}, idmap::Array{UInt8,3}) where {T}
     Nx, Ny, Nz = size(idmap)

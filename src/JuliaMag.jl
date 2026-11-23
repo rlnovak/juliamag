@@ -80,7 +80,7 @@ export DemagPlan, demagfield!
 include("current.jl")
 export SpinCurrent, sttparams, applycurrent!
 include("effective_field.jl")
-export World, setexternalfield!, effectivefield!, setcurrent!
+export World, setexternalfield!, effectivefield!, linearfield!, setcurrent!
 include("llg.jl")
 export torque!, maxtorque, llgrhs!
 include("solver.jl")
@@ -95,7 +95,7 @@ export TimeStepper, advanceto!, lasterr, peakerr, lasttorque
 # --- Energies --------------------------------------------------------------
 include("energy.jl")
 export fieldenergy, exchangeenergy, anisotropyenergy, dmienergy, demagenergy,
-       zeemanenergy, totalenergy
+       zeemanenergy, totalenergy, energy!, isconservative
 
 # --- Spin-transfer torque --------------------------------------------------
 include("stt.jl")
