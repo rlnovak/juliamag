@@ -73,6 +73,8 @@ Ordered roughly by value-to-effort:
    overhead is gone (14 launches, 0 allocations per RHS; Float32 RHS = mumax3's
    1.11 ms on the P1000) and the KernelAbstractions port is a mechanical
    translation of those kernels.
+   *Status (2026-11-23):* deferred to the future features below: only NVIDIA
+   hardware is available to test it.
 2. **NEB / GNEB** for energy barriers and switching paths — a frequently needed
    capability (thermal stability of bits/skyrmions) that we flagged as future
    work in the stage-2 list. `src/neb/` and `src/transition/` are the port
@@ -300,25 +302,19 @@ hysteresis in a disc").
 - **Status.** Phase 2 running on labmac03 since 2026-11-22 00:21:
   `run_phase2.sh`, two chains, about 25 h.
 
-**1. KernelAbstractions.jl: multi-backend GPU.**
-- **Kernels.** Rewrite the ~20 per-term CUDA kernels of `ext/cuda_kernels.jl`
-  once as `@kernel` functions in the core, generic over the backend:
-  exchange, anisotropy, DMI, Zeeman, the torques and STT, normalize, the
-  minimizer step, the demag pad, k-space product and crop, the norm reduction.
-  - Thin backend extensions keep only the array type and the FFT plans:
-    CUFFT for CUDA, rocFFT for AMDGPU, oneMKL for oneAPI.
-  - Metal.jl has no FFT, so Apple GPUs need a fallback for the demag term,
-    decided when that backend is reached.
-- **Validation.**
-  - `test_gpu.jl` becomes backend-parametric, plus the KA CPU backend as an
-    extra reference.
-  - It must reproduce the current CUDA results to rounding.
-  - It must not regress the CUDA cost (1.11 ms per Float32 evaluation on the
-    P1000).
-- **Hardware.** Only NVIDIA is available here (labmac03/04); AMD, Intel and
-  Apple need access to such hardware, or stay "compiles, untested".
+**0c. Stepper overhead: DONE 2026-11-22** (`6c53fbb`).
+- A device-side error accumulator: one host wait per adaptive step, none per fixed step.
+- `lasterr`/`peakerr`/`lasttorque` exported.
+- A fixed-step NaN now stops the run instead of retrying forever.
+- CPU bit-identical to the previous stepper.
+- The GPU check and timing (`bench_stepper.jl`, new vs `1e26350`) are queued on labmac03 behind phase 2.
 
-**2. NEB / GNEB: energy barriers and minimum-energy paths.**
+**Gate.** Items 1–2 start only after 0b has finished and the paper (and the code,
+if needed) has been updated with its results (decision of 2026-11-23).
+KernelAbstractions was removed from this queue: see "Future features".
+
+**1. NEB / GNEB: energy barriers and minimum-energy paths.** Detailed plan:
+[`plan_neb_eigen.md`](plan_neb_eigen.md) §0–1.
 - **Prerequisite.** Energy functions on the GPU, from the feature backlog: the
   NEB evaluates every image's energy and gradient at every iteration.
 - **Method.** Geodesic NEB on the product of unit spheres (Bessarab, Uzdin,
@@ -336,7 +332,7 @@ hysteresis in a disc").
   - The magnum.np `energy_barrier_ellipse` demo.
   - A skyrmion-collapse barrier against published values.
 
-**3. Eigenmodes / FMR.**
+**2. Eigenmodes / FMR.** Detailed plan: [`plan_neb_eigen.md`](plan_neb_eigen.md) §2.
 - **Method.** Linearize the LLG about an equilibrium in the local tangent frame
   (two components per cell):
   - Small systems: a dense eigenproblem.
@@ -354,9 +350,91 @@ hysteresis in a disc").
 Each item: implementation, tests (CPU, then GPU), validation against an analytic
 result and a reference code, paper section, commit. Ask before starting each.
 
+**3. A mumax3-style input file.** After items 1–2.
+- **Goal.** A simulation is described as simply as in mumax3: a short script of
+  plain statements, with no Julia boilerplate (no `sim` argument threaded through
+  every call, no array types, no explicit `togpu`). For example:
+
+      gridsize(128, 128, 1); cellsize(4e-9, 4e-9, 4e-9)
+      geometry(Ellipse(500e-9, 250e-9))
+      Msat = 800e3; Aex = 13e-12; alpha = 0.02
+      m = Uniform(1, 1, 0)
+      B_ext = (0, 0, 0.01)
+      tableadd(E_total); tableautosave(10e-12)
+      relax(); run(5e-9)
+
+- **To decide in the design.**
+  - Global-state script mode: a `JuliaMag.Script` module with a current
+    Simulation, run by `juliamag file.jl`. Or a parsed `.jmag` file translated to
+    the existing API.
+  - GPU auto-selection.
+  - Material assignment by region.
+  - Error messages pointing at the input line.
+- **Constraint.** It must be a thin layer over the existing driver API: no physics
+  in it.
+- **Validation.** The µMAG std 4 and the disc examples rewritten in the new form
+  reproduce their tables bit for bit.
+
+**4. GUI review** (`gui/`, the QML desktop GUI, left aside since 2026-11-13).
+- **Requirements (2026-11-23).** Fast and responsive, and it shows the essentials
+  of the running simulation:
+  - live ⟨m⟩(t) and energy;
+  - a magnetization slice view (colour wheel / mz);
+  - time, step, dt, maxTorque, wall time and device;
+  - start, pause and stop, and loading a script (item 3).
+- **First, an audit.**
+  - Threading: the solver must not block the UI.
+  - Update rate and data copied per frame: GPU→host only for the displayed slice.
+  - Plotting cost.
+  - Dependency weight and startup time.
+  - Correctness of the displayed quantities.
+- **Then the fixes,** each measured: frames per second and the solver slowdown
+  with the GUI attached.
+
+**Stage closure.** After items 1–4, this stage of JuliaMag is closed: a
+traditional micromagnetic code, implemented, validated and functional. Next come
+the future directions below.
+
 ## Near-term priorities
 
-The **driver ergonomics group above** is done (2026-11-20). Next: the
-**KernelAbstractions migration** (multi-backend GPU — the CUDA kernels are now
-per-term and translate mechanically), then **NEB/GNEB** and the **eigenmode/FMR**
-solver; all three have a clean reference in MicroMagnetic.jl.
+The **driver ergonomics group above** is done (2026-11-20). Next, in order (see
+"Work queue"):
+1. finish the finite-temperature hysteresis and its paper section;
+2. **GNEB** and **eigenmodes** ([`plan_neb_eigen.md`](plan_neb_eigen.md));
+3. the mumax3-style input file;
+4. the GUI review.
+
+That closes the stage.
+
+## Future features
+
+- **KernelAbstractions.jl, multi-backend GPU.** Deferred 2026-11-23: only NVIDIA
+  hardware is available to test it.
+  - Plan (unchanged from the 2026-11-21 queue):
+    - Rewrite the per-term kernels of `ext/cuda_kernels.jl` as `@kernel` functions.
+    - Keep only the array type and the FFT plans in thin backend extensions:
+      CUFFT, rocFFT, oneMKL; Metal has no FFT.
+  - Staged replacement: the CUDA kernels stay until KA-on-CUDA reproduces their
+    results to rounding and their cost (1.11 ms per Float32 evaluation on the
+    P1000).
+  - Taken up when AMD, Intel or Apple hardware is available.
+- Atomistic spin dynamics and Monte Carlo (MicroMagnetic.jl comparison, items 4–5).
+- The feature backlog above (SOT, RKKY, DMI boundary conditions, magnetoelastics).
+
+## Future directions (after the stage closure)
+
+Two projects take JuliaMag further. Each has a PRD in [`docs/prd/`](prd/), meant to be
+run in its own Claude Code session.
+
+- **A. Differentiable JuliaMag (fork).**
+  - A fork of this code base whose field and energy computations are rewritten
+    for automatic differentiation, so that gradients of any simulation output
+    with respect to parameters, geometry or the initial state are available.
+  - Purpose: research at the interface of micromagnetics and neural networks.
+  - This repository stays the traditional, validated reference code; the fork is
+    the modern, differentiable one, validated against it.
+  - PRD: [`prd/PRD-A-differentiable-juliamag.md`](prd/PRD-A-differentiable-juliamag.md).
+- **B. Neural-network project integrated in both versions.**
+  - It is meant as the crowning piece of JuliaMag, with the networks developed and
+    trained in Julia.
+  - PRD: [`prd/PRD-B-neural-project.md`](prd/PRD-B-neural-project.md).
