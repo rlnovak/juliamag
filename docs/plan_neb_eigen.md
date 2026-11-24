@@ -229,7 +229,7 @@ N = 16 that is about 100 MB in Float64, which fits the 4 GB P1000.
   - Float32: the relaxed barrier agrees to ≤ 7e-6.
   - `energy!` and `linearfield!` on the GPU: ≤ 8e-16 in Float64.
 
-**Status, 2026-11-24: step 1b DONE on the CPU** (`gpu_validation/gneb/`, results and
+**Status, 2026-11-24: step 1b DONE** (`gpu_validation/gneb/`, results and
 tables in `gpu_validation/gneb/results/README.md`).
 - Same end states, initial path, 21 images, MicroMagnetic.jl velocity projection
   against JuliaMag: one skyrmion 7.9422822692e-20 J (−5.5e-13 relative), lattice of four
@@ -246,8 +246,12 @@ tables in `gpu_validation/gneb/results/README.md`).
   from the energies halfway between images (`midpointenergies`). Barzilai–Borwein is less
   robust than velocity projection on two under-resolved bands; a finite `reject` rescues
   some, with no reliable value, so the default stays `Inf`.
+- GPU = CPU, `gpu_validation/test_gpu.jl` on labmac03 (code d141053): 670/670 checks.
+  GNEB on the wire and the region disc, Float64: energies, forces and midpoint energies
+  to <= 6e-16, relaxed barrier to <= 3e-12; Float32: barrier to <= 1.3e-6. The film and
+  ellipse cases above were run on the CPU only.
 - Not done: the DMI-film barrier against published continuum values; the saddle
-  certification (needs item 2); the GPU run of the code after c3a1fee.
+  certification (needs item 2).
 
 **Paper.** A section "Energy barriers", with the Stoner–Wohlfarth figure
 (barrier vs h, analytic curve in red, JuliaMag in blue) and the ellipse or
@@ -343,7 +347,7 @@ product. It works unchanged on the GPU, so it reuses the FFT demag.
 |---|---|---|
 | 0 | `energy!`, `linearfield!` (CPU + GPU) | tests pass; GPU check queued on an idle GPU |
 | 1a | GNEB core, CPU, Stoner–Wohlfarth | ΔE to 1e-6 — DONE 2026-11-24 (≤ 6e-15) |
-| 1b | Ellipse and skyrmion barriers, image and spring convergence | cross-code agreement documented — DONE 2026-11-24 (CPU) |
+| 1b | Ellipse and skyrmion barriers, image and spring convergence | cross-code agreement documented — DONE 2026-11-24 |
 | 1c | GPU runs, paper section, commit | — |
 | 2a | Eigen operator and dense solver, Kittel and film cases | to 1e-8 |
 | 2b | Iterative solver, FMR standard problem, disc gyrotropic mode | agreement with the ringdown and with mumax3's 969.8 MHz |
