@@ -1,0 +1,45 @@
+dtype torch.float64  magnetic cells 2512
+[1] JuliaMag images: barrier JuliaMag 2.4139554504e-18 J, same image in magnum.np 2.4144133039e-18 J, rel +1.90e-04; max diff over images / dE 1.90e-04
+[2] step 1: interpolation calls so far {'cspline': 1, 'linear': 1} (linear = fallbacks)
+[2] step 2: interpolation calls so far {'cspline': 2, 'linear': 1} (linear = fallbacks)
+[2] step   10  dE = 3.1006425419e-18 J  (+2.84e-01 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  34 s
+[2] step   20  dE = 3.0714211875e-18 J  (+2.72e-01 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  68 s
+[2] step   30  dE = 3.0342606250e-18 J  (+2.57e-01 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  104 s
+[2] step   40  dE = 2.9915084304e-18 J  (+2.39e-01 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  142 s
+[2] step   50  dE = 2.9443277180e-18 J  (+2.20e-01 rel to JuliaMag)  E[end]-E[0] = -3.1e-33  177 s
+[2] step   60  dE = 2.8937406555e-18 J  (+1.99e-01 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  214 s
+[2] step   70  dE = 2.8410150152e-18 J  (+1.77e-01 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  248 s
+[2] step   80  dE = 2.7877166550e-18 J  (+1.55e-01 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  282 s
+[2] step   90  dE = 2.7355576736e-18 J  (+1.33e-01 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  318 s
+[2] step  100  dE = 2.6861537555e-18 J  (+1.13e-01 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  354 s
+[2] step  110  dE = 2.6408018123e-18 J  (+9.40e-02 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  389 s
+[2] step  120  dE = 2.6003518570e-18 J  (+7.72e-02 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  427 s
+[2] step  130  dE = 2.5651894975e-18 J  (+6.26e-02 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  463 s
+[2] step  140  dE = 2.5353015584e-18 J  (+5.03e-02 rel to JuliaMag)  E[end]-E[0] = +3.1e-33  497 s
+[2] step  150  dE = 2.5103823813e-18 J  (+3.99e-02 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  533 s
+[2] step  160  dE = 2.4899450169e-18 J  (+3.15e-02 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  570 s
+[2] step  170  dE = 2.4734159919e-18 J  (+2.46e-02 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  606 s
+[2] step  180  dE = 2.4602054531e-18 J  (+1.92e-02 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  643 s
+[2] step  190  dE = 2.4497529731e-18 J  (+1.48e-02 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  678 s
+[2] step  200  dE = 2.4415533838e-18 J  (+1.14e-02 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  713 s
+[2] step  210  dE = 2.4351680818e-18 J  (+8.79e-03 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  749 s
+[2] step  220  dE = 2.4302267621e-18 J  (+6.74e-03 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  782 s
+[2] step  230  dE = 2.4264234577e-18 J  (+5.16e-03 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  818 s
+[2] step  240  dE = 2.4235096420e-18 J  (+3.96e-03 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  853 s
+[2] step  250  dE = 2.4212862082e-18 J  (+3.04e-03 rel to JuliaMag)  E[end]-E[0] = -3.1e-33  887 s
+[2] step  260  dE = 2.4195954330e-18 J  (+2.34e-03 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  922 s
+[2] step  270  dE = 2.4183135398e-18 J  (+1.81e-03 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  958 s
+[2] step  280  dE = 2.4173441493e-18 J  (+1.40e-03 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  993 s
+[2] step  290  dE = 2.4166127090e-18 J  (+1.10e-03 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  1028 s
+[2] step  300  dE = 2.4160618713e-18 J  (+8.73e-04 rel to JuliaMag)  E[end]-E[0] = +6.2e-33  1063 s
+[2] step  310  dE = 2.4156477316e-18 J  (+7.01e-04 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  1097 s
+[2] step  320  dE = 2.4153368130e-18 J  (+5.72e-04 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  1135 s
+[2] step  330  dE = 2.4151036775e-18 J  (+4.76e-04 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  1169 s
+[2] step  340  dE = 2.4149290532e-18 J  (+4.03e-04 rel to JuliaMag)  E[end]-E[0] = -3.1e-33  1205 s
+[2] step  350  dE = 2.4147983759e-18 J  (+3.49e-04 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  1241 s
+[2] step  360  dE = 2.4147006638e-18 J  (+3.09e-04 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  1276 s
+[2] step  370  dE = 2.4146276512e-18 J  (+2.78e-04 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  1309 s
+[2] step  380  dE = 2.4145731271e-18 J  (+2.56e-04 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  1345 s
+[2] step  390  dE = 2.4145324306e-18 J  (+2.39e-04 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  1381 s
+[2] step  400  dE = 2.4145020684e-18 J  (+2.26e-04 rel to JuliaMag)  E[end]-E[0] = +0.0e+00  1415 s
+interpolation calls {'cspline': 400, 'linear': 1}

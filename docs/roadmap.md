@@ -326,7 +326,9 @@ KernelAbstractions was removed from this queue: see "Future features".
   - Step 0 (`energy!`, `isconservative`) and step 1a are DONE: the `src/neb.jl` core
     (Barzilai–Borwein plus Cayley optimizer, climbing image, Hermite saddle) is
     validated on Stoner–Wohlfarth to 6e-15.
-  - Next: the ellipse and skyrmion cross-code cases, GPU runs, and the paper.
+  - Step 1b is DONE on the CPU: ellipse, skyrmion and skyrmion-lattice barriers against
+    MicroMagnetic.jl (`gpu_validation/gneb/results/README.md`).
+  - Next: the GPU run of the current code and the paper section.
 - **Prerequisite.** Energy functions on the GPU, from the feature backlog: the
   NEB evaluates every image's energy and gradient at every iteration.
 - **Method.** Geodesic NEB on the product of unit spheres (Bessarab, Uzdin,

@@ -1,0 +1,34 @@
+CASE skyrmion  magnetic cells 3600  isconservative true
+
+[1] energies of identical states (J): JuliaMag, MicroMagnetic, relative difference
+    MicroMagnetic term names: ["exch", "dmi", "zeeman"]
+    random  dmi      5.731268179022e-20  5.731268179022e-20  +3.4e-15
+    random  exch     9.408449951916e-17  9.408449951916e-17  -3.9e-16
+    random  total    9.413259648814e-17  9.413259648814e-17  +1.3e-16
+    random  zeeman  -9.215712811032e-21 -9.215712811033e-21  -1.8e-15
+    smooth  dmi      1.280568540096e-36 -8.773410797352e-37  -1.7e+00
+    smooth  exch     3.926935155992e-19  3.926935155992e-19  +2.6e-15
+    smooth  total   -2.293886780781e-19 -2.293886780781e-19  +5.5e-15
+    smooth  zeeman  -6.220821936773e-19 -6.220821936773e-19  -3.1e-16
+
+end states:
+    relaxed: 324 steps, max|m x B| = 8.75e-10 T, <m> = (-0.0000, -0.0000, +0.8682)
+    relaxed: 10 steps, max|m x B| = 0.00e+00 T, <m> = (+0.0000, +0.0000, +1.0000)
+    charge of the start state -1.0000, of the end state +0.0000; E[start]-E[end] = 1.899464e-20 J
+
+[2] JuliaMag GNEB
+    N=21 k=1 T: dE = 7.9422822692e-20 J, steps 950, max|F| = 8.3e-06 T, climbing image 16, E[end]-E[1] = -1.899e-20 J, 63 s
+    energy of the JuliaMag images in MicroMagnetic:
+      barrier of the same saddle image: JuliaMag 7.9422822692e-20, MicroMagnetic 7.9422822692e-20, rel -1.21e-14
+      max |E_MM - E_JM| over images / dE = 4.36e-14 (differences from image 1)
+
+[3] MicroMagnetic.jl GNEB (same end states, same initial path)
+    vp           dE = 7.9422822692e-20 J (JuliaMag -5.53e-13 rel), converged true/true, steps 5633+2593, max force 1.0e-05 T, climbing image 16, 436 s
+    lbfgs_atlas  dE = 7.9422822692e-20 J (JuliaMag -5.53e-13 rel), converged false/true, steps 40000+3702, max force 9.9e-06 T, climbing image 12, 2832 s
+
+[4] JuliaMag: barrier against the number of images and the spring constant
+    N=11 k=1.0 T: dE rel to N=21, k=1: +1.21e-01, steps 40000, max|F| = 4.7e+00 T, 541 s
+    N=31 k=1.0 T: dE rel to N=21, k=1: -5.70e-13, steps 1120, max|F| = 9.7e-06 T, 35 s
+    N=21 k=0.3 T: dE rel to N=21, k=1: -9.20e-12, steps 987, max|F| = 9.7e-06 T, 19 s
+    N=21 k=3.0 T: dE rel to N=21, k=1: -4.36e-13, steps 821, max|F| = 6.4e-06 T, 20 s
+done

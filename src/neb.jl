@@ -63,6 +63,7 @@ mutable struct GNEB{T<:AbstractFloat,W<:World{T},A<:AbstractArray{T,4},S<:Abstra
     climbauto::Bool         # chosen by relax! (follows the top), not by the user
     Msref::Float64
     steps::Int
+    rejected::Int           # steps undone by the optimizer's safeguard
     maxforce::Float64       # max over interior images and cells of |F| [T]
     # Barzilai–Borwein optimizer state
     dt::Float64             # time-like step [s]
@@ -106,7 +107,7 @@ function GNEB(w::World{T}, states::AbstractVector; nimages::Integer = 16, spring
     n = length(ms)
     neb = GNEB{T,typeof(w),A,typeof(wr)}(w, ms, [mk() for _ in 1:n], [fill!(mk(), 0) for _ in 1:n],
         [fill!(mk(), 0) for _ in 1:n], wr, mask, similar(wr),
-        zeros(n), zeros(n - 1), zeros(n), Float64(spring), 0, true, Msref, 0, Inf,
+        zeros(n), zeros(n - 1), zeros(n), Float64(spring), 0, true, Msref, 0, 0, Inf,
         Float64(dt), Float64(dt), Inf, 0, [mk() for _ in 1:n], [fill!(mk(), 0) for _ in 1:n])
     _updateends!(neb)
     _update!(neb)
@@ -321,9 +322,13 @@ end
 # Safeguard: a step that makes the force non-finite, or (optionally) raises the max
 # force by more than `reject` times, is undone, and dt is capped at half the rejected
 # step from then on (the cap relaxes by 2 % per accepted step). The default rejects
-# only non-finite steps: BB is non-monotone by design, and on the Stoner–Wohlfarth
-# tests any finite threshold (10, 2, 1.25) cost 2–5× more steps without making any
-# case converge that did not converge already.
+# only non-finite steps: BB is non-monotone by design, and where it converges a finite
+# threshold costs up to 2–8× more evaluations (gpu_validation/gneb/reject_study.jl:
+# ellipses, skyrmion and skyrmion lattice, thresholds 10 to 1.5; 100 changes little).
+# Where it does not converge, a threshold may or may not help, with no trend: lattice,
+# 21 images, k = 0.3: 10, 3 and 1.5 reach the right barrier, 100 does not; skyrmion, 11
+# images: only 3 does (100 and 10 do not converge, 1.5 converges to a band that skips the
+# saddle). More images fixed the latter.
 function _bbstep!(neb::GNEB{T}, maxrot, reject) where {T}
     n = length(neb.m)
     γ = Float64(γLL)
@@ -340,6 +345,7 @@ function _bbstep!(neb::GNEB{T}, maxrot, reject) where {T}
             copyto!(neb.m[i], neb.mlast[i])
         end
         _update!(neb)
+        neb.rejected += 1
         neb.dtmax = neb.dt = 0.5 * dt
         neb.bbstep = 0
         return false
@@ -368,16 +374,21 @@ Relax the band until the largest GNEB force on any cell of any free image is bel
 once the force is below `climbforce`, and then converges onto the saddle point; if
 another image becomes the highest, it takes over. An image chosen with
 [`setclimbing!`](@ref)`(neb, i)` stays the climbing image (a warning is printed if
-another one ends up higher: `barrier` is then not a saddle energy). A path with no
-free image above both ends has no saddle to climb to: it is relaxed without a
-climbing image, with a warning.
+another one ends up higher: `barrier` is then not a saddle energy). If no free image is
+above both ends there is none to climb with: the path is relaxed without a climbing
+image, with a warning. Either it has no barrier or the barrier falls between two images;
+with `climbing`, a warning is printed when the energy halfway between two neighbouring
+images shows that it may ([`midpointenergies`](@ref)).
 `maxrot` caps the rotation of any cell in one step [rad]; a step that makes the
-force non-finite, or raises it more than `reject` times, is undone and the step
-size capped. Ends after `maxsteps` (with a warning).
+force non-finite, or raises it more than `reject` times (> 1), is undone and the step
+size capped (an undone step costs two evaluations of the band and is counted in both
+`neb.steps` and `neb.rejected`). If a band does not converge, use more images first; a
+finite `reject` (10, 3) rescues some bands, not all. Ends after `maxsteps` (with a warning).
 """
 function relax!(neb::GNEB; stopforce = 1e-4, climbing::Bool = true,
                 climbforce = 10stopforce, maxsteps::Integer = 50_000, maxrot = 0.1,
                 reject = Inf, verbose::Bool = false)
+    reject > 1 || error("reject must be larger than 1")
     t0 = neb.steps
     _updateends!(neb)
     !climbing && neb.climb != 0 ? setclimbing!(neb, 0) : _update!(neb)
@@ -410,7 +421,52 @@ function relax!(neb::GNEB; stopforce = 1e-4, climbing::Bool = true,
     end
     neb.maxforce < stopforce ||
         @warn "GNEB did not converge in $maxsteps steps: max|F| = $(neb.maxforce) T"
+    climbing && _warnhidden(neb)
     return neb
+end
+
+# A maximum between two neighbouring images does not act on the forces: with too few
+# images, and an energy that is flat along some mode (a translation), the images slide to
+# the flat part and leave the whole transition to a single jump. The band is then relaxed,
+# its barrier is wrong, and the Hermite interpolation (flat at both ends) shows nothing.
+# The geodesic between two images is not the minimum-energy path, so a coarse but correct
+# band can also have a midpoint above its saddle: on a flat-topped path (a wall crossing a
+# wire) by 24, 7.6, 2.6, 0.6, 0.09 % of the barrier with 5, 7, 9, 13, 21 images, the barrier
+# being the same. Hence a threshold of 10 %, of the smaller of the forward and backward
+# barriers: the whole energy range would hide a maximum at the top of a long descent. If
+# no image is above both ends, any excess beyond rounding is reported.
+function _warnhidden(neb::GNEB{T}) where {T}
+    Em = midpointenergies(neb)
+    top, i = findmax(Em)
+    Emax = maximum(neb.E)
+    tol = 0.1 * (Emax - max(neb.E[1], neb.E[end])) + 8 * Float64(eps(T)) * abs(Emax)
+    top > Emax + tol &&
+        @warn "GNEB: the energy halfway between images $i and $(i+1) is higher than at any " *
+              "image, by $(top - Emax) J: the band may skip a maximum there, and `barrier` " *
+              "be too low. Check with more images."
+    return neb
+end
+
+"""
+    midpointenergies(neb) -> Vector{Float64}
+
+Energies [J] halfway along the geodesics between neighbouring images (n − 1 of them).
+A value far above every image energy means that the images may skip a maximum;
+[`relax!`](@ref) warns when the excess is more than 10 % of the barrier (the smaller of
+the forward and backward ones).
+(A small excess also occurs in correct bands, because the geodesic is not the
+minimum-energy path; it vanishes with more images.)
+"""
+function midpointenergies(neb::GNEB{T}) where {T}
+    x, B = neb.mlast[1], neb.B[1]            # unused by the optimizer (end image)
+    return map(1:length(neb.m)-1) do i
+        a = neb.m[i]
+        x .= a .+ neb.m[i+1]
+        _celldot!(neb.d, x, x)
+        # antiparallel (no unique midpoint) or empty cell: keep image i
+        x .= ifelse.(neb.d .> T(1e-8), x ./ sqrt.(max.(neb.d, T(1e-8))), a)
+        energy!(B, x, neb.world)
+    end
 end
 
 """

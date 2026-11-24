@@ -322,9 +322,16 @@ function gneb_terms(T)
             m0[1, I] = cos(θ); m0[2, I] = sin(θ); m0[3, I] = 0.02
         end
         normalize!(m0)
+        foreach(m -> clearempty!(m, par), (mA, m0, mB))
+        # a cell antiparallel between neighbours (and empty cells in the disc): midpoints
+        q = copy(mA); q[:, mesh.size[1] ÷ 2, mesh.size[2] ÷ 2 + 1, 1] .= (-1, 0, 0)
+        check("GNEB $lab: midpoints, antiparallel cell",
+              midpointenergies(GNEB(wg, [togpu(mA), togpu(q), togpu(m0), togpu(mB)]; nimages = 4)),
+              midpointenergies(GNEB(w, [mA, q, m0, mB]; nimages = 4)), T == Float64 ? 1e-12 : 1e-5)
         nc = GNEB(w, [mA, m0, mB]; nimages = 9)
         ng = GNEB(wg, [togpu(mA), togpu(m0), togpu(mB)]; nimages = 9)
         check("GNEB $lab: initial energies", ng.E, nc.E, T == Float64 ? 1e-12 : 1e-5)
+        check("GNEB $lab: midpoint energies", midpointenergies(ng), midpointenergies(nc), T == Float64 ? 1e-12 : 1e-5)
         check("GNEB $lab: initial forces (all images)", reduce(vcat, vec.(Array.(ng.F))),
               reduce(vcat, vec.(nc.F)), T == Float64 ? 1e-10 : 1e-4)
         tol = T == Float64 ? 1e-6 : 1e-3

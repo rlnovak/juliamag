@@ -99,7 +99,7 @@ export fieldenergy, exchangeenergy, anisotropyenergy, dmienergy, demagenergy,
 
 # Energy barriers: geodesic nudged elastic band
 include("neb.jl")
-export GNEB, setclimbing!, energies, barrier, pathcoordinate, saddle, images, saveimages
+export GNEB, setclimbing!, energies, midpointenergies, barrier, pathcoordinate, saddle, images, saveimages
 
 # --- Spin-transfer torque --------------------------------------------------
 include("stt.jl")

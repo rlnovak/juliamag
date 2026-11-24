@@ -5,7 +5,9 @@
 # CASE  ellipse_uniform   magnum.np demo energy_barrier_ellipse: +x -> +y -> -x, a path
 #                         that keeps the inversion symmetry m(r) = m(-r)
 #       ellipse_wall      same element, the waypoint is a wall at x = 0 (no inversion symmetry)
-#       skyrmion          MicroMagnetic.jl tutorial: collapse in a periodic film, bulk DMI
+#       skyrmion          film of the MicroMagnetic.jl tutorial (periodic, bulk DMI): collapse of
+#                         one Bloch skyrmion, Q = -1 checked
+#       lattice4          same film, a lattice of four skyrmions (Q = -4) to the uniform state
 #
 # Both codes get the same end states (relaxed in JuliaMag) and the same initial path.
 #   1. Energy of identical states, term by term: the discretized functionals must agree
@@ -15,7 +17,7 @@
 # Text results go to stdout; images and energies to OUT (read by ellipse_magnumnp.py).
 
 using JuliaMag, Printf, Random
-using LinearAlgebra: norm, cross       # not normalize!, which JuliaMag also exports
+using LinearAlgebra: norm, cross, dot  # not normalize!, which JuliaMag also exports
 import MicroMagnetic as MM
 
 const CASE = ARGS[1]
@@ -69,6 +71,34 @@ println("CASE ", CASE, "  magnetic cells ", count(active), "  isconservative ", 
 # MicroMagnetic stores spins as a vector (3N), x fastest: the same order as vec(m).
 # Its GNEB wants unit spins on magnetic cells; the others are zeroed here.
 tovec(m) = vec(m .* active)
+
+# Start state of the periodic-film cases. "skyrmion": one Bloch skyrmion. "lattice4": what
+# JuliaMag's minimizer makes of the MicroMagnetic tutorial seed (a disc of -z, charge 0):
+# a lattice of four. (MicroMagnetic's SD relaxes that seed to one skyrmion.)
+function filmseed(case)
+    m = zeromag(Float64, mesh)
+    for j in 1:60, i in 1:60
+        x, y = i - 30.0, j - 30.0; r = hypot(x, y)
+        if case == "skyrmion"
+            θ = π / (1 + exp((r - 10) / 2))
+            m[:, i, j, 1] .= r == 0 ? (0.0, 0.0, -1.0) : (-sin(θ) * y / r, sin(θ) * x / r, cos(θ))
+        else
+            m[:, i, j, 1] .= r < 10 ? (0.01, 0.0, -1.0) : (0.0, 0.0, 1.0)
+        end
+    end
+    return normalize!(m)
+end
+# Berg-Luscher charge of the periodic layer: an exact integer.
+function charge(m)
+    nx, ny = size(m, 2), size(m, 3); q = 0.0
+    tri(a, b, c) = 2atan(dot(a, cross(b, c)), 1 + dot(a, b) + dot(b, c) + dot(c, a))
+    for j in 1:ny, i in 1:nx
+        ip, jp = mod1(i + 1, nx), mod1(j + 1, ny)
+        a, b, c, d = m[:, i, j, 1], m[:, ip, j, 1], m[:, ip, jp, 1], m[:, i, jp, 1]
+        q += tri(a, b, c) + tri(a, c, d)
+    end
+    return q / 4π
+end
 
 # --- 1. the energy functional --------------------------------------------------------
 function julia_terms(m)
@@ -144,13 +174,11 @@ if startswith(CASE, "ellipse")
     end
     const states = [[mA]; [clearempty!(m, world.material) for m in ways]; [mB]]
 else
-    m0 = zeromag(Float64, mesh)
-    for j in 1:60, i in 1:60
-        m0[:, i, j, 1] .= (i - 30)^2 + (j - 30)^2 < 100 ? (0.01, 0.0, -1.0) : (0.0, 0.0, 1.0)
-    end
-    normalize!(m0)
-    const mA = relaxed(m0)
+    const mA = relaxed(filmseed(CASE))
     const mB = relaxed(uniform(mesh, (0, 0, 1)))
+    @printf("    charge of the start state %+.4f, of the end state %+.4f; E[start]-E[end] = %.6e J\n",
+            charge(mA), charge(mB), totalenergy(mA, world) - totalenergy(mB, world))
+    round(Int, charge(mA)) == (CASE == "skyrmion" ? -1 : -4) || error("not the intended start state")
     const states = [mA, mB]
 end
 const NIMG = 21

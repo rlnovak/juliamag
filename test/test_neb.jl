@@ -115,10 +115,18 @@ end
         # a step that raises the force is undone with a finite `reject`
         nr = relax!(GNEB(neb.world, [mA, images(neb)[7], mB]; nimages = 13);
                     stopforce = 1e-6, reject = 1.25)
-        @test nr.maxforce < 1e-6 && isfinite(nr.dtmax)           # something was rejected
+        @test nr.maxforce < 1e-6 && isfinite(nr.dtmax) && nr.rejected > 0
         @test barrier(nr) ≈ ΔE rtol = 1e-8
         # zero field: the saddle is a wall in the middle, energy 4√(AK)·S
-        n0 = _wire(Float64; h = 0.0)[1]
+        # a steep descent whose barrier falls between the first images: no image is above
+        # the ends, and the midpoints show it. With more images the barrier is there.
+        ns = @test_logs((:warn, r"no free image"), (:warn, r"halfway between images"),
+                        _wire(Float64; h = 0.8, nimages = 7)[1])
+        @test ns.climb == 0 && barrier(ns) == 0
+        ns = @test_logs _wire(Float64; h = 0.8, nimages = 21)[1]
+        @test barrier(ns) > 0
+        # (its midpoints are 0.6 % above the saddle, which is not a hidden maximum)
+        n0 = @test_logs _wire(Float64; h = 0.0)[1]
         @test n0.maxforce < 1e-6
         @test barrier(n0) ≈ 4sqrt(1.3e-11 * _nK) * (2e-9)^2 rtol = 0.02
     end
@@ -157,6 +165,8 @@ end
         # from the saddle the descent path of the two regions is not coherent.
         @test π * sqrt(8) < pathcoordinate(nr)[end] < 1.001 * π * sqrt(8)
         @test all(iszero, images(nr)[7][:, 5:6, :, :])             # empty cells untouched
+        @test all(isfinite, midpointenergies(nr))
+        @test maximum(midpointenergies(nr)) < maximum(energies(nr))
     end
 
     @testset "no interior maximum; changed field; unnormalized states" begin
@@ -169,6 +179,35 @@ end
         relax!(n1; stopforce = 1e-7)
         @test barrier(n1) ≈ _nK * volume(m1) rtol = 1e-9
         @test_throws ErrorException GNEB(w1, 2 .* uniform(m1, (0, 0, 1)), uniform(m1, (0, 0, -1)))
+    end
+
+    # A maximum that falls between two images: a band whose only free image sits next to
+    # the first one, θ = 0.2, so the midpoint of the next segment is at (0.2 + π)/2.
+    @testset "hidden maximum between images, $T" for T in (Float64, Float32)
+        m1 = Mesh((2, 1, 1), (4e-9, 4e-9, 4e-9))
+        w1 = World(m1, _nmat(T); demag = false)
+        up, dn = uniform(T, m1, (0, 0, 1)), uniform(T, m1, (0, 0, -1))
+        KV = _nK * 2 * cellvolume(m1)
+        nh = GNEB(w1, [up, uniform(T, m1, (sin(0.2), 0, cos(0.2))), dn]; nimages = 3)
+        e = midpointenergies(nh)
+        @test e .- nh.E[1] ≈ KV .* sin.([0.1, (0.2 + π) / 2]) .^ 2 rtol = (T == Float64 ? 1e-12 : 1e-5)
+        @test_logs (:warn, r"did not converge") (:warn, r"halfway between images 2 and 3") relax!(nh; stopforce = 1e-7, maxsteps = 0)
+        @test_logs (:warn, r"did not converge") relax!(nh; stopforce = 1e-7, maxsteps = 0, climbing = false)
+        @test_throws ErrorException relax!(nh; reject = 1)
+        # a converged climbing band: no warning, and the call leaves the band as it was
+        ng = GNEB(w1, up, dn; nimages = 12)
+        tol = T == Float64 ? 1e-7 : 1e-4
+        @test_logs relax!(ng; stopforce = tol)
+        @test maximum(midpointenergies(ng)) < maximum(energies(ng))
+        before = (images(ng), copy(ng.E), ng.maxforce)
+        midpointenergies(ng)
+        JuliaMag._update!(ng)
+        @test (images(ng), ng.E, ng.maxforce) == before
+        # a cell antiparallel between neighbours has no midpoint: its value in image i is kept
+        q = copy(up); q[:, 2, 1, 1] .= (1, 0, 0); q[:, 1, 1, 1] .= (0, 0, -1)
+        na = GNEB(w1, [up, q, dn]; nimages = 3)
+        x1 = copy(up); x1[:, 2, 1, 1] .= (1, 0, 1) ./ sqrt(T(2))
+        @test midpointenergies(na)[1] ≈ totalenergy(x1, w1) rtol = 1e-5
     end
 
     @testset "warnings, errors, output" begin
