@@ -12,6 +12,7 @@ using Test
     include("test_dynamics.jl")
     include("test_energy.jl")
     include("test_energy_gradient.jl")
+    include("test_neb.jl")
     include("test_stt.jl")
     include("test_shape.jl")
     include("test_regions.jl")

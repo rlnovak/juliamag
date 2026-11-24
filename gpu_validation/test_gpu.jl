@@ -300,8 +300,43 @@ function average_terms(label, mesh, params, T)
     end
 end
 
+# GNEB on the GPU: the band built on CuArrays (same initial path) must have the same
+# energies and forces as on the CPU, and relax to the same barrier (the barrier is a
+# property of the saddle, so it agrees to the force tolerance even though the BB
+# iterates diverge at the rounding level). Wire: domain-wall nucleation with demag;
+# disc: RegionParams with an empty background, no edge smoothing (conservative).
+function gneb_terms(T)
+    wire = Mesh((32, 1, 1), (2e-9, 2e-9, 2e-9))
+    mw = Material(Msat = T(8e5), Aex = T(1.3e-11), alpha = T(0.5), Ku = T(5e5), anisU = (1, 0, 0))
+    dm = Mesh((16, 16, 1), (4e-9, 4e-9, 4e-9))
+    rp = RegionParams(dm, Material(Msat = T(8e5), Aex = T(1.3e-11), alpha = T(0.5)))
+    setregion!(rp, 0; Msat = 0.0)
+    setregion!(rp, 1; Msat = 8e5, Aex = 1.3e-11, Ku = 2e5, anisU = (1, 0, 0))
+    setgeometry!(rp, Cylinder(60e-9, 1.0); id = 1)
+    for (lab, mesh, par, Bx) in (("wire", wire, mw, -0.1), ("disc regions", dm, rp, -0.05))
+        w = World(mesh, par; demag = true, Bext = (Bx, 0, 0)); wg = togpu(w)
+        mA = uniform(T, mesh, (1, 0, 0)); mB = uniform(T, mesh, (-1, 0, 0))
+        m0 = zeromag(T, mesh)                       # a wall in the middle as waypoint
+        for I in CartesianIndices(axes(m0)[2:4])
+            θ = π / (1 + exp(-(I[1] - mesh.size[1] / 2) / 2.5))
+            m0[1, I] = cos(θ); m0[2, I] = sin(θ); m0[3, I] = 0.02
+        end
+        normalize!(m0)
+        nc = GNEB(w, [mA, m0, mB]; nimages = 9)
+        ng = GNEB(wg, [togpu(mA), togpu(m0), togpu(mB)]; nimages = 9)
+        check("GNEB $lab: initial energies", ng.E, nc.E, T == Float64 ? 1e-12 : 1e-5)
+        check("GNEB $lab: initial forces (all images)", reduce(vcat, vec.(Array.(ng.F))),
+              reduce(vcat, vec.(nc.F)), T == Float64 ? 1e-10 : 1e-4)
+        tol = T == Float64 ? 1e-6 : 1e-3
+        relax!(nc; stopforce = tol); relax!(ng; stopforce = tol)
+        check("GNEB $lab: relaxed barrier", [barrier(ng)], [barrier(nc)], T == Float64 ? 1e-8 : 1e-4)
+        check("GNEB $lab: converged on the GPU", [ng.maxforce < tol ? 0.0 : 1.0], [0.0], 0.0)
+    end
+end
+
 for T in (Float64, Float32)
     println("\n================ ", T, " ================")
+    gneb_terms(T)
     mI, mB = mats(T)
     for (lab, mesh, mat) in (
             ("mat open 3D Dind", Mesh((20, 16, 4), (3e-9, 3e-9, 2e-9)), mI),

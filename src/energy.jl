@@ -136,16 +136,27 @@ boundary terms; the dynamics is unaffected:
 """
 function isconservative(w::World)
     p = w.material
-    partial = p isa RegionParams && any(f -> 0 < f < 1, p.fill)
-    empty = p isa RegionParams && any(iszero, (msat(p, i, j, k) for i in 1:w.mesh.size[1],
-                                               j in 1:w.mesh.size[2], k in 1:w.mesh.size[3]))
-    partial && return false
+    f = _cellfill(p)
+    f !== nothing && any(x -> 0 < x < 1, f) && return false
     if hasdmi(p)
-        empty && return false
+        any(iszero, _msatcells(p, w.mesh)) && return false
         dirs = hasdbulk(p) ? (1, 2, 3) : (1, 2)
         any(d -> !isperiodic(w.mesh, d) && w.mesh.size[d] > 1, dirs) && return false
     end
     return true
+end
+
+# Per-cell geometry fill (nothing: every cell full) and per-cell moment Msat·fill as a
+# host (1,Nx,Ny,Nz) array. The GPU region parameters have their own methods.
+_cellfill(::AbstractParams) = nothing
+_cellfill(p::RegionParams) = p.fill
+function _msatcells(p::AbstractParams, mesh::Mesh)
+    T = eltype(p)
+    w = zeros(T, 1, mesh.size...)
+    for k in 1:mesh.size[3], j in 1:mesh.size[2], i in 1:mesh.size[1]
+        w[1, i, j, k] = msat(p, i, j, k)
+    end
+    return w
 end
 
 function _energy_from_field(m::AbstractArray{T,4}, B::AbstractArray{T,4}, Bext,

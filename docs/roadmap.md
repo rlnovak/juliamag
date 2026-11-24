@@ -322,6 +322,11 @@ KernelAbstractions was removed from this queue: see "Future features".
 
 **1. NEB / GNEB: energy barriers and minimum-energy paths.** Detailed plan:
 [`plan_neb_eigen.md`](plan_neb_eigen.md) §0–1.
+- **Status, 2026-11-24.**
+  - Step 0 (`energy!`, `isconservative`) and step 1a are DONE: the `src/neb.jl` core
+    (Barzilai–Borwein plus Cayley optimizer, climbing image, Hermite saddle) is
+    validated on Stoner–Wohlfarth to 6e-15.
+  - Next: the ellipse and skyrmion cross-code cases, GPU runs, and the paper.
 - **Prerequisite.** Energy functions on the GPU, from the feature backlog: the
   NEB evaluates every image's energy and gradient at every iteration.
 - **Method.** Geodesic NEB on the product of unit spheres (Bessarab, Uzdin,

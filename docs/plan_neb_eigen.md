@@ -173,6 +173,41 @@ N = 16 that is about 100 MB in Float64, which fits the 4 GB P1000.
    image has exactly one negative eigenvalue.
 5. **GPU = CPU** on items 1–3 to rounding (test_gpu).
 
+**Status, 2026-11-24: step 1a DONE** (`src/neb.jl`, `test/test_neb.jl`, 49 tests).
+- API: `GNEB(world, mA, mB)` or `GNEB(world, [states…])`, `relax!(neb)`,
+  `setclimbing!`, `energies`, `barrier`, `pathcoordinate`, `saddle` (Hermite),
+  `images`, `saveimages`. Forces reduced by V·Msref, so `stopforce` and `spring`
+  are in tesla.
+- **Optimizer: Barzilai–Borwein on the whole chain plus the Cayley rotation** (the
+  minimizer's scheme). VPO (Bessarab 2015) was implemented and compared: it took
+  2–3× more steps on Stoner–Wohlfarth, so it was removed. A force-increase rejection
+  test (thresholds 10, 2, 1.25) cost 2–5× more steps and did not rescue any case.
+  Only non-finite steps are rejected by default (`reject=Inf`).
+- **Bug found and fixed while validating.** The projection X − (m·X)m is orthogonal
+  to m only if |m| = 1 exactly. The Cayley step then amplified the rounding error of
+  |m| by ×1.6 per step, until the band blew up. The fix is to write it as
+  |m|²X − (m·X)m (= −m×(m×X)), as the minimizer's torque already does; ||m|−1| now
+  stays below 1e-12.
+- Results (Float64, stopforce 1e-7 T):
+  - Stoner–Wohlfarth, h = 0 … 0.8: ΔE = KV(1−h)² to ≤ 6e-15 relative; saddle
+    m_z = h to 1e-6.
+  - Flat demagnetizing cell, from an out-of-plane initial path: the band relaxes
+    into the plane, and ΔE matches the 1D in-plane maximum to ≤ 3e-13 for k = 0.1,
+    1 and 10 T.
+    - A waypoint on the symmetry plane xz keeps the band in that invariant plane, so
+      it converges to a higher-order saddle path. This is correct NEB behaviour, and
+      the initial path must break the symmetry.
+  - Without climbing (9 images), the Hermite saddle estimate is within 4.4e-4,
+    against 1.4e-2 for the highest image.
+  - Domain-wall nucleation in a 64 nm wire:
+    - ΔE is identical to 11 digits for k = 0.3, 1 and 3, and for N = 13 and 21.
+    - At 0.3 h it is 1/3 of the coherent barrier.
+    - At h = 0 the saddle is a centred wall, with ΔE within 0.7 % of 4√(AK)·S
+      (cell 2 nm, against δ = 5.1 nm).
+    - Float32 gives the same barrier to 3e-7.
+- GPU = CPU checks were added to `gpu_validation/test_gpu.jl` (wire and region
+  disc: initial E and F, relaxed barrier). They are pending an idle GPU.
+
 **Paper.** A section "Energy barriers", with the Stoner–Wohlfarth figure
 (barrier vs h, analytic curve in red, JuliaMag in blue) and the ellipse or
 skyrmion path.
@@ -266,7 +301,7 @@ product. It works unchanged on the GPU, so it reuses the FFT demag.
 | step | content | gate to the next step |
 |---|---|---|
 | 0 | `energy!`, `linearfield!` (CPU + GPU) | tests pass; GPU check queued on an idle GPU |
-| 1a | GNEB core, CPU, Stoner–Wohlfarth | ΔE to 1e-6 |
+| 1a | GNEB core, CPU, Stoner–Wohlfarth | ΔE to 1e-6 — DONE 2026-11-24 (≤ 6e-15) |
 | 1b | Ellipse and skyrmion barriers, image and spring convergence | cross-code agreement documented |
 | 1c | GPU runs, paper section, commit | — |
 | 2a | Eigen operator and dense solver, Kittel and film cases | to 1e-8 |
