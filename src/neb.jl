@@ -49,7 +49,7 @@ Relax with [`relax!`](@ref)`(neb)`; read back [`energies`](@ref), [`barrier`](@r
 mutable struct GNEB{T<:AbstractFloat,W<:World{T},A<:AbstractArray{T,4},S<:AbstractArray{T,4}}
     world::W
     m::Vector{A}            # images, 1 and end fixed
-    B::Vector{A}            # effective field of each image
+    B::Vector{A}            # effective field of each image (scratch between steps)
     F::Vector{A}            # GNEB force [T]; at the end images, G (for dE/ds)
     t::Vector{A}            # unit tangent at each image
     wr::S                   # Msat(cell)/Msref, size (1,Nx,Ny,Nz)
@@ -60,6 +60,7 @@ mutable struct GNEB{T<:AbstractFloat,W<:World{T},A<:AbstractArray{T,4},S<:Abstra
     Gt::Vector{Float64}     # G·τ at each image [T]: −dE/ds / (V Msref)
     spring::Float64
     climb::Int              # climbing image, 0 = none
+    climbauto::Bool         # chosen by relax! (follows the top), not by the user
     Msref::Float64
     steps::Int
     maxforce::Float64       # max over interior images and cells of |F| [T]
@@ -90,6 +91,11 @@ function GNEB(w::World{T}, states::AbstractVector; nimages::Integer = 16, spring
     Msref > 0 || error("GNEB: no magnetic cell")
     wcpu ./= T(Msref)
     m1 = states[1]
+    for (k, s) in enumerate(states)      # unit vectors on every magnetic cell
+        n2 = sum(abs2, Array(s); dims = 1)
+        all(abs.(n2[wcpu .> 0] .- 1) .< 1e-3) ||
+            error("GNEB: state $k is not normalized on the magnetic cells")
+    end
     wr = copyto!(similar(m1, sz), wcpu)
     mask = copyto!(similar(m1, sz), T.(wcpu .> 0))
     # initial path on the host (done once), then copied to the array type of the states
@@ -100,13 +106,20 @@ function GNEB(w::World{T}, states::AbstractVector; nimages::Integer = 16, spring
     n = length(ms)
     neb = GNEB{T,typeof(w),A,typeof(wr)}(w, ms, [mk() for _ in 1:n], [fill!(mk(), 0) for _ in 1:n],
         [fill!(mk(), 0) for _ in 1:n], wr, mask, similar(wr),
-        zeros(n), zeros(n - 1), zeros(n), Float64(spring), 0, Msref, 0, Inf,
+        zeros(n), zeros(n - 1), zeros(n), Float64(spring), 0, true, Msref, 0, Inf,
         Float64(dt), Float64(dt), Inf, 0, [mk() for _ in 1:n], [fill!(mk(), 0) for _ in 1:n])
-    for i in (1, n)                      # end images: energy and G once
-        neb.E[i] = energy!(neb.B[i], neb.m[i], w)
+    _updateends!(neb)
+    _update!(neb)
+    return neb
+end
+
+# End images: energy and G. Done at construction and at the start of relax! (the
+# applied field of the world may have changed in between).
+function _updateends!(neb::GNEB)
+    for i in (1, length(neb.m))
+        neb.E[i] = energy!(neb.B[i], neb.m[i], neb.world)
         _gradforce!(neb.F[i], neb.m[i], neb.B[i], neb)
     end
-    _update!(neb)
     return neb
 end
 
@@ -115,27 +128,38 @@ end
 # Per-cell great-circle interpolation m(s) = cos(sθ) a + sin(sθ) p, p the unit
 # direction of b − (a·b)a. For antiparallel a, b (no unique great circle) p is the
 # Cartesian axis least aligned with a, projected: deterministic, so a uniform state
-# rotates coherently.
+# rotates coherently. Computed in Float64 and normalized whatever T is: in Float32, p of
+# a nearly antiparallel pair is mostly rounding noise along a, which would leave
+# |m| − 1 up to several per cent.
 function _slerp!(out, a, b, s)
+    tol = 4 * Float64(eps(eltype(a)))          # rounding of b − c·a for unit a, b
     @inbounds for I in CartesianIndices(axes(a)[2:4])
-        ax, ay, az = a[1, I], a[2, I], a[3, I]
-        bx, by, bz = b[1, I], b[2, I], b[3, I]
-        c = clamp(ax*bx + ay*by + az*bz, -one(ax), one(ax))
+        ax, ay, az = Float64(a[1, I]), Float64(a[2, I]), Float64(a[3, I])
+        bx, by, bz = Float64(b[1, I]), Float64(b[2, I]), Float64(b[3, I])
+        na = sqrt(ax^2 + ay^2 + az^2); nb = sqrt(bx^2 + by^2 + bz^2)
+        if na == 0 || nb == 0                  # empty cell
+            out[1, I], out[2, I], out[3, I] = a[1, I], a[2, I], a[3, I]
+            continue
+        end
+        ax /= na; ay /= na; az /= na; bx /= nb; by /= nb; bz /= nb
+        c = clamp(ax*bx + ay*by + az*bz, -1.0, 1.0)
         px, py, pz = bx - c*ax, by - c*ay, bz - c*az
         pn = sqrt(px^2 + py^2 + pz^2)
         θ = atan(pn, c)
-        if pn < 1e-6 && c < 0
+        if pn < max(tol, 1e-6) && c < 0
             ex, ey, ez = abs(ax) <= abs(ay) && abs(ax) <= abs(az) ? (1, 0, 0) :
                          abs(ay) <= abs(az) ? (0, 1, 0) : (0, 0, 1)
             r = ex*ax + ey*ay + ez*az
             px, py, pz = ex - r*ax, ey - r*ay, ez - r*az
             pn = sqrt(px^2 + py^2 + pz^2)
         end
-        if pn == 0 || θ == 0
-            out[1, I], out[2, I], out[3, I] = ax, ay, az
+        if pn == 0
+            out[1, I], out[2, I], out[3, I] = a[1, I], a[2, I], a[3, I]
         else
             cs, sn = cos(s*θ), sin(s*θ) / pn
-            out[1, I] = cs*ax + sn*px; out[2, I] = cs*ay + sn*py; out[3, I] = cs*az + sn*pz
+            mx, my, mz = cs*ax + sn*px, cs*ay + sn*py, cs*az + sn*pz
+            q = 1 / sqrt(mx^2 + my^2 + mz^2)
+            out[1, I] = q*mx; out[2, I] = q*my; out[3, I] = q*mz
         end
     end
     return out
@@ -341,7 +365,12 @@ end
 
 Relax the band until the largest GNEB force on any cell of any free image is below
 `stopforce` [T]. With `climbing`, the highest-energy image becomes a climbing image
-once the force is below `climbforce`, and then converges onto the saddle point.
+once the force is below `climbforce`, and then converges onto the saddle point; if
+another image becomes the highest, it takes over. An image chosen with
+[`setclimbing!`](@ref)`(neb, i)` stays the climbing image (a warning is printed if
+another one ends up higher: `barrier` is then not a saddle energy). A path with no
+free image above both ends has no saddle to climb to: it is relaxed without a
+climbing image, with a warning.
 `maxrot` caps the rotation of any cell in one step [rad]; a step that makes the
 force non-finite, or raises it more than `reject` times, is undone and the step
 size capped. Ends after `maxsteps` (with a warning).
@@ -350,12 +379,27 @@ function relax!(neb::GNEB; stopforce = 1e-4, climbing::Bool = true,
                 climbforce = 10stopforce, maxsteps::Integer = 50_000, maxrot = 0.1,
                 reject = Inf, verbose::Bool = false)
     t0 = neb.steps
+    _updateends!(neb)
+    !climbing && neb.climb != 0 ? setclimbing!(neb, 0) : _update!(neb)
+    moves = 0                                # re-selections of the climbing image
     while neb.steps - t0 < maxsteps
-        if climbing && neb.climb == 0 && neb.maxforce < climbforce
+        n = length(neb.m)
+        top = argmax(@view neb.E[2:n-1]) + 1
+        hasmax = neb.E[top] > max(neb.E[1], neb.E[n])
+        if climbing && hasmax && neb.climb == 0 && neb.maxforce < climbforce
             setclimbing!(neb)
             verbose && println("  GNEB step ", neb.steps, ": climbing image ", neb.climb)
+        elseif neb.climb != 0 && neb.climbauto && neb.climb != top && moves < n
+            setclimbing!(neb); moves += 1
+            verbose && println("  GNEB step ", neb.steps, ": climbing image moved to ", neb.climb)
         end
-        neb.maxforce < stopforce && (!climbing || neb.climb != 0) && break
+        if neb.maxforce < stopforce && (!climbing || !hasmax || neb.climb != 0)
+            climbing && !hasmax &&
+                @warn "GNEB: no free image is above both ends; no climbing image was used"
+            climbing && hasmax && neb.climb != top &&
+                @warn "GNEB: image $top is above the climbing image $(neb.climb)"
+            break
+        end
         _bbstep!(neb, maxrot, reject)
         neb.steps += 1
         if verbose && neb.steps % 200 == 0
@@ -372,14 +416,16 @@ end
 """
     setclimbing!(neb, i=:auto)
 
-Make image `i` (default: the highest-energy free image) the climbing image; `0`
-switches climbing off. The optimizer state is reset.
+Make image `i` the climbing image; it then stays so (e.g. to climb a lower one of two
+maxima). With `:auto`, the highest-energy free image, followed if another one becomes
+the highest; `0` switches climbing off. The optimizer state is reset.
 """
 function setclimbing!(neb::GNEB, i = :auto)
     n = length(neb.m)
     j = i === :auto ? argmax(@view neb.E[2:n-1]) + 1 : Int(i)
     (j == 0 || 2 <= j <= n - 1) || error("the climbing image must be a free image (2…$(n-1))")
     neb.climb = j
+    neb.climbauto = i === :auto || j == 0
     _resetopt!(neb)
     _update!(neb)
     return j

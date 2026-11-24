@@ -6,6 +6,7 @@
 # of the barrier from the spring constant and the number of images, and the wall
 # energy 4√(AK)·S at zero field.
 using JuliaMag, Test
+import Random
 
 const _nMs, _nK = 8e5, 5e5
 
@@ -60,6 +61,7 @@ end
     @testset "demag cell, out-of-plane initial path, spring $k" for k in (0.1, 1.0, 10.0)
         neb = GNEB(w, states; nimages = 15, spring = k)
         relax!(neb; stopforce = 1e-7)
+        @test neb.maxforce < 1e-7
         @test barrier(neb) ≈ exact rtol = 1e-9
         mc = images(neb)[neb.climb]
         @test abs(mc[3, 1, 1, 1]) < 1e-6
@@ -89,13 +91,84 @@ end
         mc = images(neb)[neb.climb]                      # nucleated at an end
         @test mc[1, 1, 1, 1] > 0.99 && mc[1, end, 1, 1] < 0.5
         for (k, n) in ((0.3, 13), (3.0, 13), (1.0, 21))
-            @test barrier(_wire(Float64; spring = k, nimages = n)[1]) ≈ ΔE rtol = 1e-8
+            nk = _wire(Float64; spring = k, nimages = n)[1]
+            @test nk.maxforce < 1e-6
+            @test barrier(nk) ≈ ΔE rtol = 1e-8
         end
         n32 = _wire(Float32; stopforce = 1e-4)[1]
         @test barrier(n32) ≈ ΔE rtol = 1e-5
+        @test _normerr(n32) < 1e-4
+        # relaxing a converged band again changes nothing; climbing off un-sets the image
+        steps = neb.steps
+        relax!(neb; stopforce = 1e-6)
+        @test neb.steps == steps && barrier(neb) == ΔE
+        relax!(neb; stopforce = 1e-4, climbing = false)
+        @test neb.climb == 0
+        # a user-chosen climbing image is kept; an automatic one follows the top
+        setclimbing!(neb, 11)
+        @test neb.climb == 11 && !neb.climbauto
+        neb.climbauto = true
+        relax!(neb; stopforce = 1e-6)
+        @test neb.maxforce < 1e-6
+        @test neb.climb == argmax(energies(neb))
+        @test barrier(neb) ≈ ΔE rtol = 1e-8
+        # a step that raises the force is undone with a finite `reject`
+        nr = relax!(GNEB(neb.world, [mA, images(neb)[7], mB]; nimages = 13);
+                    stopforce = 1e-6, reject = 1.25)
+        @test nr.maxforce < 1e-6 && isfinite(nr.dtmax)           # something was rejected
+        @test barrier(nr) ≈ ΔE rtol = 1e-8
         # zero field: the saddle is a wall in the middle, energy 4√(AK)·S
         n0 = _wire(Float64; h = 0.0)[1]
+        @test n0.maxforce < 1e-6
         @test barrier(n0) ≈ 4sqrt(1.3e-11 * _nK) * (2e-9)^2 rtol = 0.02
+    end
+
+    # Float32 nearly antiparallel states: the initial path must stay on the sphere
+    @testset "initial path is normalized, perturbation $ε" for ε in (1f-6, 1f-5, 1f-4, 1f-3)
+        m1 = Mesh((8, 8, 1), (2e-9, 2e-9, 2e-9))
+        rng = Random.MersenneTwister(5)
+        pm = [normalize!(uniform(Float32, m1, (0, 0, s)) .+ ε .* randn(rng, Float32, 3, 8, 8, 1)) for s in (1, -1)]
+        w32 = World(m1, _nmat(Float32); demag = false)
+        @test _normerr(GNEB(w32, pm[1], pm[2]; nimages = 9)) < 1e-6
+    end
+
+    # Two regions of different Msat with the same K/Msat, next to empty cells, coupled by
+    # exchange: a uniform state rotates coherently, so ΔE = (1 − h)² Σ K V exactly. The
+    # forces are weighted by Msat(cell)/Msref, which no other case exercises.
+    @testset "regions with different Msat and empty cells" begin
+        m6 = Mesh((6, 2, 1), (2e-9, 2e-9, 2e-9))
+        r6 = RegionParams(m6, Material(Msat = 8e5, Aex = 1.3e-11, alpha = 0.5))
+        setregion!(r6, 0; Msat = 0.0)
+        setregion!(r6, 1; Msat = 8e5, Aex = 1.3e-11, Ku = 4e5, anisU = (0, 0, 1))
+        setregion!(r6, 2; Msat = 4e5, Aex = 1.3e-11, Ku = 2e5, anisU = (0, 0, 1))
+        for j in 1:2, i in 1:4
+            defregioncell!(r6.regions, i <= 2 ? 1 : 2, i, j, 1)
+        end
+        hh = 0.3
+        w6 = World(m6, r6; demag = false, Bext = (0, 0, -2 * 4e5 * hh / 8e5))
+        up = clearempty!(uniform(m6, (0, 0, 1)), r6)
+        tilt = clearempty!(uniform(m6, (0.8, 0.36, 0.48)), r6)
+        dn = clearempty!(uniform(m6, (0, 0, -1)), r6)
+        nr = GNEB(w6, [up, tilt, dn]; nimages = 13)
+        relax!(nr; stopforce = 1e-8)
+        @test nr.maxforce < 1e-8
+        @test barrier(nr) ≈ cellvolume(m6) * 4 * (4e5 + 2e5) * (1 - hh)^2 rtol = 1e-9
+        # 8 magnetic cells: length ≥ π√8. Not equal to it: the forces are ∝ Msat, so away
+        # from the saddle the descent path of the two regions is not coherent.
+        @test π * sqrt(8) < pathcoordinate(nr)[end] < 1.001 * π * sqrt(8)
+        @test all(iszero, images(nr)[7][:, 5:6, :, :])             # empty cells untouched
+    end
+
+    @testset "no interior maximum; changed field; unnormalized states" begin
+        m1 = Mesh((1, 1, 1), (4e-9, 4e-9, 4e-9))
+        w1 = World(m1, _nmat(); demag = false, Bext = (0, 0, -2_nK * 1.5 / _nMs))   # h > 1
+        n1 = GNEB(w1, uniform(m1, (0, 0, 1)), uniform(m1, (0, 0, -1)); nimages = 9)
+        @test_logs (:warn, r"no free image") match_mode = :any relax!(n1; stopforce = 1e-7)
+        @test n1.climb == 0 && barrier(n1) == 0
+        setexternalfield!(w1, (0, 0, 0))
+        relax!(n1; stopforce = 1e-7)
+        @test barrier(n1) ≈ _nK * volume(m1) rtol = 1e-9
+        @test_throws ErrorException GNEB(w1, 2 .* uniform(m1, (0, 0, 1)), uniform(m1, (0, 0, -1)))
     end
 
     @testset "warnings, errors, output" begin

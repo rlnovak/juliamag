@@ -317,7 +317,10 @@ with $D$ in J/m$^2$. The bulk (Bloch) DMI, for chiral B20 crystals, has
 \end{equation}
 %
 with $D$ in J/m$^3$. Gradients use central differences with the same Neumann /
-periodic boundary treatment as the exchange field. We verified both forms term
+periodic boundary treatment as the exchange field. \mumax{} instead applies the
+chiral boundary condition of the DMI at free edges, which is not implemented
+here: the two codes agree in the interior and on periodic axes, and differ in
+the edge cells of a DMI sample. We verified both forms term
 by term against the corresponding \mumax{} kernels, and confirmed that a Bloch
 helix seeded at the equilibrium period $L = 4\pi A/D$ has a smaller residual
 torque than one at the wrong period.
@@ -1128,24 +1131,27 @@ bit for bit. Figure~\ref{fig:vortex_snap} shows the two classes.
 \begin{itemize}
   \item \emph{The short-lived class is a two-vortex state.} Two cores of equal
   polarity enter at opposite edges at $-15$~mT and move along point-symmetric
-  tracks. At $-20$~mT they sit near the top and bottom edges ($r/R\approx0.8$),
-  with the central domain along the field, hence the large $|\langle
-  m_x\rangle|$. They leave one after the other at $-25$~mT.
+  tracks. By the end of the $-20$~mT step they sit near the top and bottom edges
+  ($r/R\approx0.85$), with the central domain along the field, hence the large
+  $|\langle m_x\rangle|$. They leave one after the other at $-25$~mT, $0.5$~ns
+  apart.
   \item \emph{The long-lived class is a single vortex.} It enters at the edge,
   crosses the disc, and settles on the displacement branch: the core sits
   perpendicular to the field and moves out at about $4$~nm/mT, from
   $r/R=0.49$ at $-20$~mT to $0.64$ at $-30$~mT. It is annihilated at $-60$~mT.
-  \item \emph{The single vortex reverses its polarity on the way in.} At
-  $6.7$~ns a dip of opposite polarity forms $30$~nm from the moving core, and
-  $0.2$~ns later only a core of the opposite polarity is left. This is the
-  vortex--antivortex-mediated switching of
-  Refs.~\cite{vanwaeyenberge2006,hertel2007}. The core speed just before it is
-  $200$--$310$~m/s, close to the critical velocity of about $330$~m/s for this
-  exchange constant~\cite{lee2008}.
+  \item \emph{The single vortex reverses its polarity on the way in.} In the
+  snapshot $0.7$~ns into the $-15$~mT step a dip of opposite polarity lies
+  $30$~nm from the moving core, and $0.2$~ns later only a core of the opposite
+  polarity is left. This sequence is the one expected for switching through a
+  vortex--antivortex pair~\cite{vanwaeyenberge2006,hertel2007}, although the
+  $0.1$~ns snapshots do not resolve the antivortex itself. The core moves at
+  about $240$~m/s before the reversal ($180$--$310$~m/s in $50$~ps secants),
+  below the critical velocity $330\pm37$~m/s reported for
+  Permalloy~\cite{lee2008}, so that criterion alone does not account for it.
 \end{itemize}
 The narrow spread of $\langle m_x\rangle$ in the short-lived class
 ($0.69$--$0.73$ at $20$~mT) suggests that all 11 of its loops reach this same
-two-vortex state.
+two-vortex state, but only one of them was imaged.
 
 \begin{figure*}[t]
   \centering

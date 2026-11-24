@@ -7,3 +7,4 @@ Manifest.toml
 __pycache__/
 *.pyc
 gpu_validation/thermal_hysteresis/snap/ovf/
+gpu_validation/gneb/micromagnetic/Manifest.toml

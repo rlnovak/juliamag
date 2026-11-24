@@ -64,15 +64,28 @@ present `anisotropyenergy`. A test pins this down.
 - `energy!`, `linearfield!` and `isconservative` are in place, with
   `test/test_energy_gradient.jl` (42 tests) and checks in `test_gpu.jl`.
 
-**Finding: the gradient check exposes two non-conservative discretizations,**
-both inherited from mumax3 on purpose. The central-difference test, which is exact
+**Finding: the gradient check exposes two non-conservative discretizations.** Only
+the first is inherited from mumax3 (corrected 2026-11-24; see item 2). The central-difference test, which is exact
 for a quadratic E, gives a relative error of about 1e-13 for exchange, anisotropy,
 demag (also with fractional cells), Zeeman, and region interfaces. It fails by
 2–6 % in two cases:
 1. **Exchange on edge-smoothed cells.** The field uses the region's Msat, but the
    energy weights it by Msat·fill, so the operator F·L is not symmetric.
-2. **DMI next to an open boundary** (or, by the same mechanism, an empty cell).
-   mumax3's boundary condition makes the discrete operator non-symmetric.
+   - Checked in mumax3's source: `AddExchange` divides by Msat, while
+     `GetExchangeEnergy` uses M_full = Msat·geometry·m.
+2. **DMI next to an open boundary** (or, by the same mechanism, an empty cell). The
+   cause is JuliaMag's own simplification, not mumax3.
+   - `src/dmi.jl` clamps the missing neighbour (Neumann, ∂m/∂n = 0) in the central
+     difference. That operator is not symmetric at the edge.
+   - mumax3 extrapolates the missing neighbour with the chiral condition
+     2A ∂m/∂n = …D. Exchange plus DMI at the edge bond then reduces to
+     (D²/2A)(mx, 0, mz) for an x edge (up to the common 1/Msat), which is symmetric.
+     Its `OpenBC` option (skip the bond) is symmetric too. mumax3 is therefore
+     conservative here.
+   - An earlier version of this note blamed mumax3's boundary condition: wrong.
+   - The clamp also drops the chiral edge canting, so open DMI samples differ from
+     mumax3 in the edge cells. Porting the boundary condition would fix both; it
+     changes the physics of every open DMI run and is the user's decision.
    - Interfacial DMI with x and y periodic is exact.
 
 In both cases the field drives the dynamics correctly. The reported energy,
@@ -179,8 +192,11 @@ N = 16 that is about 100 MB in Float64, which fits the 4 GB P1000.
   `images`, `saveimages`. Forces reduced by V·Msref, so `stopforce` and `spring`
   are in tesla.
 - **Optimizer: Barzilai–Borwein on the whole chain plus the Cayley rotation** (the
-  minimizer's scheme). VPO (Bessarab 2015) was implemented and compared: it took
-  2–3× more steps on Stoner–Wohlfarth, so it was removed. A force-increase rejection
+  minimizer's scheme). VPO (Bessarab 2015) was implemented and compared, then
+  removed. With the corrected projection it converges in every case and gives the
+  same barrier (≤ 1.5e-13), in 2–3× more steps on Stoner–Wohlfarth, 6–21× on the
+  flat cell and 10–11× on the wire. (A first comparison, made before the
+  projection fix, had it stall at h = 0.8; that was the bug.) A force-increase rejection
   test (thresholds 10, 2, 1.25) cost 2–5× more steps and did not rescue any case.
   Only non-finite steps are rejected by default (`reject=Inf`).
 - **Bug found and fixed while validating.** The projection X − (m·X)m is orthogonal
@@ -202,8 +218,8 @@ N = 16 that is about 100 MB in Float64, which fits the 4 GB P1000.
   - Domain-wall nucleation in a 64 nm wire:
     - ΔE is identical to 11 digits for k = 0.3, 1 and 3, and for N = 13 and 21.
     - At 0.3 h it is 1/3 of the coherent barrier.
-    - At h = 0 the saddle is a centred wall, with ΔE within 0.7 % of 4√(AK)·S
-      (cell 2 nm, against δ = 5.1 nm).
+    - At h = 0 the saddle is a centred wall. ΔE/(4√(AK)·S) − 1 = −2.83, −0.66 and
+      −0.16 % for 4, 2 and 1 nm cells: second-order convergence (√(A/K) = 5.1 nm).
     - Float32 gives the same barrier to 3e-7.
 - GPU = CPU, `gpu_validation/test_gpu.jl` on labmac03 (2026-11-24, code c3a1fee):
   662/662 checks pass.

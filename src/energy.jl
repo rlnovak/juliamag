@@ -126,13 +126,16 @@ end
 Whether the effective field is exactly the gradient of the energy,
 B_eff = −(1/(V·Msat)) ∂E/∂m, cell by cell. That is what energy-path (GNEB) methods
 need. It holds for exchange, uniaxial anisotropy, demag (also with fractional cells)
-and Zeeman. Two discretizations taken from mumax3 break it, by a few percent of the
-boundary terms; the dynamics is unaffected:
+and Zeeman. Three discretizations break it:
 - exchange on edge-smoothed cells: the field uses the region's Msat, the energy
-  weights it by Msat·fill;
-- DMI next to an open boundary or an empty cell: mumax3's DMI boundary condition makes
-  the discrete operator non-symmetric. Interfacial DMI acts in x and y only, so it
-  is conservative when x and y are periodic and no cell is empty.
+  weights it by Msat·fill (as in mumax3);
+- DMI next to an open boundary or an empty cell: the clamped (Neumann) neighbour of
+  `dmi!` makes the discrete operator non-symmetric there. (mumax3's chiral boundary
+  condition does not have this problem; it is not implemented here.) Interfacial
+  DMI acts in x and y only, so it is conservative when x and y are periodic and no
+  cell is empty;
+- a DMI constant that differs between magnetic cells: `dmi!` uses the central cell's
+  D for both directions of a bond.
 """
 function isconservative(w::World)
     p = w.material
@@ -140,11 +143,17 @@ function isconservative(w::World)
     f !== nothing && any(x -> 0 < x < 1, f) && return false
     if hasdmi(p)
         any(iszero, _msatcells(p, w.mesh)) && return false
+        _dmiuniform(p) || return false
         dirs = hasdbulk(p) ? (1, 2, 3) : (1, 2)
         any(d -> !isperiodic(w.mesh, d) && w.mesh.size[d] > 1, dirs) && return false
     end
     return true
 end
+
+# Whether the DMI constants are the same in every region present.
+_dmiuniform(::AbstractParams) = true
+_dmiuniform(p::RegionParams) = allequal(@view p.Dind[_present(p)]) &&
+                               allequal(@view p.Dbulk[_present(p)])
 
 # Per-cell geometry fill (nothing: every cell full) and per-cell moment Msat·fill as a
 # host (1,Nx,Ny,Nz) array. The GPU region parameters have their own methods.

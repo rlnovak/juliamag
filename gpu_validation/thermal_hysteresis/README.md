@@ -111,10 +111,10 @@ In the other 4, ⟨my⟩ ≈ 0, a symmetric precursor.
 - At −15 mT, two cores of equal polarity (p = +1, winding +1 each) enter at
   opposite edges, at (−222, −96) and (+220, +97) nm.
 - They move along point-symmetric tracks to near the bottom and top edges:
-  r/R ≈ 0.75–0.85 at −20 mT.
+  r/R grows from 0.52 to 0.86 during the −20 mT step.
 - The central domain points along the field, so ⟨mx⟩ = −0.73.
-- Both leave at −25 mT, one after the other: the upper core near 10 ns, the lower
-  one at 11.25 ns.
+- Both leave at −25 mT, one after the other: the upper core is last seen at
+  10.76 ns, the lower one at 11.25 ns.
 - The tracker returns the cell of largest |mz|, so it alternates between the two
   cores (see `core_tracks.png`).
 
@@ -126,14 +126,18 @@ In the other 4, ⟨my⟩ ≈ 0, a symmetric precursor.
 - It is annihilated at −60 mT (phase-2 table).
 
 **Polarity reversal on entry (seed 7).**
-- At t0 + 6.7 ns, a dip with p = −1 forms 30 nm from the moving p = +1 core:
-  a vortex–antivortex pair.
-- At 6.9 ns only a p = −1 vortex (winding +1) is left: the antivortex has
-  annihilated the original core.
-- This is the switching mechanism of Van Waeyenberge et al. (Nature 2006) and
-  Hertel et al. (PRL 2007).
-- Core speed over 50 ps just before: 200–310 m/s, close to the critical
-  v_c ≈ 330 m/s for A = 1.3e-11 J/m (Lee et al., PRL 2008).
+- At t0 + 6.7 ns, a dip with p = −1 lies 30 nm from the moving p = +1 core. Its
+  winding on a 20 nm loop is 0.
+- At 6.9 ns only a p = −1 vortex (winding +1) is left.
+- The sequence is the one expected for switching through a vortex–antivortex pair
+  (Van Waeyenberge et al., Nature 2006; Hertel et al., PRL 2007). The antivortex
+  itself is not resolved by the 0.1 ns snapshots, so this is an inference.
+- Core speed (50 ps secants, 6.4–6.88 ns): mean 238, range 179–312 m/s; about
+  230 m/s in the last 0.15 ns. That is below v_c = (1.66 ± 0.18) γ√A = 330 ± 37 m/s
+  for Permalloy (Lee et al., PRL 101, 267206), so the velocity criterion alone does
+  not account for the reversal. A first version of this file said "close to v_c".
+- Until about 7 ns a second |mz| > 0.5 spot moves along the opposite edge (winding
+  0); the single-vortex state is established after that.
 - In seed 1, every core sample has p = +1 (648 samples).
 
 **Generalization (inference).** The class's tight ⟨mx⟩ spread (0.69–0.73 at

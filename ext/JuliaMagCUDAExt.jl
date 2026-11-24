@@ -436,6 +436,7 @@ JuliaMag.damping(p::GpuRegionParams) = p.alpha0
 # Host copies of the per-cell fill and Msat·fill (isconservative, GNEB weights).
 JuliaMag._cellfill(p::GpuRegionParams) = Array(p.fill)
 JuliaMag._msatcells(p::GpuRegionParams, ::Mesh) = Array(p.Msat)
+JuliaMag._dmiuniform(p::GpuRegionParams) = allequal(Array(p.Dind)) && allequal(Array(p.Dbulk))
 
 # Fill-weighted magnet average (mumax3 table m), as the CPU average_magnet: weight =
 # fill, zero where the region Msat is 0 (empty cells).
