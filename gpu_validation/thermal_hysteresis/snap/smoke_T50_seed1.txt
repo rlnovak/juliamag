@@ -1,0 +1,5 @@
+# Disc vortex hysteresis at T = 50.0 K, seed 1, α = 0.5, dwell 2.0e-9 s, Heun dt = 1.0e-13 s, Float32, GPU 0 (Quadro P1000, compute capability 6.1.0, CUDA runtime 12.2.0); snapshots for steps 2-3
+# B_x (T)	mx_end	my_end	mz_end	mx_mean	my_mean	mz_mean	t (s)
+0.0000	0.000614	-0.003420	0.001412	0.002011	-0.002407	0.001370	2.000000e-09
+0.0050	0.126984	-0.008845	0.001514	0.126987	-0.014430	0.001294	4.000000e-09
+0.0100	0.243720	-0.008489	0.001024	0.243063	-0.010975	0.001167	6.000000e-09

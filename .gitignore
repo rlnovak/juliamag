@@ -6,3 +6,4 @@ Manifest.toml
 .claude/
 __pycache__/
 *.pyc
+gpu_validation/thermal_hysteresis/snap/ovf/

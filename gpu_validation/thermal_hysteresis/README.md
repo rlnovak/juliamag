@@ -90,10 +90,62 @@ In the other 4, ⟨my⟩ ≈ 0, a symmetric precursor.
   branch (0.69–0.73 at 20 mT), and the vortex is expelled at 25–35 mT. All 11 come
   from a C state, but C states also lead to the first class (17 cases); the 4
   symmetric precursors all give the first class.
-- The likely explanation is a core that nucleates far from the centre and leaves
-  before relaxing. Confirming it needs m snapshots. The GPU random stream is
-  deterministic, so any loop can be re-run with OVF output: about 2.5 h to reach
-  the switch.
+- The first guess, a single core that nucleates far from the centre and leaves
+  early, was wrong. The snapshot re-runs below show a two-vortex state.
+
+## Snapshot re-runs: one loop per class (`snap/`)
+
+**Setup.**
+- Seeds 1 (short-lived) and 7 (equilibrium), both at 50 K, re-run on labmac03 on
+  2026-11-23 with `examples/disc_hysteresis_thermal_snap.jl` (code 309980f).
+- Saved over steps 62–68 (B = 0 … −30 mT): m every 0.1 ns (OVF), and the core
+  position (`q_vortexcore`) every 10 ps.
+- File `seedN/m000NNN.ovf` is at t(step 62) + NNN × 0.1 ns.
+- The OVFs (270 MB per seed) stay on labmac03 in `~/JuliaMag/thermal_loop/snap/`;
+  the few used here are in `snap/ovf/`, which is not versioned.
+
+**Same trajectory.** The loop tables are identical bit for bit to the phase-2 ones
+(68/68 rows for both seeds, and the 3-step smoke run). The extra output only reads m.
+
+**Short-lived class, seed 1: two vortices.**
+- At −15 mT, two cores of equal polarity (p = +1, winding +1 each) enter at
+  opposite edges, at (−222, −96) and (+220, +97) nm.
+- They move along point-symmetric tracks to near the bottom and top edges:
+  r/R ≈ 0.75–0.85 at −20 mT.
+- The central domain points along the field, so ⟨mx⟩ = −0.73.
+- Both leave at −25 mT, one after the other: the upper core near 10 ns, the lower
+  one at 11.25 ns.
+- The tracker returns the cell of largest |mz|, so it alternates between the two
+  cores (see `core_tracks.png`).
+
+**Equilibrium class, seed 7: one vortex.**
+- The core enters at (+191, +156) nm at −15 mT and crosses the disc.
+- It settles at x ≈ 0, displaced along −y, perpendicular to the field. Over the
+  last 0.5 ns of each step, y = −123, −142 and −161 nm at −20, −25 and −30 mT:
+  about 4 nm/mT, r/R = 0.49 → 0.64.
+- It is annihilated at −60 mT (phase-2 table).
+
+**Polarity reversal on entry (seed 7).**
+- At t0 + 6.7 ns, a dip with p = −1 forms 30 nm from the moving p = +1 core:
+  a vortex–antivortex pair.
+- At 6.9 ns only a p = −1 vortex (winding +1) is left: the antivortex has
+  annihilated the original core.
+- This is the switching mechanism of Van Waeyenberge et al. (Nature 2006) and
+  Hertel et al. (PRL 2007).
+- Core speed over 50 ps just before: 200–310 m/s, close to the critical
+  v_c ≈ 330 m/s for A = 1.3e-11 J/m (Lee et al., PRL 2008).
+- In seed 1, every core sample has p = +1 (648 samples).
+
+**Generalization (inference).** The class's tight ⟨mx⟩ spread (0.69–0.73 at
+20 mT) suggests that all 11 short-lived loops are this two-vortex state. Only
+seed 1 was imaged.
+
+**Files.**
+- `snap/analyse_core.py`: table per step.
+- `snap/plot_core.py` → `core_tracks.png`.
+- `snap/plot_snapshots.py` → `snapshots.png`, which also prints the cores with their
+  winding and polarity.
+- `snap/plot_paper.py` → `paper/figures/vortex_snapshots_thermal.png`.
 
 **Temperature dependence.** The 50 K vs 300 K differences in the switching fields
 are within the standard error of the mean (1.3–2.1 mT). The finite-T loops differ
