@@ -205,8 +205,12 @@ N = 16 that is about 100 MB in Float64, which fits the 4 GB P1000.
     - At h = 0 the saddle is a centred wall, with ΔE within 0.7 % of 4√(AK)·S
       (cell 2 nm, against δ = 5.1 nm).
     - Float32 gives the same barrier to 3e-7.
-- GPU = CPU checks were added to `gpu_validation/test_gpu.jl` (wire and region
-  disc: initial E and F, relaxed barrier). They are pending an idle GPU.
+- GPU = CPU, `gpu_validation/test_gpu.jl` on labmac03 (2026-11-24, code c3a1fee):
+  662/662 checks pass.
+  - Wire and region disc, Float64: initial E and F agree to ≤ 6e-16; the relaxed
+    barrier to ≤ 7e-13.
+  - Float32: the relaxed barrier agrees to ≤ 7e-6.
+  - `energy!` and `linearfield!` on the GPU: ≤ 8e-16 in Float64.
 
 **Paper.** A section "Energy barriers", with the Stoner–Wohlfarth figure
 (barrier vs h, analytic curve in red, JuliaMag in blue) and the ellipse or
