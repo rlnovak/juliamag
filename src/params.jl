@@ -13,7 +13,7 @@ Magnetic parameters of a single, uniform material.
 - `anisU`: uniaxial anisotropy easy axis; normalized on construction.
 - `Dind`: interfacial (Néel) DMI constant [J/m²]. Zero disables it. Stabilizes
   Néel skyrmions and walls in thin films with broken inversion symmetry.
-- `Dbulk`: bulk (Bloch) DMI constant [J/m³]. Zero disables it. Stabilizes Bloch
+- `Dbulk`: bulk (Bloch) DMI constant [J/m²]. Zero disables it. Stabilizes Bloch
   skyrmions and helices in chiral B20 crystals.
 
 # Example (Permalloy, µMAG standard problem 4)
@@ -100,7 +100,7 @@ function Base.show(io::IO, ::MIME"text/plain", mat::Material)
         print(io, "  Dind  = ", mat.Dind, " J/m² (interfacial)\n")
     end
     if mat.Dbulk != 0
-        print(io, "  Dbulk = ", mat.Dbulk, " J/m³ (bulk)\n")
+        print(io, "  Dbulk = ", mat.Dbulk, " J/m² (bulk)\n")
     end
     print(io, "  exchange length = ", exchangelength(mat) * 1e9, " nm")
 end

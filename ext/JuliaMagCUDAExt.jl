@@ -111,20 +111,21 @@ _dcentral(comp, axis, inv2c, periodic) =
     (_edgeshift(comp, axis, -1, periodic) .- _edgeshift(comp, axis, +1, periodic)) .* inv2c
 
 function dmi_interfacial!(B::CuField{T}, m::CuField{T}, mesh::Mesh, mat::Material;
-                          add::Bool = false) where {T}
+                          add::Bool = false, openbc::Bool = false) where {T}
     Nx, Ny, Nz = _dims(mesh); px, py, _ = _pbc(mesh)
     cx, cy, _ = mesh.cellsize
-    _launch(_k_dmi_interfacial!, Nx * Ny * Nz, B, m, T(mat.Dind), T(mat.Msat), Nx, Ny, Nz,
-            T(1 / (2cx)), T(1 / (2cy)), px, py, add)
+    _launch(_k_dmi_interfacial!, Nx * Ny * Nz, B, m, T(mat.Dind), T(mat.Aex),
+            T(mat.Msat), T(mat.Msat), Nx, Ny, Nz, T(1 / (2cx)), T(1 / (2cy)), px, py, openbc, add)
     return B
 end
 
 function dmi_bulk!(B::CuField{T}, m::CuField{T}, mesh::Mesh, mat::Material;
-                   add::Bool = false) where {T}
+                   add::Bool = false, openbc::Bool = false) where {T}
     Nx, Ny, Nz = _dims(mesh); px, py, pz = _pbc(mesh)
     cx, cy, cz = mesh.cellsize
-    _launch(_k_dmi_bulk!, Nx * Ny * Nz, B, m, T(mat.Dbulk), T(mat.Msat), Nx, Ny, Nz,
-            T(1 / (2cx)), T(1 / (2cy)), T(1 / (2cz)), px, py, pz, add)
+    _launch(_k_dmi_bulk!, Nx * Ny * Nz, B, m, T(mat.Dbulk), T(mat.Aex),
+            T(mat.Msat), T(mat.Msat), Nx, Ny, Nz, T(1 / (2cx)), T(1 / (2cy)), T(1 / (2cz)),
+            px, py, pz, openbc, add)
     return B
 end
 
@@ -436,7 +437,10 @@ JuliaMag.damping(p::GpuRegionParams) = p.alpha0
 # Host copies of the per-cell fill and Msat·fill (isconservative, GNEB weights).
 JuliaMag._cellfill(p::GpuRegionParams) = Array(p.fill)
 JuliaMag._msatcells(p::GpuRegionParams, ::Mesh) = Array(p.Msat)
-JuliaMag._dmiuniform(p::GpuRegionParams) = allequal(Array(p.Dind)) && allequal(Array(p.Dbulk))
+function JuliaMag._dmiuniform(p::GpuRegionParams)
+    mag = Array(p.Msat_region) .!= 0
+    return allequal(Array(p.Dind)[mag]) && allequal(Array(p.Dbulk)[mag])
+end
 
 # Fill-weighted magnet average (mumax3 table m), as the CPU average_magnet: weight =
 # fill, zero where the region Msat is 0 (empty cells).
@@ -489,10 +493,10 @@ function JuliaMag.togpu(rp::RegionParams{T}) where {T}
     uy = CuArray(_percell([u[2] for u in rp.anisU], idm))
     uz = CuArray(_percell([u[3] for u in rp.anisU], idm))
     # Fold the per-cell fill fraction into the materialized Msat for the terms
-    # where the moment is a source (demag, anisotropy, DMI, thermal, energy),
+    # where the moment is a source (demag, anisotropy, thermal, energy),
     # exactly like the CPU accessor msat(rp,i,j,k) = Msat[region]·fill[cell].
-    # BUT keep the unscaled region Msat and the fill separately: the exchange
-    # prefactor divides by the FULL region Msat (mumax3 cuda/amul.h inv_Msat over
+    # BUT keep the unscaled region Msat and the fill separately: the exchange and DMI
+    # prefactors divide by the FULL region Msat (mumax3 cuda/amul.h inv_Msat over
     # the Msat LUT, never the geometry vol), and the fill mask marks empty
     # neighbours for the Neumann boundary. See the CPU exchange! for the rationale.
     Msat_region = CuArray(_percell(rp.Msat, idm))
@@ -532,30 +536,31 @@ function anisotropy!(B::CuField{T}, m::CuField{T}, mesh::Mesh, p::GpuRegionParam
 end
 
 function dmi_interfacial!(B::CuField{T}, m::CuField{T}, mesh::Mesh, p::GpuRegionParams{T};
-                          add::Bool = false) where {T}
+                          add::Bool = false, openbc::Bool = false) where {T}
     Nx, Ny, Nz = _dims(mesh); px, py, _ = _pbc(mesh)
     cx, cy, _ = mesh.cellsize
-    _launch(_k_dmi_interfacial!, Nx * Ny * Nz, B, m, p.Dind, p.Msat, Nx, Ny, Nz,
-            T(1 / (2cx)), T(1 / (2cy)), px, py, add)
+    _launch(_k_dmi_interfacial!, Nx * Ny * Nz, B, m, p.Dind, p.Aex, p.Msat,
+            p.Msat_region, Nx, Ny, Nz, T(1 / (2cx)), T(1 / (2cy)), px, py, openbc, add)
     return B
 end
 
 function dmi_bulk!(B::CuField{T}, m::CuField{T}, mesh::Mesh, p::GpuRegionParams{T};
-                   add::Bool = false) where {T}
+                   add::Bool = false, openbc::Bool = false) where {T}
     Nx, Ny, Nz = _dims(mesh); px, py, pz = _pbc(mesh)
     cx, cy, cz = mesh.cellsize
-    _launch(_k_dmi_bulk!, Nx * Ny * Nz, B, m, p.Dbulk, p.Msat, Nx, Ny, Nz,
-            T(1 / (2cx)), T(1 / (2cy)), T(1 / (2cz)), px, py, pz, add)
+    _launch(_k_dmi_bulk!, Nx * Ny * Nz, B, m, p.Dbulk, p.Aex, p.Msat,
+            p.Msat_region, Nx, Ny, Nz, T(1 / (2cx)), T(1 / (2cy)), T(1 / (2cz)), px, py, pz,
+            openbc, add)
     return B
 end
 
 # dmi! dispatcher for the GPU region params (mirrors the CPU one).
 function dmi!(B::CuField{T}, m::CuField{T}, mesh::Mesh, p::GpuRegionParams{T};
-             add::Bool = false) where {T}
+             add::Bool = false, openbc::Bool = false) where {T}
     if p.hasdind
-        return dmi_interfacial!(B, m, mesh, p; add = add)
+        return dmi_interfacial!(B, m, mesh, p; add = add, openbc = openbc)
     elseif p.hasdbulk
-        return dmi_bulk!(B, m, mesh, p; add = add)
+        return dmi_bulk!(B, m, mesh, p; add = add, openbc = openbc)
     else
         add || fill!(B, zero(T)); return B
     end
@@ -606,7 +611,7 @@ function JuliaMag.togpu(w::World{T}) where {T}
     gmat  = w.material isa RegionParams ? togpu(w.material) : w.material
     Bbuf  = CuArray(w._Bbuf)
     World{T,typeof(gplan),typeof(gmat),typeof(Bbuf)}(
-        w.mesh, gmat, gplan, w.Bext, Bbuf, w.current)   # the SpinCurrent is plain numbers
+        w.mesh, gmat, gplan, w.Bext, Bbuf, w.current, w.openbc)   # the SpinCurrent is plain numbers
 end
 
 # --- Simulation on the GPU ---------------------------------------------------

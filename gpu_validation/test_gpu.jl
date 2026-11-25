@@ -74,6 +74,17 @@ function disc(T)
     return mesh, rp
 end
 
+# Bulk DMI next to empty cells, staircase edge.
+function discbulk(T)
+    mesh = Mesh((20, 20, 3), (2e-9, 2e-9, 2e-9))
+    _, mB = mats(T)
+    rp = RegionParams(mesh, mB)
+    setregion!(rp, 0; Msat = 0.0)
+    setgeometry!(rp, Cylinder(34e-9, 6e-9); id = 1)
+    setregion!(rp, 1; Dbulk = 1.5e-3)
+    return mesh, rp
+end
+
 function field_terms(label, mesh, params, T; Bext = (0.01, -0.02, 0.03))
     tol = tolfor(T)
     Random.seed!(1)
@@ -92,6 +103,9 @@ function field_terms(label, mesh, params, T; Bext = (0.01, -0.02, 0.03))
         Bc = copy(B0); Bg = togpu(B0)
         dmi!(Bc, m, mesh, params; add = add); dmi!(Bg, mg, mesh, pg; add = add)
         check("$label DMI ($tag)", Bg, Bc, tol)
+        Bc = copy(B0); Bg = togpu(B0)
+        dmi!(Bc, m, mesh, params; add = add, openbc = true); dmi!(Bg, mg, mesh, pg; add = add, openbc = true)
+        check("$label DMI, openbc ($tag)", Bg, Bc, tol)
         Bc = copy(B0); Bg = togpu(B0)
         zeeman!(Bc, Bext; add = add); zeeman!(Bg, Bext; add = add)
         check("$label Zeeman ($tag)", Bg, Bc, tol)
@@ -350,6 +364,7 @@ for T in (Float64, Float32)
             ("mat periodic-xy 2D Dind", Mesh((24, 20, 1), (3e-9, 3e-9, 2e-9); pbc = (1, 1, 0)), mI),
             ("mat periodic-xz 3D Dbulk", Mesh((16, 12, 6), (2e-9, 2e-9, 2e-9); pbc = (1, 0, 1)), mB),
             ("mat periodic-x odd Nx (odd P1)", Mesh((15, 8, 2), (3e-9, 3e-9, 3e-9); pbc = (1, 0, 0)), mI),
+            ("mat open film Nz=1 Dbulk", Mesh((20, 16, 1), (3e-9, 3e-9, 3e-9)), mB),
             ("mat wire 1×16×4", Mesh((1, 16, 4), (3e-9, 3e-9, 3e-9)), mB))
         field_terms(lab, mesh, mat, T)
         stt_terms(lab, mesh, mat, T)
@@ -357,7 +372,7 @@ for T in (Float64, Float32)
         average_terms(lab, mesh, mat, T)
     end
     for (lab, (mesh, rp)) in (("regions bilayer", bilayer(T)), ("regions bulk periodic-x", bilayer_bulk(T)),
-                              ("regions disc es4", disc(T)))
+                              ("regions disc es4", disc(T)), ("regions disc bulk", discbulk(T)))
         field_terms(lab, mesh, rp, T)
         minimizer_terms(lab, mesh, rp, T)
         solver_terms(lab, mesh, rp, T)

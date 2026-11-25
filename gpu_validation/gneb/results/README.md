@@ -10,7 +10,7 @@ changes the iterates with `reject=Inf`: every converged case repeated in
 |---|---|
 | `compare_ellipse_uniform.txt`, `compare_ellipse_wall.txt`, `compare_skyrmion.txt` | `compare_gneb.jl CASE` |
 | `compare_lattice4.txt` | `compare_gneb.jl` before the cases were renamed: it prints "CASE skyrmion", but the start state is a lattice of **four** skyrmions (Q = −4), now case `lattice4` |
-| `magnumnp_ellipse_uniform.txt` | `ellipse_magnumnp.py`: string method, 400 steps |
+| `magnumnp_ellipse_uniform.txt` | `ellipse_magnumnp.py`: string method, 400 steps (magnum.np is not in the global Python since 2026-11-24: needs its own venv) |
 | `resolution.txt` | `skyrmion_resolution.jl`, at most 20 000 steps (per stage in MicroMagnetic) |
 | `reject_study.txt` | `reject_study.jl`, at most 40 000 steps |
 

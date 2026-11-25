@@ -115,16 +115,15 @@ end
 
 # --- Problem 3: bulk-DMI spin spiral (magnum.np demos/dmi, bulk case) ---------
 # A bulk-DMI chain with no anisotropy relaxes to a helix of period L = 4πA/D. We
-# seed a helix at that period on a periodic chain and relax; the period is
-# preserved. This validates the bulk DMI without the chirality-dependent DMI
-# boundary condition (a listed future feature) that the interfacial-DMI
-# edge-canting demo (sp_DMI) needs.
+# seed a helix at that period on a chain periodic in all directions (a bulk sample)
+# and relax; the period is preserved. (With free y and z faces the chiral boundary
+# condition of the DMI adds a term that destroys the helix in a one-cell chain.)
 function dmi_spiral_demo()
     println("\n[3/3] Bulk-DMI spin spiral (period L = 4piA/D)..."); flush(stdout)
     A = 13e-12; D = 3e-3
     L = 4π * A / D                                  # equilibrium helix period [m]
     cx = 2e-9; N = max(40, round(Int, 2L / cx))     # ~2 periods, periodic along x
-    mesh = Mesh((N, 1, 1), (cx, cx, cx); pbc = (1, 0, 0))
+    mesh = Mesh((N, 1, 1), (cx, cx, cx); pbc = (1, 1, 1))
     mat  = Material(Msat = 8e5, Aex = A, alpha = 0.5, Dbulk = D)
     k = 2π / L
     m0 = setconfig(mesh, (x, y, z) -> (cos(k*x), 0.0, sin(k*x)))   # Bloch helix

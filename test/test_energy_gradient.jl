@@ -2,9 +2,9 @@
 # relies on: the force V·Msat·B_eff is exactly −∂E/∂m. Every term is quadratic in m
 # (Zeeman linear), so a central difference E(m+εδ) − E(m−εδ) = 2ε ∇E·δ holds to
 # rounding for any ε, and a non-symmetric discrete operator shows up as an O(1e-2)
-# mismatch. Three discretizations are non-symmetric (exchange on edge-smoothed cells,
-# the clamped DMI neighbour at open boundaries, a DMI constant that varies between
-# cells); isconservative must flag exactly those.
+# mismatch. Two discretizations are non-symmetric (exchange and DMI on edge-smoothed
+# cells, a DMI constant that varies between cells); isconservative must flag exactly
+# those. DMI at free boundaries is symmetric, chiral or open.
 using JuliaMag, Test, Random
 
 const _base = (Msat = 8e5, Aex = 1.3e-11, alpha = 0.02)
@@ -30,16 +30,29 @@ function _gradcases()
     setgeometry!(rp, Cylinder(20e-9, 1.0); id = 2)
     push!(cases, ("regions: disc + core, empty background, demag",
         World(m4, rp; demag = true, Bext = (0.01, 0.0, 0.0)), true))
+    # DMI at free boundaries
+    for obc in (false, true)
+        push!(cases, ("open 3D, Dind, openbc $obc",
+            World(m1, Material(; _base..., Dind = 2.5e-3); demag = false, openbc = obc), true))
+        push!(cases, ("open 3D, Dbulk, openbc $obc",
+            World(m1, Material(; _base..., Dbulk = 1.5e-3); demag = true, openbc = obc), true))
+        push!(cases, ("xy-periodic film, Dbulk (open in z), openbc $obc",
+            World(m2, Material(; _base..., Dbulk = 1.5e-3); demag = false, openbc = obc), true))
+        rd = RegionParams(m4, Material(; _base...))          # empty background without D
+        setregion!(rd, 0; Msat = 0.0)
+        setregion!(rd, 1; Msat = 8e5, Aex = 1.3e-11, Dind = 2.5e-3)
+        setregion!(rd, 2; Msat = 1.4e6, Aex = 2.0e-11, Dind = 2.5e-3)
+        setgeometry!(rd, Cylinder(44e-9, 1.0); id = 1)
+        setgeometry!(rd, Cylinder(20e-9, 1.0); id = 2)
+        push!(cases, ("disc + core, same Dind, empty background, openbc $obc",
+            World(m4, rd; demag = false, openbc = obc), true))
+    end
     # non-conservative discretizations
     r2 = RegionParams(m2, Material(; _base..., Dind = 2.5e-3))
     defregion!(r2, 1, (x, y, z) -> x > 0)
     setregion!(r2, 1; Msat = 8e5, Aex = 1.3e-11, Dind = 1.0e-3)
     push!(cases, ("periodic xy film, region-dependent Dind",
         World(m2, r2; demag = false), false))
-    push!(cases, ("open 3D, Dind (clamped DMI neighbour)",
-        World(m1, Material(; _base..., Dind = 2.5e-3); demag = false), false))
-    push!(cases, ("xy-periodic film, Dbulk (open in z)",
-        World(m2, Material(; _base..., Dbulk = 1.5e-3); demag = false), false))
     rs = RegionParams(m4, Material(; _base...))
     setregion!(rs, 0; Msat = 0.0); setregion!(rs, 1; Msat = 8e5, Aex = 1.3e-11)
     setgeometry!(rs, Cylinder(44e-9, 1.0); id = 1, edgesmooth = 4)

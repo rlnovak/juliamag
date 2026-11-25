@@ -73,9 +73,9 @@ mutable struct Simulation{T<:AbstractFloat,W<:World{T},A<:AbstractArray{T,4},H<:
 end
 
 function Simulation(mesh::Mesh, params::AbstractParams; demag = true, Bext = (0, 0, 0),
-                    outdir = nothing, verbose::Bool = true, log::IO = stdout)
+                    openbc::Bool = false, outdir = nothing, verbose::Bool = true, log::IO = stdout)
     T = eltype(params)
-    world = World(mesh, params; demag = demag, Bext = Bext)
+    world = World(mesh, params; demag = demag, Bext = Bext, openbc = openbc)
     m = uniform(T, mesh, (1, 0, 0))
     clearempty!(m, params)
     sim = _newsim(world, m, world; verbose = verbose, log = log)

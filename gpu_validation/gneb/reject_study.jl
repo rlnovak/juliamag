@@ -39,7 +39,7 @@ if startswith(CASE, "ellipse")
 else
     const mesh = Mesh((60, 60, 1), (2e-9, 2e-9, 2e-9); pbc = (1, 1, 0))
     const world = World(mesh, Material(Msat = 3.84e5, Aex = 3.25e-12, alpha = 0.5, Dbulk = 5.83e-4);
-                        demag = false, Bext = (0, 0, 0.12))
+                        demag = false, Bext = (0, 0, 0.12), openbc = true)   # as MicroMagnetic.jl
     function charge(m)                       # Berg-Luscher charge of the periodic layer
         nx, ny = size(m, 2), size(m, 3); q = 0.0
         tri(a, b, c) = 2atan(dot(a, cross(b, c)), 1 + dot(a, b) + dot(b, c) + dot(c, a))

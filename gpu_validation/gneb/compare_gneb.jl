@@ -53,7 +53,7 @@ else
     const mesh = Mesh((60, 60, 1), (2e-9, 2e-9, 2e-9); pbc = (1, 1, 0))
     const Ms, Aex = 3.84e5, 3.25e-12
     const world = World(mesh, Material(Msat = Ms, Aex = Aex, alpha = 0.5, Dbulk = 5.83e-4);
-                        demag = false, Bext = (0, 0, 0.12))
+                        demag = false, Bext = (0, 0, 0.12), openbc = true)   # as MicroMagnetic.jl
     function mmsim()
         m = MM.FDMesh(; nx = 60, ny = 60, nz = 1, dx = 2e-9, dy = 2e-9, dz = 2e-9, pbc = "xy")
         sim = MM.Sim(m; name = "skx", driver = "None", save_data = false)
@@ -106,7 +106,7 @@ function julia_terms(m)
     d = Dict("exch" => exchangeenergy(m, w.mesh, w.material),
              "total" => energy!(similar(m), m, w))
     w.demagplan === nothing || (d["demag"] = demagenergy(m, w.demagplan, w.mesh, w.material))
-    JuliaMag.hasdmi(w.material) && (d["dmi"] = dmienergy(m, w.mesh, w.material))
+    JuliaMag.hasdmi(w.material) && (d["dmi"] = dmienergy(m, w.mesh, w.material; openbc = w.openbc))
     any(!iszero, w.Bext) && (d["zeeman"] = zeemanenergy(m, w.Bext, w.mesh, w.material))
     return d
 end

@@ -258,7 +258,6 @@ JuliaMag value within 2 ps; a full `MaxErr = 1e-7` run agrees to 0.2% rms). Deta
 
 - Spin-orbit torque with separate damping-like / field-like terms (η_damp/η_field).
 - RKKY interlayer exchange coupling.
-- Chirality-dependent DMI boundary condition (for interfacial-DMI edge canting).
 - Magnetoelastic coupling; eddy currents / self-induction.
 - 3D Voronoi grains + grain-boundary exchange scaling (phase-3 follow-ups).
 - Energy functions and `clearempty!` on the GPU (currently CPU-only readback).

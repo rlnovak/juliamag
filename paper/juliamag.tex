@@ -316,14 +316,25 @@ with $D$ in J/m$^2$. The bulk (Bloch) DMI, for chiral B20 crystals, has
   \vB_{\mathrm{DMI}}^{\mathrm{bulk}} = -\frac{2D}{M_s}\,\nabla\times\vm,
 \end{equation}
 %
-with $D$ in J/m$^3$. Gradients use central differences with the same Neumann /
-periodic boundary treatment as the exchange field. \mumax{} instead applies the
-chiral boundary condition of the DMI at free edges, which is not implemented
-here: the two codes agree in the interior and on periodic axes, and differ in
-the edge cells of a DMI sample. We verified both forms term
-by term against the corresponding \mumax{} kernels, and confirmed that a Bloch
-helix seeded at the equilibrium period $L = 4\pi A/D$ has a smaller residual
-torque than one at the wrong period.
+with $D$ in J/m$^2$ as well. Gradients use central differences, periodic where the
+mesh is. At free boundaries (the edge of an open axis or an empty cell) the chiral
+boundary condition of the DMI~\cite{rohart2013} is applied as in \mumax{}. There the
+missing neighbour is extrapolated with $\partial_n\vm$ from that condition in both
+the exchange and the DMI stencils. The terms linear in $D$ cancel, and each missing
+neighbour adds $(D^2/2AM_s)\,\mathsf{P}\vm$ to the exchange field with a Neumann
+boundary, where $\mathsf{P}$ keeps the two components that the DMI couples along that
+axis. The term is diagonal in the cells, so exchange plus DMI remains the exact
+gradient of the energy. The open boundary of \mumax{} (\texttt{OpenBC}) is available
+too. On random states with open, periodic and curved boundaries, also edge-smoothed,
+the sum of the exchange and DMI fields agrees with \mumax{} to $1.5\times10^{-7}$ of
+the largest field, its single precision, and the energies to $9\times10^{-8}$. (The
+exception is a $D$ that differs between regions: \mumax{} uses a mean over the bond,
+\JuliaMag{} the $D$ of the cell.) The edge tilt of a film with perpendicular
+anisotropy, $\sin\theta=D/(2\sqrt{AK})=0.39$ for the parameters tested, and its
+decay into the film~\cite{rohart2013} are reproduced to $8\times10^{-4}$,
+$3\times10^{-4}$ and $9\times10^{-5}$~rad with 2, 1 and 0.5~nm cells. A Bloch helix
+seeded at the equilibrium period $L = 4\pi A/D$ has a smaller residual torque than
+one at the wrong period.
 
 \subsection{Demagnetizing field: kernel and FFT convolution}
 \label{sec:demag}
@@ -1384,6 +1395,12 @@ spectra, followed by multi-backend GPU execution through
 \bibitem{diffeq} C.\ Rackauckas and Q.\ Nie, ``DifferentialEquations.jl -- A
   Performant and Feature-Rich Ecosystem for Solving Differential Equations in
   Julia,'' J.\ Open Res.\ Softw.\ \textbf{5}, 15 (2017).
+
+% --- DMI boundary condition ---
+\bibitem{rohart2013} S.\ Rohart and A.\ Thiaville, ``Skyrmion confinement in
+  ultrathin film nanostructures in the presence of Dzyaloshinskii--Moriya
+  interaction,'' Phys.\ Rev.\ B \textbf{88}, 184422 (2013).
+  \url{https://doi.org/10.1103/PhysRevB.88.184422}.
 
 % --- Vortex-core switching ---
 \bibitem{vanwaeyenberge2006} B.\ Van Waeyenberge, A.\ Puzic, H.\ Stoll,

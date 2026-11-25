@@ -55,7 +55,7 @@ configurations use these centred coordinates, and `translate` shifts them.
 
 **Units.** SI throughout: lengths in metres, `Msat` in A/m, `Aex` in J/m, fields
 in tesla, time in seconds. Anisotropy `Ku` is J/m³, interfacial DMI `Dind` is
-J/m², bulk DMI `Dbulk` is J/m³.
+J/m², bulk DMI `Dbulk` is J/m² too.
 
 **The two ways to reach equilibrium.**
 

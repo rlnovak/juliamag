@@ -61,12 +61,16 @@ function anisotropyenergy(m::AbstractArray{T,4}, mesh::Mesh, params::AbstractPar
 end
 
 """
-    dmienergy(m, mesh, params) -> E   [J]
+    dmienergy(m, mesh, params; openbc=false) -> E   [J]
+
+With the chiral boundary condition (the default, see [`dmi!`](@ref)) it includes the
+boundary part that mumax3 has in its exchange stencil: only the sum with
+[`exchangeenergy`](@ref) is mumax3's E_exch.
 """
-function dmienergy(m::AbstractArray{T,4}, mesh::Mesh, params::AbstractParams) where {T}
+function dmienergy(m::AbstractArray{T,4}, mesh::Mesh, params::AbstractParams; openbc::Bool = false) where {T}
     hasdmi(params) || return zero(T)
     B = similar(m)
-    dmi!(B, m, mesh, params)
+    dmi!(B, m, mesh, params; openbc = openbc)
     return fieldenergy(m, B, mesh, params; selfterm = true)
 end
 
@@ -126,14 +130,9 @@ end
 Whether the effective field is exactly the gradient of the energy,
 B_eff = −(1/(V·Msat)) ∂E/∂m, cell by cell. That is what energy-path (GNEB) methods
 need. It holds for exchange, uniaxial anisotropy, demag (also with fractional cells)
-and Zeeman. Three discretizations break it:
-- exchange on edge-smoothed cells: the field uses the region's Msat, the energy
+and Zeeman, and for DMI at any boundary. Two discretizations break it:
+- exchange or DMI on edge-smoothed cells: the field uses the region's Msat, the energy
   weights it by Msat·fill (as in mumax3);
-- DMI next to an open boundary or an empty cell: the clamped (Neumann) neighbour of
-  `dmi!` makes the discrete operator non-symmetric there. (mumax3's chiral boundary
-  condition does not have this problem; it is not implemented here.) Interfacial
-  DMI acts in x and y only, so it is conservative when x and y are periodic and no
-  cell is empty;
 - a DMI constant that differs between magnetic cells: `dmi!` uses the central cell's
   D for both directions of a bond.
 """
@@ -141,19 +140,15 @@ function isconservative(w::World)
     p = w.material
     f = _cellfill(p)
     f !== nothing && any(x -> 0 < x < 1, f) && return false
-    if hasdmi(p)
-        any(iszero, _msatcells(p, w.mesh)) && return false
-        _dmiuniform(p) || return false
-        dirs = hasdbulk(p) ? (1, 2, 3) : (1, 2)
-        any(d -> !isperiodic(w.mesh, d) && w.mesh.size[d] > 1, dirs) && return false
-    end
-    return true
+    return !hasdmi(p) || _dmiuniform(p)
 end
 
-# Whether the DMI constants are the same in every region present.
+# Whether the DMI constants are the same in every magnetic region present.
 _dmiuniform(::AbstractParams) = true
-_dmiuniform(p::RegionParams) = allequal(@view p.Dind[_present(p)]) &&
-                               allequal(@view p.Dbulk[_present(p)])
+function _dmiuniform(p::RegionParams)
+    r = filter(q -> p.Msat[q] != 0, _present(p))
+    return allequal(@view p.Dind[r]) && allequal(@view p.Dbulk[r])
+end
 
 # Per-cell geometry fill (nothing: every cell full) and per-cell moment Msat·fill as a
 # host (1,Nx,Ny,Nz) array. The GPU region parameters have their own methods.
@@ -193,7 +188,7 @@ function totalenergy(m::AbstractArray{T,4}, w::World{T}) where {T}
         E += anisotropyenergy(m, w.mesh, w.material)
     end
     if hasdmi(w.material)
-        E += dmienergy(m, w.mesh, w.material)
+        E += dmienergy(m, w.mesh, w.material; openbc = w.openbc)
     end
     if w.demagplan !== nothing
         E += demagenergy(m, w.demagplan, w.mesh, w.material)

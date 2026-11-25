@@ -13,7 +13,7 @@ const N = parse(Int, ARGS[2]); const K = parse(Float64, ARGS[3]); const REJ = pa
 const MAXS = parse(Int, get(ENV, "MAXS", "20000"))
 const mesh = Mesh((60, 60, 1), (2e-9, 2e-9, 2e-9); pbc = (1, 1, 0))
 const world = World(mesh, Material(Msat = 3.84e5, Aex = 3.25e-12, alpha = 0.5, Dbulk = 5.83e-4);
-                    demag = false, Bext = (0, 0, 0.12))
+                    demag = false, Bext = (0, 0, 0.12), openbc = true)   # as MicroMagnetic.jl
 const VMs = cellvolume(mesh) * 3.84e5
 function mmsim()
     sim = MM.Sim(MM.FDMesh(; nx = 60, ny = 60, nz = 1, dx = 2e-9, dy = 2e-9, dz = 2e-9, pbc = "xy");

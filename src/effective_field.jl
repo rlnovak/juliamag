@@ -10,13 +10,17 @@
 # field together.
 
 """
-    World(mesh, material; demag=true, Bext=(0,0,0))
+    World(mesh, material; demag=true, Bext=(0,0,0), openbc=false)
 
 A complete micromagnetic problem: geometry, material, and which field terms are
 active. The demag plan is built once here and reused for the whole run.
 
 - `demag`: include the demagnetization field (the expensive term).
 - `Bext`: uniform applied field [T]; can be changed between run segments.
+- `openbc`: DMI at free boundaries: `false`, the chiral boundary condition (as mumax3);
+  `true`, a missing neighbour contributes nothing (mumax3 `OpenBC`). See [`dmi!`](@ref).
+  Set it at construction: changed after `togpu(sim)`, it would not reach the host World
+  of the energy columns.
 """
 mutable struct World{T<:AbstractFloat,P,M<:AbstractParams,B<:AbstractArray{T,4}}
     mesh::Mesh
@@ -25,10 +29,11 @@ mutable struct World{T<:AbstractFloat,P,M<:AbstractParams,B<:AbstractArray{T,4}}
     Bext::NTuple{3,T}
     _Bbuf::B                          # scratch effective-field buffer for integrators
     current::Union{Nothing,SpinCurrent{T}}   # spin-polarized current (STT), or nothing
+    openbc::Bool                      # DMI boundaries: open (true) or chiral (false)
 end
 
 function World(mesh::Mesh, mat::AbstractParams; demag::Bool = true,
-              Bext = (0, 0, 0), accuracy = 6.0)
+              Bext = (0, 0, 0), accuracy = 6.0, openbc::Bool = false)
     T = eltype(mat)
     # The demag kernel is purely geometric (independent of Msat); the plan's
     # μ0·Msat scaling uses a representative Msat here. For a scalar Material that
@@ -38,7 +43,7 @@ function World(mesh::Mesh, mat::AbstractParams; demag::Bool = true,
     # kernel is rounded to T (as mumax3 does for its float32 kernel).
     plan = demag ? DemagPlan(demagkernel(Float64, mesh; accuracy = accuracy), mesh, Msref, T) : nothing
     Bbuf = zeros(T, 3, mesh.size...)
-    World{T,typeof(plan),typeof(mat),typeof(Bbuf)}(mesh, mat, plan, NTuple{3,T}(Bext), Bbuf, nothing)
+    World{T,typeof(plan),typeof(mat),typeof(Bbuf)}(mesh, mat, plan, NTuple{3,T}(Bext), Bbuf, nothing, openbc)
 end
 
 """
@@ -93,7 +98,7 @@ function linearfield!(B::AbstractArray{T,4}, m::AbstractArray{T,4}, w::World{T})
         anisotropy!(B, m, w.mesh, w.material; add = true)
     end
     if hasdmi(w.material)
-        dmi!(B, m, w.mesh, w.material; add = true)
+        dmi!(B, m, w.mesh, w.material; add = true, openbc = w.openbc)
     end
     if w.demagplan !== nothing
         _demag!(B, m, w; add = true)

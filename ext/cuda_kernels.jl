@@ -130,53 +130,85 @@ function _k_anisotropy!(B, m, Ku, Mse, ux, uy, uz, N, add)
     return nothing
 end
 
-# --- DMI (src/dmi.jl): central differences, Neumann clamp / periodic wrap -----
-function _k_dmi_interfacial!(B, m, D, Mse, Nx, Ny, Nz, i2x::T, i2y::T, px, py, add) where {T}
+# --- DMI (src/dmi.jl): central differences; chiral or open free boundaries -----
+# Neighbour index along an axis, 0 if missing at an open edge (src/dmi.jl _dminb).
+@inline _dnm(i, N, p) = i > Int32(1) ? i - Int32(1) : (p ? N : Int32(0))
+@inline _dnp(i, N, p) = i < N ? i + Int32(1) : (p ? Int32(1) : Int32(0))
+# Is the neighbour there: inside the mesh (index not 0) and not an empty cell.
+@inline function _dok(Mse, ok, i, j, k, Nx, Ny)
+    ok || return false
+    return _pc(Mse, _lin(i, j, k, Nx, Ny)) != zero(eltype(Mse))
+end
+@inline _dv(m, c, ok, i, j, k) = ok ? (@inbounds m[c, i, j, k]) : zero(eltype(m))
+# 2D/Msat and the chiral-boundary prefactor D²/(2A Msat) of a missing neighbour.
+@inline function _dpref(D::T, A::T, Ms::T, openbc) where {T}
+    edge = (openbc || A == zero(T)) ? zero(T) : D * D / (T(2) * A * Ms)
+    return T(2) * D / Ms, edge
+end
+
+function _k_dmi_interfacial!(B, m, D, Aex, Mse, Msr, Nx, Ny, Nz, i2x::T, i2y::T, px, py,
+                             openbc, add) where {T}
     n = _tid()
     n > Nx * Ny * Nz && return nothing
     i, j, k = _ijk(n, Nx, Ny)
-    @inbounds begin
-        Msc = _pc(Mse, n)
-        pref = Msc == zero(T) ? zero(T) : T(2) * _pc(D, n) / Msc
-        il = _nbm(i, Nx, px); ir = _nbp(i, Nx, px)
-        jl = _nbm(j, Ny, py); jr = _nbp(j, Ny, py)
-        dmz_dx = (m[3, ir, j, k] - m[3, il, j, k]) * i2x
-        dmz_dy = (m[3, i, jr, k] - m[3, i, jl, k]) * i2y
-        dmx_dx = (m[1, ir, j, k] - m[1, il, j, k]) * i2x
-        dmy_dy = (m[2, i, jr, k] - m[2, i, jl, k]) * i2y
+    if _pc(Mse, n) == zero(T)                             # empty cell: no field
+        if !add
+            _store!(B, 1, i, j, k, zero(T), false); _store!(B, 2, i, j, k, zero(T), false)
+            _store!(B, 3, i, j, k, zero(T), false)
+        end
+        return nothing
     end
-    _store!(B, 1, i, j, k, pref * dmz_dx, add)
-    _store!(B, 2, i, j, k, pref * dmz_dy, add)
-    _store!(B, 3, i, j, k, pref * (-dmx_dx - dmy_dy), add)
+    pref, edge = _dpref(_pc(D, n), _pc(Aex, n), _pc(Msr, n), openbc)
+    il = _dnm(i, Nx, px); ir = _dnp(i, Nx, px)
+    jl = _dnm(j, Ny, py); jr = _dnp(j, Ny, py)
+    okl = _dok(Mse, il != Int32(0), il, j, k, Nx, Ny); okr = _dok(Mse, ir != Int32(0), ir, j, k, Nx, Ny)
+    ojl = _dok(Mse, jl != Int32(0), i, jl, k, Nx, Ny); ojr = _dok(Mse, jr != Int32(0), i, jr, k, Nx, Ny)
+    dmz_dx = (_dv(m, 3, okr, ir, j, k) - _dv(m, 3, okl, il, j, k)) * i2x
+    dmz_dy = (_dv(m, 3, ojr, i, jr, k) - _dv(m, 3, ojl, i, jl, k)) * i2y
+    dmx_dx = (_dv(m, 1, okr, ir, j, k) - _dv(m, 1, okl, il, j, k)) * i2x
+    dmy_dy = (_dv(m, 2, ojr, i, jr, k) - _dv(m, 2, ojl, i, jl, k)) * i2y
+    ex = edge * (Int32(2) - okl - okr); ey = edge * (Int32(2) - ojl - ojr)
+    @inbounds mx, my, mz = m[1, i, j, k], m[2, i, j, k], m[3, i, j, k]
+    _store!(B, 1, i, j, k, pref * dmz_dx + ex * mx, add)
+    _store!(B, 2, i, j, k, pref * dmz_dy + ey * my, add)
+    _store!(B, 3, i, j, k, pref * (-dmx_dx - dmy_dy) + (ex + ey) * mz, add)
     return nothing
 end
 
-function _k_dmi_bulk!(B, m, D, Mse, Nx, Ny, Nz, i2x::T, i2y::T, i2z::T, px, py, pz, add) where {T}
+function _k_dmi_bulk!(B, m, D, Aex, Mse, Msr, Nx, Ny, Nz, i2x::T, i2y::T, i2z::T, px, py, pz,
+                      openbc, add) where {T}
     n = _tid()
     n > Nx * Ny * Nz && return nothing
     i, j, k = _ijk(n, Nx, Ny)
-    @inbounds begin
-        Msc = _pc(Mse, n)
-        pref = Msc == zero(T) ? zero(T) : T(2) * _pc(D, n) / Msc
-        il = _nbm(i, Nx, px); ir = _nbp(i, Nx, px)
-        jl = _nbm(j, Ny, py); jr = _nbp(j, Ny, py)
-        dmz_dy = (m[3, i, jr, k] - m[3, i, jl, k]) * i2y
-        dmz_dx = (m[3, ir, j, k] - m[3, il, j, k]) * i2x
-        dmy_dx = (m[2, ir, j, k] - m[2, il, j, k]) * i2x
-        dmx_dy = (m[1, i, jr, k] - m[1, i, jl, k]) * i2y
-        dmy_dz = zero(T); dmx_dz = zero(T)
-        if Nz > Int32(1)
-            kl = _nbm(k, Nz, pz); kr = _nbp(k, Nz, pz)
-            dmy_dz = (m[2, i, j, kr] - m[2, i, j, kl]) * i2z
-            dmx_dz = (m[1, i, j, kr] - m[1, i, j, kl]) * i2z
+    if _pc(Mse, n) == zero(T)                             # empty cell: no field
+        if !add
+            _store!(B, 1, i, j, k, zero(T), false); _store!(B, 2, i, j, k, zero(T), false)
+            _store!(B, 3, i, j, k, zero(T), false)
         end
-        curlx = dmz_dy - dmy_dz
-        curly = dmx_dz - dmz_dx
-        curlz = dmy_dx - dmx_dy
+        return nothing
     end
-    _store!(B, 1, i, j, k, -pref * curlx, add)
-    _store!(B, 2, i, j, k, -pref * curly, add)
-    _store!(B, 3, i, j, k, -pref * curlz, add)
+    pref, edge = _dpref(_pc(D, n), _pc(Aex, n), _pc(Msr, n), openbc)
+    il = _dnm(i, Nx, px); ir = _dnp(i, Nx, px)
+    jl = _dnm(j, Ny, py); jr = _dnp(j, Ny, py)
+    kl = _dnm(k, Nz, pz); kr = _dnp(k, Nz, pz)
+    okl = _dok(Mse, il != Int32(0), il, j, k, Nx, Ny); okr = _dok(Mse, ir != Int32(0), ir, j, k, Nx, Ny)
+    ojl = _dok(Mse, jl != Int32(0), i, jl, k, Nx, Ny); ojr = _dok(Mse, jr != Int32(0), i, jr, k, Nx, Ny)
+    oml = _dok(Mse, kl != Int32(0), i, j, kl, Nx, Ny); omr = _dok(Mse, kr != Int32(0), i, j, kr, Nx, Ny)
+    dmz_dy = (_dv(m, 3, ojr, i, jr, k) - _dv(m, 3, ojl, i, jl, k)) * i2y
+    dmx_dy = (_dv(m, 1, ojr, i, jr, k) - _dv(m, 1, ojl, i, jl, k)) * i2y
+    dmz_dx = (_dv(m, 3, okr, ir, j, k) - _dv(m, 3, okl, il, j, k)) * i2x
+    dmy_dx = (_dv(m, 2, okr, ir, j, k) - _dv(m, 2, okl, il, j, k)) * i2x
+    dmy_dz = (_dv(m, 2, omr, i, j, kr) - _dv(m, 2, oml, i, j, kl)) * i2z
+    dmx_dz = (_dv(m, 1, omr, i, j, kr) - _dv(m, 1, oml, i, j, kl)) * i2z
+    ex = edge * (Int32(2) - okl - okr); ey = edge * (Int32(2) - ojl - ojr)
+    ez = edge * (Int32(2) - oml - omr)
+    curlx = dmz_dy - dmy_dz
+    curly = dmx_dz - dmz_dx
+    curlz = dmy_dx - dmx_dy
+    @inbounds mx, my, mz = m[1, i, j, k], m[2, i, j, k], m[3, i, j, k]
+    _store!(B, 1, i, j, k, -pref * curlx + (ey + ez) * mx, add)
+    _store!(B, 2, i, j, k, -pref * curly + (ex + ez) * my, add)
+    _store!(B, 3, i, j, k, -pref * curlz + (ex + ey) * mz, add)
     return nothing
 end
 

@@ -84,8 +84,10 @@ demag (also with fractional cells), Zeeman, and region interfaces. It fails by
      conservative here.
    - An earlier version of this note blamed mumax3's boundary condition: wrong.
    - The clamp also drops the chiral edge canting, so open DMI samples differ from
-     mumax3 in the edge cells. Porting the boundary condition would fix both; it
-     changes the physics of every open DMI run and is the user's decision.
+     mumax3 in the edge cells.
+   - **Fixed 2026-11-24** (user's decision): `dmi!` now has mumax3's chiral boundary
+     condition and, with `World(…; openbc=true)`, its OpenBC. Both are conservative;
+     `isconservative` no longer flags open DMI samples.
    - Interfacial DMI with x and y periodic is exact.
 
 In both cases the field drives the dynamics correctly. The reported energy,
