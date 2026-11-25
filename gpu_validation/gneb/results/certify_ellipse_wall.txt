@@ -1,0 +1,8 @@
+CASE ellipse_wall  images 21  spring 1.0 T
+first end: max|m x B| 1.7e-12 T, lowest curvatures [T]: +2.430665e-02  +2.468465e-02  +2.632618e-02  +3.113248e-02  +3.914697e-02  +5.022435e-02  +6.488779e-02  +8.036386e-02  (dense, asymmetry 2e-16, residuals <= 1e-14, 10 s)
+last end: max|m x B| 1.7e-12 T, lowest curvatures [T]: +2.430665e-02  +2.468465e-02  +2.632618e-02  +3.113248e-02  +3.914697e-02  +5.022435e-02  +6.488779e-02  +8.036386e-02  (dense, asymmetry 2e-16, residuals <= 1e-14, 10 s)
+GNEB: barrier 1.7100329947e-18 J, max|F| 9.0e-08 T, steps 461, climbing image 11, 15 s
+saddle (image 11): index 1, near zero 0, torque 1.7e-10 T, along the path -9.438796e-04 T (dense, 10 s)
+   curvatures [T]: -2.067637e-03  +2.797325e-03  +2.003622e-02  +2.238122e-02  +2.509012e-02  +2.855156e-02  +4.303548e-02  +4.888441e-02   residuals <= 9e-15
+   lobpcg:         -2.067637e-03  +2.797325e-03  +2.003622e-02  +2.238122e-02   residuals <= 1e-07  (10 s)
+done

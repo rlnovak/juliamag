@@ -1,0 +1,13 @@
+CPU: 25824 magnetic cells, relaxed in 210 steps (3 s), max|m x B| 2.0e-10 T
+  Lanczos dimension 68, CG iterations 17126
+  Lanczos dimension 41, CG iterations 10365
+eigenmodes: 430 s
+# k	f (MHz)	Gamma (1/ns)	residual
+1	968.2342	0.079401	9e-11
+2	10530.6352	0.891237	6e-11
+3	11065.2472	0.780629	7e-11
+4	11392.9398	0.801066	8e-11
+5	12385.1263	0.833067	6e-09
+6	12406.4123	0.833141	2e-08
+reference (free gyration, 10 mT): f = 969.8 MHz (rel -1.6e-03), Gamma = 0.0797 1/ns (rel -3.8e-03)
+done

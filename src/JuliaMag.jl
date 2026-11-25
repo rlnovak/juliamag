@@ -101,6 +101,10 @@ export fieldenergy, exchangeenergy, anisotropyenergy, dmienergy, demagenergy,
 include("neb.jl")
 export GNEB, setclimbing!, energies, midpointenergies, barrier, pathcoordinate, saddle, images, saveimages
 
+# Energy Hessian (saddle certification) and linear eigenmodes
+include("eigenmodes.jl")
+export TangentHessian, hessian!, densehessian, curvatures, certifysaddle, EigenModes, eigenmodes, savemode
+
 # --- Spin-transfer torque --------------------------------------------------
 include("stt.jl")
 export zhanglitorque!, slonczewskitorque!

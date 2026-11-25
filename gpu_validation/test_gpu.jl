@@ -352,6 +352,57 @@ function average_terms(label, mesh, params, T)
     end
 end
 
+# Energy Hessian and eigenmodes on the GPU against the CPU: operator, lowest curvatures
+# (dense and LOBPCG) and eigenmodes (dense and Lanczos). The iterative solvers are run in
+# Float64 only: their residual tolerances are below the Float32 rounding.
+function eig_terms(T)
+    film = Mesh((12, 10, 2), (4e-9, 4e-9, 4e-9))
+    mf = Material(Msat = T(8e5), Aex = T(1.3e-11), alpha = T(0.01), Dind = T(1e-3))
+    dm = Mesh((16, 16, 1), (4e-9, 4e-9, 4e-9))
+    rp = RegionParams(dm, Material(Msat = T(8e5), Aex = T(1.3e-11), alpha = T(0.01)))
+    setregion!(rp, 0; Msat = 0.0)
+    setregion!(rp, 1; Msat = 8e5, Aex = 1.3e-11)
+    setregion!(rp, 2; Msat = 1.2e6, Aex = 2e-11)
+    setgeometry!(rp, Cylinder(60e-9, 1.0); id = 1)
+    setgeometry!(rp, Cylinder(30e-9, 1.0); id = 2)
+    for (lab, mesh, par) in (("film Dind", film, mf), ("disc regions", dm, rp))
+        w = World(mesh, par; demag = true, Bext = (0.4, 0.1, 0)); wg = togpu(w)
+        mn = Minimizer(w, clearempty!(uniform(T, mesh, (1, 0.1, 0.05) ./ sqrt(1.0125)), par); stopdm = T == Float64 ? 1e-11 : 1e-6)
+        minimize!(mn; maxsteps = 20_000)
+        m = mn.m; mg = togpu(m)
+        H = TangentHessian(w, m); Hg = TangentHessian(wg, mg)
+        check("eig $lab: m·B", Hg.b, H.b, T == Float64 ? 1e-12 : 1e-5)
+        Random.seed!(4); x = JuliaMag._tangentproject!(randn(T, size(m)...), H)
+        check("eig $lab: hessian!", hessian!(togpu(similar(x)), togpu(x), Hg), hessian!(similar(x), x, H), T == Float64 ? 1e-12 : 1e-5)
+        A, = densehessian(H); Ag, = densehessian(Hg)
+        check("eig $lab: dense Hessian", Ag, A, T == Float64 ? 1e-12 : 1e-5)
+        T == Float64 || continue
+        c = curvatures(w, m; nev = 4)
+        check("eig $lab: curvatures, dense", curvatures(wg, mg; nev = 4).values, c.values, 1e-9)
+        check("eig $lab: curvatures, LOBPCG", curvatures(wg, mg; nev = 4, method = :lobpcg, tol = 1e-8).values, c.values, 1e-7)
+        e = eigenmodes(w, m; nmodes = 4)
+        check("eig $lab: frequencies, dense", eigenmodes(wg, mg; nmodes = 4).frequencies, e.frequencies, 1e-9)
+        eg = eigenmodes(wg, mg; nmodes = 4, method = :lanczos)
+        check("eig $lab: frequencies, Lanczos", eg.frequencies, e.frequencies, 1e-9)
+        check("eig $lab: linewidths, Lanczos", eg.linewidths, e.linewidths, 1e-6)
+        ov = [abs(sum(conj.(a) .* b)) / sqrt(sum(abs2, a) * sum(abs2, b)) for (a, b) in zip(eg.modes, e.modes)]
+        check("eig $lab: mode overlap, Lanczos", ov, ones(4), 1e-6)
+    end
+    T == Float64 || return
+    mesh = Mesh((32, 1, 1), (2e-9, 2e-9, 2e-9))        # GNEB band on the GPU, certified there
+    w = World(mesh, Material(Msat = T(8e5), Aex = T(1.3e-11), alpha = T(0.5), Ku = T(5e5), anisU = (1, 0, 0)); demag = false, Bext = (-0.375, 0, 0))
+    m0 = zeromag(T, mesh)
+    for i in 1:32
+        θ = π / (1 + exp(-(i - 16) / 2.5)); m0[:, i, 1, 1] .= (cos(θ), sin(θ), 0.02)
+    end
+    st = [uniform(T, mesh, (1, 0, 0)), normalize!(m0), uniform(T, mesh, (-1, 0, 0))]
+    nc = relax!(GNEB(w, st; nimages = 13); stopforce = 1e-8)
+    ng = relax!(GNEB(togpu(w), togpu.(st); nimages = 13); stopforce = 1e-8)
+    a = certifysaddle(nc); b = certifysaddle(ng)
+    check("eig wire: saddle index", [b.index, b.nzero], [a.index, a.nzero], 0.0)
+    check("eig wire: saddle curvatures", b.values, a.values, 1e-6)
+end
+
 # GNEB on the GPU: the band built on CuArrays (same initial path) must have the same
 # energies and forces as on the CPU, and relax to the same barrier (the barrier is a
 # property of the saddle, so it agrees to the force tolerance even though the BB
@@ -396,6 +447,7 @@ end
 for T in (Float64, Float32)
     println("\n================ ", T, " ================")
     gneb_terms(T)
+    eig_terms(T)
     mI, mB = mats(T)
     for (lab, mesh, mat) in (
             ("mat open 3D Dind", Mesh((20, 16, 4), (3e-9, 3e-9, 2e-9)), mI),

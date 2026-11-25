@@ -1,0 +1,8 @@
+CASE ellipse_uniform  images 21  spring 1.0 T
+first end: max|m x B| 1.7e-12 T, lowest curvatures [T]: +2.430665e-02  +2.468465e-02  +2.632618e-02  +3.113248e-02  +3.914697e-02  +5.022435e-02  +6.488779e-02  +8.036386e-02  (dense, asymmetry 2e-16, residuals <= 1e-14, 10 s)
+last end: max|m x B| 1.7e-12 T, lowest curvatures [T]: +2.430665e-02  +2.468465e-02  +2.632618e-02  +3.113248e-02  +3.914697e-02  +5.022435e-02  +6.488779e-02  +8.036386e-02  (dense, asymmetry 2e-16, residuals <= 1e-14, 10 s)
+GNEB: barrier 2.4139554504e-18 J, max|F| 5.7e-08 T, steps 311, climbing image 11, 9 s
+saddle (image 11): index 2, near zero 0, torque 6.8e-09 T, along the path -1.586957e-02 T (dense, 10 s)
+   curvatures [T]: -1.593097e-02  -5.368620e-03  +1.093479e-02  +1.458416e-02  +3.150140e-02  +4.327899e-02  +4.365094e-02  +4.785412e-02   residuals <= 1e-14
+   lobpcg:         -1.593097e-02  -5.368620e-03  +1.093479e-02  +1.458416e-02   residuals <= 9e-08  (9 s)
+done

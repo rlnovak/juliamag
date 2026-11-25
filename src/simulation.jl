@@ -572,3 +572,10 @@ function Base.show(io::IO, ::MIME"text/plain", sim::Simulation{T}) where {T}
           sim.fixdt > 0 ? " (fixdt $(sim.fixdt) s)" : " (maxerr $(sim.maxerr))",
           ", table columns: ", join([q.name for q in sim.table.quantities], ", "))
 end
+
+"""
+    eigenmodes(sim; kwargs...)
+
+The linear eigenmodes of the state of a (relaxed) simulation; see [`eigenmodes`](@ref).
+"""
+eigenmodes(sim::Simulation; kwargs...) = eigenmodes(sim.world, sim.m; kwargs...)

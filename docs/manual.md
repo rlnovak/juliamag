@@ -666,7 +666,62 @@ grows with mesh size and with a more capable GPU.
 
 ---
 
-## 9. Going further
+## 9. Energy barriers and eigenmodes
+
+**Minimum-energy paths.** `GNEB` joins two relaxed states by a chain of images and relaxes
+it; the highest image climbs to the saddle point.
+
+```julia
+mesh = Mesh((32, 1, 1), (2e-9, 2e-9, 2e-9))
+mat  = Material(Msat = 8e5, Aex = 1.3e-11, alpha = 0.5, Ku = 5e5, anisU = (1, 0, 0))
+w    = World(mesh, mat; demag = false, Bext = (-0.375, 0, 0))
+up, down = uniform(mesh, (1, 0, 0)), uniform(mesh, (-1, 0, 0))
+wall = zeromag(Float64, mesh)                        # a waypoint: a wall in the middle
+for i in 1:32
+    θ = π / (1 + exp(-(i - 16) / 2.5))
+    wall[:, i, 1, 1] .= (cos(θ), sin(θ), 0.02)
+end
+neb = GNEB(w, [up, normalize!(wall), down]; nimages = 13)
+relax!(neb; stopforce = 1e-6)                        # T
+barrier(neb)                                         # J
+saveimages(neb, "band")                              # OVF files and neb.txt
+```
+
+Forces and the spring constant are in tesla. The initial path matters: it must not be
+confined by a symmetry that the true path breaks. Check that the result does not change with
+more images, and that the saddle is one:
+
+```julia
+s = certifysaddle(neb)
+s.index        # number of negative curvatures of the energy: 1 for a transition state
+s.values       # the lowest curvatures [T]; near-zero ones are symmetries
+```
+
+`curvatures(w, m)` gives the same for any state. A relaxed state with a negative curvature is
+not a minimum: the minimizer stopped on a symmetric stationary point.
+
+**Eigenmodes.** `eigenmodes` linearizes the equation of motion about an equilibrium, which has to
+be relaxed tightly:
+
+```julia
+film = Mesh((12, 12, 1), (5e-9, 5e-9, 5e-9))
+wf   = World(film, Material(Msat = 8e5, Aex = 1.3e-11, alpha = 0.01); Bext = (0.2, 0.05, 0))
+mn   = Minimizer(wf, uniform(film, (1, 0, 0)); stopdm = 1e-10)
+minimize!(mn)
+em = eigenmodes(wf, mn.m; nmodes = 4)
+em.frequencies                                       # Hz
+em.linewidths                                        # decay rates of the amplitude, 1/s
+savemode("modes", em, 1, film)                       # complex mode δm as two OVF files
+```
+
+Small systems are solved as dense matrices, larger ones without a matrix (`method = :lanczos`),
+also on the GPU (`togpu`). Edge-smoothed geometries (partially filled cells) are limited to
+small systems, and states with a zero mode (a texture that can be translated in a periodic film)
+are refused. Both features work in Float64 by default; in Float32 the tolerances are wider.
+
+---
+
+## 10. Going further
 
 - **Standalone examples:** [`examples/`](../examples/) has the standard problems
   2, 4, and 5 with comparison plots against mumax3 and OOMMF.

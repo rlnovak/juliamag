@@ -39,9 +39,9 @@ micromagnetic + atomistic simulator. What it has that JuliaMag does not:
 | **Multi-backend GPU** (CUDA, AMD, Intel, Apple) via **KernelAbstractions.jl** | ✅ | CUDA only (hand-written array-programming kernels) |
 | **Atomistic spin dynamics** (discrete spins, exchange/DMI/anisotropy on a lattice) | ✅ | micromagnetic (continuum) only |
 | **Monte Carlo** (finite-T equilibrium sampling) | ✅ | LLG-Langevin only |
-| **NEB / GNEB** (minimum-energy paths, energy barriers, saddle search) | ✅ | ✗ |
-| **Eigenmodes** (linearized-LLG normal modes, FMR spectra) | ✅ | ✗ |
-| **Transition tooling** (Hessian, minimum-mode, symmetry) | ✅ | ✗ |
+| **NEB / GNEB** (minimum-energy paths, energy barriers, saddle search) | ✅ | ✅ (GNEB, saddle certification) |
+| **Eigenmodes** (linearized-LLG normal modes, FMR spectra) | ✅ | ✅ |
+| **Transition tooling** (Hessian, minimum-mode, symmetry) | ✅ | Hessian (lowest curvatures) |
 | Several Cayley/GPSM integrators | ✅ | Tsit5 + RK4 + BB minimizer |
 | Web-based live GUI | ✅ | QML desktop GUI |
 
@@ -328,7 +328,9 @@ KernelAbstractions was removed from this queue: see "Future features".
   - Step 1b is DONE: ellipse, skyrmion and skyrmion-lattice barriers against
     MicroMagnetic.jl (`gpu_validation/gneb/results/README.md`).
   - GPU checks of the same code (d141053): 670/670.
-  - Next: the paper section.
+  - Saddle certification and paper section DONE 2026-11-25. The uniform path of the ellipse has
+    index 2, and the four-skyrmion lattice is not a minimum (retracted: no barrier of a
+    metastable state); see `gpu_validation/gneb/results/README.md`.
 - **Prerequisite.** Energy functions on the GPU, from the feature backlog: the
   NEB evaluates every image's energy and gradient at every iteration.
 - **Method.** Geodesic NEB on the product of unit spheres (Bessarab, Uzdin,
@@ -347,6 +349,9 @@ KernelAbstractions was removed from this queue: see "Future features".
   - A skyrmion-collapse barrier against published values.
 
 **2. Eigenmodes / FMR.** Detailed plan: [`plan_neb_eigen.md`](plan_neb_eigen.md) §2.
+- **Status, 2026-11-25: DONE**, `src/eigenmodes.jl`, `gpu_validation/eigenmodes/README.md`.
+  Not done: a ringdown of the FMR problem with JuliaMag's own integrators, a Kittel film with
+  demag, a cross-check with MicroMagnetic.jl's eigensolver, and zero modes (refused).
 - **Method.** Linearize the LLG about an equilibrium in the local tangent frame
   (two components per cell):
   - Small systems: a dense eigenproblem.

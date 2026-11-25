@@ -1,0 +1,24 @@
+window 2.0 ns to the end
+B = 10 mT: |z| 0.06613 -> 0.04128, f(mean) = 968.774 MHz, Gamma = 0.07947 1/ns, f0 (this run, with kappa) = 968.257 MHz
+B =  5 mT: |z| 0.03471 -> 0.02078, f(mean) = 968.264 MHz, Gamma = 0.07946 1/ns, f0 (this run, with kappa) = 968.020 MHz
+B =  2 mT: |z| 0.01399 -> 0.00833, f(mean) = 968.116 MHz, Gamma = 0.07941 1/ns, f0 (this run, with kappa) = 967.983 MHz
+B =  1 mT: |z| 0.00700 -> 0.00417, f(mean) = 968.094 MHz, Gamma = 0.07941 1/ns, f0 (this run, with kappa) = 967.980 MHz
+f = f0 + k <|z|^2>: f0 = 968.088 MHz (from 4 runs), residuals [-0.     0.002 -0.    -0.001] MHz
+Gamma0 = 0.07942 1/ns
+eigenmode: f = 968.234 MHz (f0/eig - 1 = -1.5e-04), Gamma = 0.07940 (rel +2.4e-04)
+window 4.0 ns to the end
+B = 10 mT: |z| 0.05626 -> 0.04128, f(mean) = 968.677 MHz, Gamma = 0.07938 1/ns, f0 (this run, with kappa) = 968.120 MHz
+B =  5 mT: |z| 0.02860 -> 0.02078, f(mean) = 968.229 MHz, Gamma = 0.07943 1/ns, f0 (this run, with kappa) = 968.054 MHz
+B =  2 mT: |z| 0.01150 -> 0.00833, f(mean) = 968.105 MHz, Gamma = 0.07941 1/ns, f0 (this run, with kappa) = 967.998 MHz
+B =  1 mT: |z| 0.00575 -> 0.00417, f(mean) = 968.087 MHz, Gamma = 0.07940 1/ns, f0 (this run, with kappa) = 967.993 MHz
+f = f0 + k <|z|^2>: f0 = 968.080 MHz (from 4 runs), residuals [ 0.    -0.002  0.001  0.001] MHz
+Gamma0 = 0.07942 1/ns
+eigenmode: f = 968.234 MHz (f0/eig - 1 = -1.6e-04), Gamma = 0.07940 (rel +1.8e-04)
+window 0.5 ns to the end
+B = 10 mT: |z| 0.07151 -> 0.04128, f(mean) = 968.883 MHz, Gamma = 0.07959 1/ns, f0 (this run, with kappa) = 968.198 MHz
+B =  5 mT: |z| 0.03740 -> 0.02078, f(mean) = 968.291 MHz, Gamma = 0.07941 1/ns, f0 (this run, with kappa) = 968.118 MHz
+B =  2 mT: |z| 0.01518 -> 0.00833, f(mean) = 968.117 MHz, Gamma = 0.07936 1/ns, f0 (this run, with kappa) = 968.109 MHz
+B =  1 mT: |z| 0.00760 -> 0.00417, f(mean) = 968.091 MHz, Gamma = 0.07935 1/ns, f0 (this run, with kappa) = 968.107 MHz
+f = f0 + k <|z|^2>: f0 = 968.085 MHz (from 4 runs), residuals [-0.001  0.003 -0.001 -0.002] MHz
+Gamma0 = 0.07935 1/ns
+eigenmode: f = 968.234 MHz (f0/eig - 1 = -1.5e-04), Gamma = 0.07940 (rel -6.5e-04)

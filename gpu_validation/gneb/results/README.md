@@ -32,8 +32,22 @@ reject 3 and 1.5; lattice4 N=11 k=1 with reject 1.5.
   evaluated in both codes.
 - magnum.np's string method on the uniform path: +2.26e-4 after 400 steps and still
   decreasing; +1.90e-4 for the same image.
-- The saddles are not certified first-order (needs the eigenmodes). The wall path of the
-  ellipse is 29 % below the uniform path, so the latter is not the lowest barrier.
+- Saddle order, from the eigenvalues of the energy Hessian (`certify_saddles.jl`, dense,
+  `certify_*.txt`; stop force 1e-7 T), of the climbing image:
+
+| case | index | lowest curvatures (T) | end states |
+|---|---|---|---|
+| ellipse, +x → +y → −x | **2** | −0.01593, −0.00537, +0.01093 | minima (lowest +0.0243) |
+| ellipse, wall sweep | 1 | −0.00207, +0.00280, +0.02004 | minima |
+| one skyrmion → uniform | 1 | −2.905, +0.1103, +0.1103 | minima; start: two zero modes (translations, 1e-13) |
+| four skyrmions → uniform | **4** | −2.653, −2.653, −0.0020, −0.00014, +0.0013 | **start is not a minimum**: −0.00162 twice, two zero modes |
+
+- Of the two unstable modes of the uniform path the first is even under inversion, the second odd
+  (parity -1.000000): a symmetric band cannot leave it. The path is not a transition path; the wall path is the
+  lower one (29 % below). The four-skyrmion lattice is a symmetric stationary state on which
+  the minimizer stopped: "the barrier" found from it is not that of a metastable state, and
+  its stop-force value is not converged (1.20238e-19 J, 1e-5 T against 1e-7 T: −2.7e-7).
+  Both codes agree on it, so the agreement says nothing about its meaning.
 - The force tolerances of the two codes are the same quantity (largest per-cell norm of
   the total force over the free images); rows where a code did not converge are not
   comparable: MicroMagnetic starts climbing even if its first stage has not converged, does

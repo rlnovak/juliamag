@@ -1,0 +1,9 @@
+CASE skyrmion  images 21  spring 1.0 T
+charge of the start state -1.0000
+first end: max|m x B| 8.7e-12 T, lowest curvatures [T]: +1.201452e-13  +1.201452e-13  +5.166689e-02  +9.498435e-02  +9.719074e-02  +1.303245e-01  +1.303245e-01  +1.699830e-01  (dense, asymmetry 3e-16, residuals <= 3e-14, 17 s)
+last end: max|m x B| 0.0e+00 T, lowest curvatures [T]: +1.200000e-01  +1.200000e-01  +1.663642e-01  +1.663642e-01  +1.663642e-01  +1.663642e-01  +1.663642e-01  +1.663642e-01  (dense, asymmetry 0e+00, residuals <= 5e-14, 17 s)
+GNEB: barrier 7.9422822692e-20 J, max|F| 9.4e-08 T, steps 1465, climbing image 16, 25 s
+saddle (image 16): index 1, near zero 0, torque 3.3e-08 T, along the path -2.367892e+00 T (dense, 16 s)
+   curvatures [T]: -2.904757e+00  +1.102596e-01  +1.102596e-01  +1.413926e-01  +1.413926e-01  +1.483530e-01  +1.674483e-01  +1.683115e-01   residuals <= 3e-14
+   lobpcg:         -2.904757e+00  +1.102596e-01  +1.102596e-01  +1.413926e-01   residuals <= 9e-08  (10 s)
+done

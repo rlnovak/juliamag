@@ -1,0 +1,9 @@
+CASE lattice4  images 21  spring 1.0 T
+charge of the start state -4.0000
+first end: max|m x B| 2.9e-11 T, lowest curvatures [T]: -1.621318e-03  -1.621318e-03  -1.385270e-13  -1.193022e-13  +1.241180e-02  +1.241180e-02  +1.557915e-02  +1.557915e-02  (dense, asymmetry 4e-16, residuals <= 3e-14, 16 s)
+last end: max|m x B| 0.0e+00 T, lowest curvatures [T]: +1.200000e-01  +1.200000e-01  +1.663642e-01  +1.663642e-01  +1.663642e-01  +1.663642e-01  +1.663642e-01  +1.663642e-01  (dense, asymmetry 0e+00, residuals <= 5e-14, 16 s)
+GNEB: barrier 1.2023837486e-19 J, max|F| 9.8e-08 T, steps 14888, climbing image 7, 257 s
+saddle (image 7): index 4, near zero 0, torque 1.9e-07 T, along the path -1.427939e+00 T (dense, 16 s)
+   curvatures [T]: -2.652732e+00  -2.652732e+00  -1.998964e-03  -1.373483e-04  +1.331823e-03  +1.730750e-02  +4.559223e-02  +7.227775e-02   residuals <= 3e-14
+   lobpcg:         -2.652732e+00  -2.652732e+00  -1.998964e-03  -1.373483e-04  +1.331823e-03  +1.730750e-02  +4.559223e-02  +7.227775e-02   residuals <= 9e-08  (13 s)
+done

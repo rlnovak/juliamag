@@ -255,8 +255,12 @@ tables in `gpu_validation/gneb/results/README.md`).
   GNEB on the wire and the region disc, Float64: energies, forces and midpoint energies
   to <= 6e-16, relaxed barrier to <= 3e-12; Float32: barrier to <= 1.3e-6. The film and
   ellipse cases above were run on the CPU only.
-- Not done: the DMI-film barrier against published continuum values; the saddle
-  certification (needs item 2).
+- Not done: the DMI-film barrier against published continuum values.
+- **Step 1c, 2026-11-25: saddle certification and paper section DONE.** Order from the lowest
+  eigenvalues of the energy Hessian (`certifysaddle`): skyrmion 1, ellipse wall path 1,
+  **ellipse uniform path 2**, **four-skyrmion lattice 4, with a start state that is not a
+  minimum** (two curvatures of −1.6 mT). Retraction: the lattice barrier reported in step 1b is
+  not that of a metastable state; the agreement between codes did not show it.
 
 **Paper.** A section "Energy barriers", with the Stoner–Wohlfarth figure
 (barrier vs h, analytic curve in red, JuliaMag in blue) and the ellipse or
@@ -265,6 +269,14 @@ skyrmion path.
 ---
 
 ## 2. Linear eigenmodes (FMR spectra, mode profiles)
+
+**Status, 2026-11-25: DONE** (`src/eigenmodes.jl`, `test/test_eigenmodes.jl`,
+`gpu_validation/eigenmodes/README.md`), with the differences from the plan below: no KrylovKit (own
+antisymmetric Lanczos in the A-product with conjugate gradients, dense Hermitian problem,
+LOBPCG for the lowest curvatures). An independent review found a serious fault of the first
+version: the Lanczos basis lost its orthogonality in degenerate or nearly complete spectra and
+returned wrong modes without a warning; fixed by recomputing A·v for every new vector, and
+tested with many starting vectors.
 
 ### Method
 
@@ -353,9 +365,9 @@ product. It works unchanged on the GPU, so it reuses the FFT demag.
 | 0 | `energy!`, `linearfield!` (CPU + GPU) | tests pass; GPU check queued on an idle GPU |
 | 1a | GNEB core, CPU, Stoner–Wohlfarth | ΔE to 1e-6 — DONE 2026-11-24 (≤ 6e-15) |
 | 1b | Ellipse and skyrmion barriers, image and spring convergence | cross-code agreement documented — DONE 2026-11-24 |
-| 1c | GPU runs, paper section, commit | — |
-| 2a | Eigen operator and dense solver, Kittel and film cases | to 1e-8 |
-| 2b | Iterative solver, FMR standard problem, disc gyrotropic mode | agreement with the ringdown and with mumax3's 969.8 MHz |
+| 1c | GPU runs, paper section, commit | — DONE 2026-11-25 |
+| 2a | Eigen operator and dense solver, Kittel and film cases | to 1e-8 — DONE 2026-11-25 (film: only without demag) |
+| 2b | Iterative solver, FMR standard problem, disc gyrotropic mode | agreement with the ringdown and with mumax3's 969.8 MHz — DONE 2026-11-25 (968.234 MHz; 969.8 was an estimator biased by +0.9 MHz) |
 | 2c | GNEB saddle certification, GPU, paper section, commit | — |
 
 GPU runs go through `run_when_gpu_idle.sh`; the machines are shared. Each long run
