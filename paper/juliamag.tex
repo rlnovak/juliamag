@@ -1028,6 +1028,158 @@ to $0.005$~nm rms.
   \label{fig:disc40}
 \end{figure*}
 
+\subsection{Energy barriers}
+\label{sec:barriers}
+
+\paragraph{Method.}
+Minimum-energy paths between two relaxed states are found with the geodesic nudged
+elastic band (GNEB)~\cite{bessarab2015}: a chain of images, its ends fixed, relaxes
+under the component of the energy gradient perpendicular to the path and a spring force
+along it, on the product of unit spheres. The tangent is the energy-weighted one of
+Ref.~\cite{henkelman2000a}, and the highest image climbs to the saddle
+point~\cite{henkelman2000b}. The gradient is the effective field, so the energy that the
+band follows is consistent to rounding with the field that drives it; a test checks
+this for every term, and a warning is printed where it does not hold (exchange or DMI in
+partially filled cells). The whole chain is relaxed with the Barzilai--Borwein steps and
+Cayley rotations of the minimizer. Forces and the spring constant are expressed in
+tesla, and the images can be on the GPU.
+
+A climbing image that has converged is a stationary point, not necessarily a transition
+state. We therefore compute the lowest eigenvalues of the second variation of the energy,
+\begin{equation}
+  \mathsf{H}\,\delta\vm = \mathsf{P}\bigl[(\vm\cdot\vB_{\mathrm{eff}})\,\delta\vm
+  - \vB_{\mathrm{lin}}(\delta\vm)\bigr],
+  \label{eq:hessian}
+\end{equation}
+where $\vB_{\mathrm{lin}}$ is the linear part of the field (all terms but Zeeman) and
+$\mathsf{P}$ the projection on the tangent planes of $\vm$. In the $M_s$-weighted inner
+product $\mathsf{H}$ is symmetric; its eigenvalues are curvatures, in tesla. The number of
+negative ones, the index, is 0 at a minimum and 1 at a first-order saddle. The operator is
+applied with one field evaluation and diagonalized as a dense matrix, so that no negative
+eigenvalue can be missed, or with a matrix-free solver for larger systems.
+
+\paragraph{Macrospin.}
+For the Stoner--Wohlfarth particle~\cite{stoner1948} in a field $h=M_sB/2K$ opposite to the
+magnetization the barrier is $KV(1-h)^2$, reproduced to $10^{-14}$ for $h=0$--$0.9$
+(Fig.~\ref{fig:gneb}(a)). The curvatures at the saddle are $-2K(1-h^2)/M_s$, reproduced
+to $10^{-9}$, and zero for the rotation about the axis.
+
+\paragraph{Reversal of an ellipse.}
+The second case is that of the string-method demonstration of magnum.np: a
+$470~\mathrm{nm}\times170~\mathrm{nm}\times4~\mathrm{nm}$ ellipse of Permalloy on 5~nm
+cells, reversed from $+x$ to $-x$. Two initial paths are used. In the first, the only
+intermediate state is uniform along $+y$, and the path keeps the inversion symmetry
+$\vm(\bm{r})=\vm(-\bm{r})$. In the second, a wall sweeps across the element. With 21 images
+the barriers are $2.414\times10^{-18}$~J and $1.710\times10^{-18}$~J
+(Fig.~\ref{fig:gneb}(b)). They do not depend on the number of images (11, 21, 31) or on the
+spring constant (0.3, 1, 3~T). MicroMagnetic.jl~\cite{wang2024}, given the same end states
+and the same initial path, obtains barriers larger by $2.0\times10^{-4}$ and
+$1.7\times10^{-4}$; the same differences appear when one image is evaluated in both codes,
+so they come from the two demagnetizing kernels. The curvatures settle which path is
+physical. The saddle of the wall path has one negative eigenvalue,
+$-2.07$~mT, and the next is $+2.80$~mT. The saddle of the uniform path has two, $-15.9$~mT
+and $-5.4$~mT. Under inversion the first of these modes is even and the second odd, so a
+band that keeps the symmetry cannot leave the second: the uniform path is not a
+transition path.
+
+\paragraph{Skyrmion collapse.}
+The third case is a single Bloch skyrmion in a film periodic in the plane, with bulk DMI
+($60\times60$ cells of 2~nm, $M_s=3.84\times10^5$~A/m, $A=3.25\times10^{-12}$~J/m,
+$D=5.83\times10^{-4}$~J/m$^2$, $B=0.12$~T; the open DMI boundary in $z$, as in
+MicroMagnetic.jl). The initial state has topological charge $-1$. The barrier to the
+uniform state is $7.94228\times10^{-20}$~J, equal in the two codes to $5.5\times10^{-13}$
+(Fig.~\ref{fig:gneb}(c)), and independent of the spring constant and of 21 or 31 images to
+$10^{-11}$. With 11 images the band does not converge. The saddle has exactly one negative
+curvature, $-2.90$~T, the next being $+0.110$~T. The starting state is a minimum up to
+two zero modes ($10^{-13}$~T), the translations. A lattice of four
+skyrmions in the same film, by contrast, relaxes to a state that is not a minimum: it has
+two negative curvatures of $-1.6$~mT, so that the minimizer stopped on a
+symmetric stationary point, and the barrier found from it, although both codes agree on it
+to $9\times10^{-9}$, is not that of a metastable state (the index of the top image is 4).
+The curvature test is what reveals this.
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/gneb_barriers.png}
+  \caption{Energy barriers with \JuliaMag{} (blue) and references (red).
+  (a)~Stoner--Wohlfarth particle against the analytic barrier. (b)~Two paths of the reversal
+  of an ellipse; symbols mark the images. Only the wall path crosses a first-order
+  saddle. (c)~Collapse of a skyrmion. In (b) and (c) the reference is
+  MicroMagnetic.jl, with the same end states and the same initial path.}
+  \label{fig:gneb}
+\end{figure*}
+
+\subsection{Linear eigenmodes}
+\label{sec:eigen}
+
+\paragraph{Method.}
+About an equilibrium $\vm_0$ the undamped LLG equation linearizes to
+$\mathrm{d}\,\delta\vm/\mathrm{d}t=\gamma\,\vm_0\times\mathsf{H}\,\delta\vm$ with the operator of
+Eq.~\eqref{eq:hessian}~\cite{daquino2009}. In the variable $u=\sqrt{M_s}\,\delta\vm$ the operator
+becomes $\gamma\mathsf{J}\mathsf{A}$, with $\mathsf{A}$ symmetric and
+$\mathsf{J}u=\vm_0\times u$, and at a minimum its eigenvalues are $\pm i\omega$. Small systems are
+solved as a dense Hermitian problem through the Cholesky factor of $\mathsf{A}$. For larger ones,
+$\mathsf{A}^{-1}\mathsf{J}$ is antisymmetric in the inner product $(x,\mathsf{A}y)$, and a Lanczos
+recurrence in that product gives the lowest frequencies first; each step solves
+$\mathsf{A}w=v$ by conjugate gradients, with one field evaluation per iteration, on the CPU or
+the GPU. Further passes, kept orthogonal to the modes found, recover degenerate
+frequencies. The decay rates are those of first order in $\alpha$. A state that is not a
+minimum, or that has a zero mode (a translation, a rotation), is reported as such.
+
+\paragraph{Analytic cases.}
+The Kittel frequency of a macrospin, and the spin waves of a periodic chain with
+the dispersion of the discretized exchange and the non-reciprocal shift
+$\pm(2D/M_s)\sin(kc)/c$ of the interfacial DMI, are reproduced to $10^{-9}$ or better, and
+the modes returned satisfy the linearized right-hand side of the equation of motion itself,
+also with regions of different $M_s$.
+
+\paragraph{FMR standard problem.}
+The problem of Baker \textit{et al.}~\cite{baker2017} is a $120\times120\times10$~nm Permalloy film in an
+in-plane field of 80~kA/m at $35^\circ$. Reference~\cite{baker2017} gives the fifteen lowest
+frequencies and damping times ($\alpha=0.008$) from an eigenvalue solver on 5~nm cells. With that
+mesh, and the frequencies scaled to the gyromagnetic ratio of the reference
+($2.210173\times10^5$~m/(A\,s)), \JuliaMag{} agrees with all fifteen frequencies to
+$7\times10^{-4}$ and with the damping times to $1.2\times10^{-3}$. The differences are
+systematic, and we traced them. They shrink as the accuracy of \JuliaMag's demagnetizing
+kernel, which follows \mumax, is increased; with the analytic tensor of
+Newell \textit{et al.}~\cite{newell1993} the frequencies differ from the table by a common factor,
+$1.00031$, and after removing that single factor all fifteen frequencies agree within the rounding of
+the table (0.5~MHz) and the damping times to 0.6~ps. We have not identified the
+origin of the factor; it is uniform, as a difference in the gyromagnetic ratio would be. The
+matrix-free solver gives the same frequencies as the dense one to $4\times10^{-15}$.
+Figure~\ref{fig:eigen}(a) compares the frequencies with the ringdown spectrum computed with
+\oommf{} in Ref.~\cite{baker2017}.
+
+\paragraph{Gyrotropic mode of a vortex.}
+For the disc of Sec.~\ref{sec:discstt} (staircase boundary, $64\times64\times8$ cells, 25\,824
+magnetic) the lowest mode is the gyrotropic one, $f=968.234$~MHz with a decay rate
+$\Gamma=0.07940$~ns$^{-1}$; the next modes lie above 10~GHz. We compare it with the
+equation of motion, integrated from the vortex displaced by fields of 10, 5, 2 and 1~mT
+(double precision, fourth-order Runge--Kutta). The frequency, from the phase of
+$\langle m_x\rangle+i\langle m_y\rangle$ over 2--8~ns, increases linearly with the square of the
+amplitude, and extrapolates to $968.088$~MHz at zero
+(Fig.~\ref{fig:eigen}(c)). The difference from the eigenfrequency, $-1.5\times10^{-4}$, is the shift
+of second order in $\alpha$: the exact eigenvalues of the damped operator of two coarser discs
+give a relative shift of $-1.68\,\alpha^2$ and $-1.69\,\alpha^2$, that is, $968.072$~MHz for the
+damped mode, and the extrapolation agrees with it to $2\times10^{-5}$. The extrapolated decay
+rate, $0.0794$~ns$^{-1}$, agrees with the eigenmode to $2\times10^{-4}$. (The estimator
+used for Table~\ref{tab:discstt}, a moving average followed by a Hilbert transform, is biased by
+$+0.9$~MHz on a signal that decays at this rate. The bias is the same for both
+codes, so it does not affect their comparison, but the $969.8$~MHz of that table is
+$0.1\%$ above the frequency of the gyration.)
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/eigenmodes.png}
+  \caption{Linear eigenmodes. (a)~FMR standard problem: ringdown spectrum computed with \oommf{} in
+  Ref.~\cite{baker2017} (red) and the fifteen lowest eigenfrequencies (blue). Modes that the
+  uniform excitation does not couple to have no peak. (b)~Amplitude $|\delta\vm|$ of two modes
+  over the film, averaged over the thickness. (c)~Frequency of the free gyration of the vortex
+  against the square of its amplitude, from the equation of motion (red), and the eigenmode, with
+  its second-order shift by the damping (blue).}
+  \label{fig:eigen}
+\end{figure*}
+
 % ==========================================================================
 \section{Applications}
 \label{sec:applications}
@@ -1301,10 +1453,9 @@ built. Positioning \JuliaMag{} within this ecosystem --- rather than as an
 isolated, hand-optimized binary --- is, in our view, its most significant
 long-term advantage.
 
-Immediate development priorities are a geodesic nudged-elastic-band solver
-for energy barriers and a linear eigenmode solver for ferromagnetic-resonance
-spectra, followed by multi-backend GPU execution through
-\texttt{KernelAbstractions.jl}. The code is open source and available at
+Energy barriers and linear eigenmodes (Secs.~\ref{sec:barriers} and~\ref{sec:eigen})
+are the most recent additions. A script front end in the style of \mumax{} is next; multi-backend
+GPU execution through \texttt{KernelAbstractions.jl} remains planned. The code is open source and available at
 \url{https://github.com/rlnovak/juliamag}.
 
 \section*{Acknowledgments}
@@ -1405,6 +1556,39 @@ spectra, followed by multi-backend GPU execution through
   ultrathin film nanostructures in the presence of Dzyaloshinskii--Moriya
   interaction,'' Phys.\ Rev.\ B \textbf{88}, 184422 (2013).
   \url{https://doi.org/10.1103/PhysRevB.88.184422}.
+
+% --- Energy barriers ---
+\bibitem{bessarab2015} P.\ F.\ Bessarab, V.\ M.\ Uzdin, and H.\ J\'onsson, ``Method for
+  finding mechanism and activation energy of magnetic transitions, applied to skyrmion
+  and antivortex annihilation,'' Comput.\ Phys.\ Commun.\ \textbf{196}, 335 (2015).
+  \url{https://doi.org/10.1016/j.cpc.2015.07.001}.
+\bibitem{henkelman2000a} G.\ Henkelman and H.\ J\'onsson, ``Improved tangent estimate in
+  the nudged elastic band method for finding minimum energy paths and saddle points,''
+  J.\ Chem.\ Phys.\ \textbf{113}, 9978 (2000). \url{https://doi.org/10.1063/1.1323224}.
+\bibitem{henkelman2000b} G.\ Henkelman, B.\ P.\ Uberuaga, and H.\ J\'onsson, ``A climbing
+  image nudged elastic band method for finding saddle points and minimum energy paths,''
+  J.\ Chem.\ Phys.\ \textbf{113}, 9901 (2000). \url{https://doi.org/10.1063/1.1329672}.
+\bibitem{stoner1948} E.\ C.\ Stoner and E.\ P.\ Wohlfarth, ``A mechanism of magnetic
+  hysteresis in heterogeneous alloys,'' Phil.\ Trans.\ R.\ Soc.\ A \textbf{240}, 599
+  (1948). \url{https://doi.org/10.1098/rsta.1948.0007}.
+\bibitem{wang2024} W.\ Wang, B.\ Lyu, L.\ Kong, H.\ Fangohr, and H.\ Du,
+  ``MicroMagnetic.jl: A Julia package for micromagnetic and atomistic simulations with
+  GPU support,'' Chin.\ Phys.\ B \textbf{33}, 107508 (2024).
+  \url{https://doi.org/10.1088/1674-1056/ad766f}.
+
+% --- Eigenmodes ---
+\bibitem{daquino2009} M.\ d'Aquino, C.\ Serpico, G.\ Miano, and C.\ Forestiere, ``A novel
+  formulation for the numerical computation of magnetization modes in complex micromagnetic
+  systems,'' J.\ Comput.\ Phys.\ \textbf{228}, 6130 (2009).
+  \url{https://doi.org/10.1016/j.jcp.2009.05.026}.
+\bibitem{baker2017} A.\ Baker, M.\ Beg, G.\ Ashton, M.\ Albert, D.\ Chernyshenko, W.\ Wang,
+  S.\ Zhang, M.-A.\ Bisotti, M.\ Franchin, C.\ L.\ Hu, R.\ Stamps, T.\ Hesjedal, and H.\ Fangohr,
+  ``Proposal of a micromagnetic standard problem for ferromagnetic resonance simulations,''
+  J.\ Magn.\ Magn.\ Mater.\ \textbf{421}, 428 (2017).
+  \url{https://doi.org/10.1016/j.jmmm.2016.08.009}.
+\bibitem{newell1993} A.\ J.\ Newell, W.\ Williams, and D.\ J.\ Dunlop, ``A generalization of the
+  demagnetizing tensor for nonuniform magnetization,'' J.\ Geophys.\ Res.\ \textbf{98}, 9551
+  (1993). \url{https://doi.org/10.1029/93JB00694}.
 
 % --- Vortex-core switching ---
 \bibitem{vanwaeyenberge2006} B.\ Van Waeyenberge, A.\ Puzic, H.\ Stoll,
