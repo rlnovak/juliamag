@@ -74,6 +74,25 @@ function disc(T)
     return mesh, rp
 end
 
+# Regions side by side, D of the same sign, of opposite sign and zero (bond mean), with
+# edge-smoothed partial cells and anisotropy.
+function lateral(T, kind)
+    mesh = Mesh((20, 20, 3), (2e-9, 2e-9, 2e-9))
+    mI, mB = mats(T)
+    rp = RegionParams(mesh, kind == :ind ? mI : mB)
+    key = kind == :ind ? :Dind : :Dbulk
+    setregion!(rp, 0; Msat = 0.0)
+    setgeometry!(rp, Cylinder(38e-9, 6e-9); id = 1, edgesmooth = 4)
+    for k in 1:3, j in 1:20, i in 1:20                        # the fill stays
+        rp.regions.id[i, j, k] == 1 && (rp.regions.id[i, j, k] = 1 + (i > 10) + 2 * (j > 10))
+    end
+    setregion!(rp, 1; key => 1.5e-3)
+    setregion!(rp, 2; key => 0.6e-3, Msat = 1.2e6, Aex = 2e-11)
+    setregion!(rp, 3; key => -1.1e-3, Ku = -2e5, anisU = (0, 1, 0))
+    setregion!(rp, 4; key => 0.0, Msat = 6e5)
+    return mesh, rp
+end
+
 # Bulk DMI next to empty cells, staircase edge.
 function discbulk(T)
     mesh = Mesh((20, 20, 3), (2e-9, 2e-9, 2e-9))
@@ -284,7 +303,26 @@ function stepper_terms(label, mesh, params, T)
     @printf("  %-58s CPU %d/%d  GPU %d/%d\n", "$label rk45 adaptive steps/undone",
             tc.nsteps, tc.nundone, tg.nsteps, tg.nundone)
     check("$label rk45 adaptive 5 ps, m", mg, mc, T == Float64 ? 1e-8 : 1e-3)
-    check("$label rk45 adaptive 5 ps, last dt", [tg.dt], [tc.dt], T == Float64 ? 1e-6 : 1e-2)
+    # The step follows the error estimate (a cancellation, see above), so in Float32 its
+    # last value is rounding noise to some extent: in the bilayer the CPU run itself moves
+    # by up to 2.7 % when the initial state moves by one ulp (random signs, 8 seeds), while
+    # in Float64 the same step agrees to ~1e-11. The Float32 tolerance is 3× that spread,
+    # measured here on 4 perturbed CPU runs, and never below 1 %.
+    dttol = 1e-6
+    if T == Float32
+        rng = MersenneTwister(3); spread = 0.0
+        for _ in 1:4
+            mp = copy(m)
+            for q in eachindex(mp)
+                mp[q] == 0 || (mp[q] = rand(rng, Bool) ? nextfloat(mp[q]) : prevfloat(mp[q]))
+            end
+            tp = TimeStepper(w, mp; solver = :rk45); advanceto!(tp, 5e-12)
+            spread = max(spread, abs(tp.dt / tc.dt - 1))
+        end
+        @printf("  %-58s %9.2e\n", "$label rk45 adaptive, intrinsic 1-ulp spread of last dt", spread)
+        dttol = max(1e-2, 3 * spread)
+    end
+    check("$label rk45 adaptive 5 ps, last dt", [tg.dt], [tc.dt], dttol)
 
     # Simulation on the GPU (togpu): table rows (device and host columns) and OVF.
     dir = mktempdir()
@@ -372,7 +410,8 @@ for T in (Float64, Float32)
         average_terms(lab, mesh, mat, T)
     end
     for (lab, (mesh, rp)) in (("regions bilayer", bilayer(T)), ("regions bulk periodic-x", bilayer_bulk(T)),
-                              ("regions disc es4", disc(T)), ("regions disc bulk", discbulk(T)))
+                              ("regions disc es4", disc(T)), ("regions disc bulk", discbulk(T)),
+                              ("regions lateral Dind", lateral(T, :ind)), ("regions lateral Dbulk", lateral(T, :bulk)))
         field_terms(lab, mesh, rp, T)
         minimizer_terms(lab, mesh, rp, T)
         solver_terms(lab, mesh, rp, T)

@@ -51,8 +51,10 @@ for most (leads, contacts, wedges).
 
 Implemented: a `fill::Array{T,3}` field on `RegionParams` (default all 1), the
 `setgeometry!(rp, shape; id, edgesmooth)` sampler (`edgesmooth^3` sub-points →
-fill 0..1), and `msat(rp,i,j,k) = Msat[region]·fill[cell]` so every field reads
-the effective Msat with no kernel change. `isempty_cell` treats fill 0 as empty.
+fill 0..1), and `msat(rp,i,j,k) = Msat[region]·fill[cell]`. At first every field read
+this effective Msat; that was wrong (1/fill too large in partial cells) and exchange,
+DMI and anisotropy now divide by the region's Msat, as mumax3. The moment with the
+fill is for demag, the energies and the thermal field. `isempty_cell` treats fill 0 as empty.
 GPU: the fill folds into the materialized Msat in `togpu(::RegionParams)`.
 Validated: `edgesmooth=0` reproduces the staircase exactly; a half-covered cell
 gets fill ≈ 0.5; the disc moment converges to the analytic area (err +1.3% → 0.01%

@@ -517,18 +517,20 @@ sim = Simulation(mesh, rp)
 ```
 
 At a region interface the exchange coupling uses the harmonic mean of the two
-stiffnesses. A region with `Msat = 0` is empty (unfilled geometry). Per-region
+stiffnesses, and the DMI the mean of the two `D` that mumax3 uses (harmonic if they
+have the same sign, 0 if one is 0). A region with `Msat = 0` is empty (unfilled geometry). Per-region
 averages come from `q_m_region(id)`. Region-wise parameters also run on the GPU
 (§8): `togpu` materializes them to per-cell device arrays.
 
 **Anti-aliased edges.** `defregion!` samples the cell centre, giving a staircase
 boundary. For a smooth edge use `setgeometry!(rp, shape; id, edgesmooth)`, which
 sub-samples `edgesmooth^3` points per cell and stores the fraction inside the
-shape as a **fill** `∈ [0,1]`. The fill scales the effective `Msat`
-(`Msat_eff = fill · Msat[region]`), so a boundary cell contributes
-proportionally, and the total moment converges to the true shape area as
-`edgesmooth` grows (`edgesmooth = 0` reproduces the plain staircase). It works on
-the GPU too — the fill folds into the materialized `Msat`.
+shape as a **fill** `∈ [0,1]`. The fill scales the moment of the cell
+(`fill · Msat[region]`) in the demagnetizing field, the energies and the thermal
+field, so a boundary cell contributes proportionally, and the total moment converges
+to the true shape area as `edgesmooth` grows (`edgesmooth = 0` reproduces the plain
+staircase). The exchange, DMI and anisotropy fields use the `Msat` of the region, as
+in mumax3 (whose thermal field uses it too). The GPU follows the same rules.
 
 ```julia
 rp = RegionParams(mesh, material("Permalloy")); setregion!(rp, 0; Msat = 0.0)

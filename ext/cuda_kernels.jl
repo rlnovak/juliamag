@@ -140,10 +140,20 @@ end
     return _pc(Mse, _lin(i, j, k, Nx, Ny)) != zero(eltype(Mse))
 end
 @inline _dv(m, c, ok, i, j, k) = ok ? (@inbounds m[c, i, j, k]) : zero(eltype(m))
-# 2D/Msat and the chiral-boundary prefactor D²/(2A Msat) of a missing neighbour.
+# D of the bond to a neighbour (src/dmi.jl dmimean), 0 if it is missing.
+@inline function _dmean(a::T, b::T) where {T}
+    a == b && return a
+    (a == zero(T) || b == zero(T)) && return zero(T)
+    (a > zero(T)) == (b > zero(T)) && return T(2) / (one(T) / a + one(T) / b)
+    s = a + b
+    return copysign(sqrt(sqrt(-a * b) * abs(s) / T(2)), s)
+end
+@inline _dbond(D, Dc::T, ok, i, j, k, Nx, Ny) where {T} =
+    ok ? _dmean(Dc, _pc(D, _lin(i, j, k, Nx, Ny))) : zero(T)
+# 2/Msat and the chiral-boundary prefactor D²/(2A Msat) of a missing neighbour.
 @inline function _dpref(D::T, A::T, Ms::T, openbc) where {T}
     edge = (openbc || A == zero(T)) ? zero(T) : D * D / (T(2) * A * Ms)
-    return T(2) * D / Ms, edge
+    return T(2) / Ms, edge
 end
 
 function _k_dmi_interfacial!(B, m, D, Aex, Mse, Msr, Nx, Ny, Nz, i2x::T, i2y::T, px, py,
@@ -158,15 +168,18 @@ function _k_dmi_interfacial!(B, m, D, Aex, Mse, Msr, Nx, Ny, Nz, i2x::T, i2y::T,
         end
         return nothing
     end
-    pref, edge = _dpref(_pc(D, n), _pc(Aex, n), _pc(Msr, n), openbc)
+    Dc = _pc(D, n)
+    pref, edge = _dpref(Dc, _pc(Aex, n), _pc(Msr, n), openbc)
     il = _dnm(i, Nx, px); ir = _dnp(i, Nx, px)
     jl = _dnm(j, Ny, py); jr = _dnp(j, Ny, py)
     okl = _dok(Mse, il != Int32(0), il, j, k, Nx, Ny); okr = _dok(Mse, ir != Int32(0), ir, j, k, Nx, Ny)
     ojl = _dok(Mse, jl != Int32(0), i, jl, k, Nx, Ny); ojr = _dok(Mse, jr != Int32(0), i, jr, k, Nx, Ny)
-    dmz_dx = (_dv(m, 3, okr, ir, j, k) - _dv(m, 3, okl, il, j, k)) * i2x
-    dmz_dy = (_dv(m, 3, ojr, i, jr, k) - _dv(m, 3, ojl, i, jl, k)) * i2y
-    dmx_dx = (_dv(m, 1, okr, ir, j, k) - _dv(m, 1, okl, il, j, k)) * i2x
-    dmy_dy = (_dv(m, 2, ojr, i, jr, k) - _dv(m, 2, ojl, i, jl, k)) * i2y
+    dxl = _dbond(D, Dc, okl, il, j, k, Nx, Ny); dxr = _dbond(D, Dc, okr, ir, j, k, Nx, Ny)
+    dyl = _dbond(D, Dc, ojl, i, jl, k, Nx, Ny); dyr = _dbond(D, Dc, ojr, i, jr, k, Nx, Ny)
+    dmz_dx = (dxr * _dv(m, 3, okr, ir, j, k) - dxl * _dv(m, 3, okl, il, j, k)) * i2x
+    dmz_dy = (dyr * _dv(m, 3, ojr, i, jr, k) - dyl * _dv(m, 3, ojl, i, jl, k)) * i2y
+    dmx_dx = (dxr * _dv(m, 1, okr, ir, j, k) - dxl * _dv(m, 1, okl, il, j, k)) * i2x
+    dmy_dy = (dyr * _dv(m, 2, ojr, i, jr, k) - dyl * _dv(m, 2, ojl, i, jl, k)) * i2y
     ex = edge * (Int32(2) - okl - okr); ey = edge * (Int32(2) - ojl - ojr)
     @inbounds mx, my, mz = m[1, i, j, k], m[2, i, j, k], m[3, i, j, k]
     _store!(B, 1, i, j, k, pref * dmz_dx + ex * mx, add)
@@ -187,19 +200,23 @@ function _k_dmi_bulk!(B, m, D, Aex, Mse, Msr, Nx, Ny, Nz, i2x::T, i2y::T, i2z::T
         end
         return nothing
     end
-    pref, edge = _dpref(_pc(D, n), _pc(Aex, n), _pc(Msr, n), openbc)
+    Dc = _pc(D, n)
+    pref, edge = _dpref(Dc, _pc(Aex, n), _pc(Msr, n), openbc)
     il = _dnm(i, Nx, px); ir = _dnp(i, Nx, px)
     jl = _dnm(j, Ny, py); jr = _dnp(j, Ny, py)
     kl = _dnm(k, Nz, pz); kr = _dnp(k, Nz, pz)
     okl = _dok(Mse, il != Int32(0), il, j, k, Nx, Ny); okr = _dok(Mse, ir != Int32(0), ir, j, k, Nx, Ny)
     ojl = _dok(Mse, jl != Int32(0), i, jl, k, Nx, Ny); ojr = _dok(Mse, jr != Int32(0), i, jr, k, Nx, Ny)
     oml = _dok(Mse, kl != Int32(0), i, j, kl, Nx, Ny); omr = _dok(Mse, kr != Int32(0), i, j, kr, Nx, Ny)
-    dmz_dy = (_dv(m, 3, ojr, i, jr, k) - _dv(m, 3, ojl, i, jl, k)) * i2y
-    dmx_dy = (_dv(m, 1, ojr, i, jr, k) - _dv(m, 1, ojl, i, jl, k)) * i2y
-    dmz_dx = (_dv(m, 3, okr, ir, j, k) - _dv(m, 3, okl, il, j, k)) * i2x
-    dmy_dx = (_dv(m, 2, okr, ir, j, k) - _dv(m, 2, okl, il, j, k)) * i2x
-    dmy_dz = (_dv(m, 2, omr, i, j, kr) - _dv(m, 2, oml, i, j, kl)) * i2z
-    dmx_dz = (_dv(m, 1, omr, i, j, kr) - _dv(m, 1, oml, i, j, kl)) * i2z
+    dxl = _dbond(D, Dc, okl, il, j, k, Nx, Ny); dxr = _dbond(D, Dc, okr, ir, j, k, Nx, Ny)
+    dyl = _dbond(D, Dc, ojl, i, jl, k, Nx, Ny); dyr = _dbond(D, Dc, ojr, i, jr, k, Nx, Ny)
+    dzl = _dbond(D, Dc, oml, i, j, kl, Nx, Ny); dzr = _dbond(D, Dc, omr, i, j, kr, Nx, Ny)
+    dmz_dy = (dyr * _dv(m, 3, ojr, i, jr, k) - dyl * _dv(m, 3, ojl, i, jl, k)) * i2y
+    dmx_dy = (dyr * _dv(m, 1, ojr, i, jr, k) - dyl * _dv(m, 1, ojl, i, jl, k)) * i2y
+    dmz_dx = (dxr * _dv(m, 3, okr, ir, j, k) - dxl * _dv(m, 3, okl, il, j, k)) * i2x
+    dmy_dx = (dxr * _dv(m, 2, okr, ir, j, k) - dxl * _dv(m, 2, okl, il, j, k)) * i2x
+    dmy_dz = (dzr * _dv(m, 2, omr, i, j, kr) - dzl * _dv(m, 2, oml, i, j, kl)) * i2z
+    dmx_dz = (dzr * _dv(m, 1, omr, i, j, kr) - dzl * _dv(m, 1, oml, i, j, kl)) * i2z
     ex = edge * (Int32(2) - okl - okr); ey = edge * (Int32(2) - ojl - ojr)
     ez = edge * (Int32(2) - oml - omr)
     curlx = dmz_dy - dmy_dz

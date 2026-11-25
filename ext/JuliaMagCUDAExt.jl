@@ -415,7 +415,7 @@ end
 # them by the cell's linear index (_pc in cuda_kernels.jl).
 struct GpuRegionParams{T<:AbstractFloat} <: AbstractParams
     Msat::CuArray{T,4}      # (1,Nx,Ny,Nz) — Msat[region]·fill (effective moment)
-    Msat_region::CuArray{T,4} # Msat[region] WITHOUT fill (exchange prefactor)
+    Msat_region::CuArray{T,4} # Msat[region] WITHOUT fill (exchange, DMI, anisotropy prefactors)
     fill::CuArray{T,4}      # per-cell geometry fill fraction in [0,1]
     Aex::CuArray{T,4}
     Ku::CuArray{T,4}
@@ -437,10 +437,6 @@ JuliaMag.damping(p::GpuRegionParams) = p.alpha0
 # Host copies of the per-cell fill and Msat·fill (isconservative, GNEB weights).
 JuliaMag._cellfill(p::GpuRegionParams) = Array(p.fill)
 JuliaMag._msatcells(p::GpuRegionParams, ::Mesh) = Array(p.Msat)
-function JuliaMag._dmiuniform(p::GpuRegionParams)
-    mag = Array(p.Msat_region) .!= 0
-    return allequal(Array(p.Dind)[mag]) && allequal(Array(p.Dbulk)[mag])
-end
 
 # Fill-weighted magnet average (mumax3 table m), as the CPU average_magnet: weight =
 # fill, zero where the region Msat is 0 (empty cells).

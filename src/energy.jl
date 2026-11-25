@@ -129,25 +129,15 @@ end
 
 Whether the effective field is exactly the gradient of the energy,
 B_eff = −(1/(V·Msat)) ∂E/∂m, cell by cell. That is what energy-path (GNEB) methods
-need. It holds for exchange, uniaxial anisotropy, demag (also with fractional cells)
-and Zeeman, and for DMI at any boundary. Two discretizations break it:
-- exchange or DMI on edge-smoothed cells: the field uses the region's Msat, the energy
-  weights it by Msat·fill (as in mumax3);
-- a DMI constant that differs between magnetic cells: `dmi!` uses the central cell's
-  D for both directions of a bond.
+need. It holds for uniaxial anisotropy, demag and Zeeman, also with fractional cells,
+and for exchange and DMI (any boundary, any regions) with full cells. Exchange or DMI on
+edge-smoothed cells breaks it: the field uses the region's Msat, the energy weights it
+by Msat·fill (as in mumax3). Any partially filled cell counts, also one that carries
+neither.
 """
 function isconservative(w::World)
-    p = w.material
-    f = _cellfill(p)
-    f !== nothing && any(x -> 0 < x < 1, f) && return false
-    return !hasdmi(p) || _dmiuniform(p)
-end
-
-# Whether the DMI constants are the same in every magnetic region present.
-_dmiuniform(::AbstractParams) = true
-function _dmiuniform(p::RegionParams)
-    r = filter(q -> p.Msat[q] != 0, _present(p))
-    return allequal(@view p.Dind[r]) && allequal(@view p.Dbulk[r])
+    f = _cellfill(w.material)
+    return f === nothing || !any(x -> 0 < x < 1, f)
 end
 
 # Per-cell geometry fill (nothing: every cell full) and per-cell moment Msat·fill as a

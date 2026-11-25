@@ -323,13 +323,14 @@ missing neighbour is extrapolated with $\partial_n\vm$ from that condition in bo
 the exchange and the DMI stencils. The terms linear in $D$ cancel, and each missing
 neighbour adds $(D^2/2AM_s)\,\mathsf{P}\vm$ to the exchange field with a Neumann
 boundary, where $\mathsf{P}$ keeps the two components that the DMI couples along that
-axis. The term is diagonal in the cells, so exchange plus DMI remains the exact
-gradient of the energy. The open boundary of \mumax{} (\texttt{OpenBC}) is available
-too. On random states with open, periodic and curved boundaries, also edge-smoothed,
-the sum of the exchange and DMI fields agrees with \mumax{} to $1.5\times10^{-7}$ of
-the largest field, its single precision, and the energies to $9\times10^{-8}$. (The
-exception is a $D$ that differs between regions: \mumax{} uses a mean over the bond,
-\JuliaMag{} the $D$ of the cell.) The edge tilt of a film with perpendicular
+axis. The open boundary of \mumax{} (\texttt{OpenBC}) is available too. Where $D$
+differs between two regions, their bond takes the mean of \mumax{}: harmonic if the
+signs agree, and zero if either $D$ is zero. The edge term is diagonal in the cells and
+the bonds are symmetric, so exchange plus DMI remains the exact gradient of the energy
+when all cells are full. On random states with open, periodic and curved boundaries,
+also edge-smoothed, and with one to three regions, the sum of the exchange and DMI
+fields agrees with \mumax{} to $1.5\times10^{-7}$ of the largest field, its single
+precision, and the energies to $1\times10^{-7}$ (28 cases). The edge tilt of a film with perpendicular
 anisotropy, $\sin\theta=D/(2\sqrt{AK})=0.39$ for the parameters tested, and its
 decay into the film~\cite{rohart2013} are reproduced to $8\times10^{-4}$,
 $3\times10^{-4}$ and $9\times10^{-5}$~rad with 2, 1 and 0.5~nm cells. A Bloch helix
@@ -542,19 +543,22 @@ A curved boundary on a Cartesian mesh is either a staircase or, with edge
 smoothing (\mumax's \texttt{EdgeSmooth}~$=n$), a set of partially filled cells:
 each cell is sampled on an $n^3$ sub-grid and stores its filled fraction
 $f\in[0,1]$ ($n=0$ gives the staircase, $f\in\{0,1\}$). The fill enters the
-terms differently, and we follow \mumax{} exactly. As a source of the
+terms differently, and we follow \mumax{} except in the thermal field. As a source of the
 demagnetizing field, and in every energy sum, a cell carries the moment
 $fM_s\vm$ (\mumax's $\bm{M}=\vm M_s\,\mathrm{vol}$), so that a self-interaction
 energy is $E = -\tfrac12 V\sum_c f_cM_{s,c}\,\vm_c\cdot\vB_c$ ($V$ the cell
-volume; the Zeeman energy has $-1$ in place of $-\tfrac12$). The exchange field,
-however, is divided by the full region $M_s$, not by $fM_s$ --- dividing by
-$fM_s$ would inflate $\vB_{\mathrm{exch}}$ by $1/f$ in a partial cell and
-stiffen the boundary --- and an empty neighbour ($fM_s=0$) is a free surface:
-it contributes nothing (Neumann), rather than acting as a neighbour with
-$\vm=0$. Each of these rules was checked against \mumax{} field by field on the
-disc of Sec.~\ref{sec:discstt}, and two departures from them in earlier versions
-of \JuliaMag{} were found and corrected this way: an exchange stiffening at the
-edge, and a demagnetizing energy whose field ignored the fill. The latter is
+volume; the Zeeman energy has $-1$ in place of $-\tfrac12$). The exchange, DMI and
+anisotropy fields, however, are divided by the full region $M_s$, not by $fM_s$ ---
+dividing by $fM_s$ would inflate them by $1/f$ in a partial cell, and stiffen the
+boundary in the case of the exchange --- and an empty neighbour ($fM_s=0$) is a free
+surface: it contributes nothing to the exchange (Neumann), rather than acting as a
+neighbour with $\vm=0$. The thermal field uses the moment $fM_s$ of the cell, as the
+fluctuation--dissipation theorem requires with these energies; \mumax{} uses $M_s$. The
+other rules were checked against \mumax{} field by field, on the disc of
+Sec.~\ref{sec:discstt} and, for DMI and anisotropy, on random states. Departures from
+them in earlier versions of \JuliaMag{} were found and corrected this way: exchange,
+DMI and anisotropy fields divided by $fM_s$ (the last two affect no result reported
+here), and a demagnetizing energy whose field ignored the fill. The latter is
 guarded by a regression test: a uniformly magnetized cube in which every cell
 has fill $f$ must have $f^2$ times the demagnetizing energy of the full cube.
 

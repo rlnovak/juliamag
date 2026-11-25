@@ -64,11 +64,11 @@ present `anisotropyenergy`. A test pins this down.
 - `energy!`, `linearfield!` and `isconservative` are in place, with
   `test/test_energy_gradient.jl` (42 tests) and checks in `test_gpu.jl`.
 
-**Finding: the gradient check exposes two non-conservative discretizations.** Only
+**Finding: the gradient check exposes three non-conservative discretizations.** Only
 the first is inherited from mumax3 (corrected 2026-11-24; see item 2). The central-difference test, which is exact
 for a quadratic E, gives a relative error of about 1e-13 for exchange, anisotropy,
 demag (also with fractional cells), Zeeman, and region interfaces. It fails by
-2–6 % in two cases:
+2–6 % in cases 1 and 2:
 1. **Exchange on edge-smoothed cells.** The field uses the region's Msat, but the
    energy weights it by Msat·fill, so the operator F·L is not symmetric.
    - Checked in mumax3's source: `AddExchange` divides by Msat, while
@@ -89,17 +89,20 @@ demag (also with fractional cells), Zeeman, and region interfaces. It fails by
      condition and, with `World(…; openbc=true)`, its OpenBC. Both are conservative;
      `isconservative` no longer flags open DMI samples.
    - Interfacial DMI with x and y periodic is exact.
+3. **DMI with a D that differs between regions** (flagged by `isconservative` with item 2). `dmi!` used the
+   central cell's D for both directions of a bond. **Fixed 2026-11-24** (user's
+   decision): the bond takes mumax3's mean of the two D, which is symmetric, and
+   `isconservative` now flags only item 1.
 
-In both cases the field drives the dynamics correctly. The reported energy,
-however, is not the exact potential of that field.
+In case 1 the field drives the dynamics correctly. The reported energy, however, is
+not the exact potential of that field.
 
 **Consequence for GNEB:**
 - GNEB needs an exact (E, ∇E) pair. It runs on `isconservative(world)` systems,
   which include every validation case below (the macrospin, an unsmoothed
   ellipse, a periodic skyrmion film), and warns otherwise.
 - A later option is the symmetrized operator ½(L + Lᵀ). For the fill case, Lᵀ is
-  the exchange of fill·m, which is cheap. The DMI boundary transpose needs
-  derivation.
+  the exchange of fill·m, which is cheap.
 
 **Eigenmodes** are not affected: they linearize the dynamics, and the operator need
 not be symmetric. The Krylov method must then be a general one, not Lanczos.

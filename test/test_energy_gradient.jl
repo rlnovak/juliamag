@@ -2,9 +2,9 @@
 # relies on: the force V·Msat·B_eff is exactly −∂E/∂m. Every term is quadratic in m
 # (Zeeman linear), so a central difference E(m+εδ) − E(m−εδ) = 2ε ∇E·δ holds to
 # rounding for any ε, and a non-symmetric discrete operator shows up as an O(1e-2)
-# mismatch. Two discretizations are non-symmetric (exchange and DMI on edge-smoothed
-# cells, a DMI constant that varies between cells); isconservative must flag exactly
-# those. DMI at free boundaries is symmetric, chiral or open.
+# mismatch. One discretization is non-symmetric (exchange and DMI on edge-smoothed
+# cells); isconservative must flag exactly that. DMI is symmetric at free boundaries,
+# chiral or open, and between regions of different D.
 using JuliaMag, Test, Random
 
 const _base = (Msat = 8e5, Aex = 1.3e-11, alpha = 0.02)
@@ -47,17 +47,35 @@ function _gradcases()
         push!(cases, ("disc + core, same Dind, empty background, openbc $obc",
             World(m4, rd; demag = false, openbc = obc), true))
     end
-    # non-conservative discretizations
-    r2 = RegionParams(m2, Material(; _base..., Dind = 2.5e-3))
-    defregion!(r2, 1, (x, y, z) -> x > 0)
-    setregion!(r2, 1; Msat = 8e5, Aex = 1.3e-11, Dind = 1.0e-3)
-    push!(cases, ("periodic xy film, region-dependent Dind",
-        World(m2, r2; demag = false), false))
+    # region-dependent D, also of opposite sign or zero, with different Msat and A
+    for (D2, obc) in ((1.0e-3, false), (-1.0e-3, false), (0.0, true))
+        r2 = RegionParams(m2, Material(; _base..., Dind = 2.5e-3))
+        defregion!(r2, 1, (x, y, z) -> x > 0)
+        setregion!(r2, 1; Msat = 1.2e6, Aex = 1.3e-11, Dind = D2)
+        push!(cases, ("periodic xy film, Dind 2.5e-3 and $D2",
+            World(m2, r2; demag = false, openbc = obc), true))
+        rb = RegionParams(m1, Material(; _base..., Dbulk = 1.5e-3))
+        defregion!(rb, 1, (x, y, z) -> x + y + 3z > 0)
+        setregion!(rb, 1; Msat = 6e5, Aex = 2.0e-11, Dbulk = D2)
+        push!(cases, ("open 3D, Dbulk 1.5e-3 and $D2, openbc $obc",
+            World(m1, rb; demag = false, openbc = obc), true))
+        re = RegionParams(m4, Material(; _base...))          # next to empty cells
+        setregion!(re, 0; Msat = 0.0, Dind = 1e-3)
+        setregion!(re, 1; Msat = 8e5, Aex = 1.3e-11, Dind = 2.5e-3)
+        setregion!(re, 2; Msat = 1.4e6, Aex = 2.0e-11, Dind = D2)
+        setgeometry!(re, Cylinder(44e-9, 1.0); id = 1)
+        defregion!(re, 2, (x, y, z) -> x > 3e-9 && x^2 + y^2 < 22e-9^2)
+        push!(cases, ("disc in two halves, Dind 2.5e-3 and $D2, empty background, openbc $obc",
+            World(m4, re; demag = false, openbc = obc), true))
+    end
+    # non-conservative discretization
     rs = RegionParams(m4, Material(; _base...))
     setregion!(rs, 0; Msat = 0.0); setregion!(rs, 1; Msat = 8e5, Aex = 1.3e-11)
     setgeometry!(rs, Cylinder(44e-9, 1.0); id = 1, edgesmooth = 4)
     push!(cases, ("edge-smoothed disc (exchange on partial cells)",
         World(m4, rs; demag = true), false))
+    rt = deepcopy(rs); setregion!(rt, 1; Aex = 0.0, Dind = 2.5e-3)
+    push!(cases, ("edge-smoothed disc (DMI on partial cells)", World(m4, rt; demag = false), false))
     return cases
 end
 

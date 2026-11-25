@@ -201,17 +201,24 @@ import Random
     # Free boundaries. Reference: mumax3's exchange + DMI loop (cuda/dmi.cu, dmibulk.cu),
     # transcribed neighbour by neighbour with its extrapolated ghost m' = m + c ∂m/∂n.
     # Only the sum exchange + DMI is comparable (mumax3 puts m' in both stencils).
-    function mumax_exdmi(m, mesh, A, D, Ms, kind, empty, openbc)
+    # As, Ds, Mss: per region; reg: 1-based region of each cell.
+    # engine/exchange.go exchAverage, the A and D of a bond between two regions:
+    exchavg(a, b) = a * b >= 0 ? 2 / (1 / a + 1 / b) :
+                    copysign(1, a + b) * sqrt(sqrt(-a * b) * abs(a + b) / 2)
+    function mumax_exdmi(m, mesh, As, Ds, Mss, kind, empty, openbc; reg = fill(1, mesh.size))
         N = mesh.size; c = mesh.cellsize; B = zero(m)
         for I in CartesianIndices(N)
             empty[I] && continue
             m0 = m[:, I]; h = zeros(3)
+            Ms = Mss[reg[I]]
             for ax in 1:3, sg in (-1, 1)
                 kind == :ind && ax == 3 && N[3] == 1 && continue      # dmi.cu: 3D only
                 J = collect(Tuple(I)); J[ax] += sg
                 out = !(1 <= J[ax] <= N[ax])
                 out && isperiodic(mesh, ax) && (J[ax] = mod1(J[ax], N[ax]); out = false)
                 miss = out || empty[J...]
+                r = miss ? reg[I] : reg[J...]        # no inter-region parameters if missing
+                A = exchavg(As[reg[I]], As[r]); D = exchavg(Ds[reg[I]], Ds[r])
                 if kind == :ind && ax == 3                             # exchange only
                     miss || (h .+= 2A / c[3]^2 .* (m[:, J...] .- m0))
                     continue
@@ -251,11 +258,44 @@ import Random
         # the empty cells keep a non-zero m: their value must not matter
         m = randommag!(Random.MersenneTwister(4), zeromag(mesh))
         B = similar(m); exchange!(B, m, mesh, params); dmi!(B, m, mesh, params; add = true, openbc = obc)
-        Bm = mumax_exdmi(m, mesh, A, D, Ms, kind, empty, obc)
+        Bm = mumax_exdmi(m, mesh, [A], [D], [Ms], kind, empty, obc)
         @test maximum(abs, B .- Bm) < 1e-12 * maximum(abs, Bm)
         w = World(mesh, params; demag = false, openbc = obc)
         Bw = similar(m); effectivefield!(Bw, m, w)
         @test maximum(abs, Bw .- Bm) < 1e-12 * maximum(abs, Bm)
+    end
+
+    @testset "regions of different D as mumax3: $kind, size $sz, pbc $pbc, openbc $obc" for
+            kind in (:ind, :bulk), (sz, pbc) in (((8, 7, 4), (0, 0, 0)), ((8, 7, 4), (1, 1, 1)),
+            ((8, 7, 1), (0, 1, 0))), obc in (false, true)
+        mesh = Mesh(sz, (3e-9, 4e-9, 2e-9); pbc = pbc)
+        # same sign, opposite sign, zero, equal and opposite (mean 0); region 5 is empty
+        As, Ds, Mss = [1.3e-11, 2.0e-11, 0.9e-11, 1.3e-11, 1.0e-11], [2.1e-3, 0.8e-3, -1.1e-3, 0.0, -2.1e-3], [8e5, 1.2e6, 6e5, 8e5, 9e5]
+        key = kind == :ind ? :Dind : :Dbulk
+        rng = Random.MersenneTwister(9)
+        params = RegionParams(mesh, Material(; Msat = Mss[1], Aex = As[1], alpha = 0.02, key => Ds[1]))
+        for r in 2:5
+            setregion!(params, r - 1; Msat = Mss[r], Aex = As[r], key => Ds[r])
+        end
+        setregion!(params, 5; Msat = 0.0)
+        reg = rand(rng, 1:6, mesh.size); empty = reg .== 6
+        for I in CartesianIndices(reg)
+            defregioncell!(params.regions, reg[I] - 1, Tuple(I)...)
+        end
+        m = randommag!(rng, zeromag(mesh))
+        B = similar(m); exchange!(B, m, mesh, params); dmi!(B, m, mesh, params; add = true, openbc = obc)
+        Bm = mumax_exdmi(m, mesh, As, Ds, Mss, kind, empty, obc; reg = ifelse.(empty, 1, reg))
+        @test maximum(abs, B .- Bm) < 1e-12 * maximum(abs, Bm)
+    end
+
+    @testset "dmimean (mumax3 exchAverage)" begin
+        f = JuliaMag.dmimean
+        @test f(2e-3, 2e-3) === 2e-3 && f(0.0, 0.0) === 0.0
+        @test f(1e-3, 3e-3) ≈ 1.5e-3 && f(-1e-3, -3e-3) ≈ -1.5e-3       # harmonic
+        @test f(2e-3, 0.0) === 0.0 && f(0.0, -2e-3) === 0.0
+        @test f(2e-3, -2e-3) == 0
+        @test f(4e-3, -1e-3) ≈ sqrt(2e-3 * 1.5e-3) && f(-4e-3, 1e-3) ≈ -sqrt(2e-3 * 1.5e-3)
+        @test f(2.5f-3, -1f-3) isa Float32 && f(2.5f-3, -1f-3) == f(-1f-3, 2.5f-3)
     end
 
     @testset "A = 0: no chiral boundary term (not NaN)" begin

@@ -1,16 +1,31 @@
-bulk_nz1         edge 1.5e-07  inner 0.0e+00  partial cells 0.0e+00   E_exch JuliaMag +1.1804818e-17 mumax3 +1.1804818e-17 rel +4.0e-08   (DMI share 0.07)
-bulk_nz1_openbc  edge 1.5e-07  inner 0.0e+00  partial cells 0.0e+00   E_exch JuliaMag +1.1987595e-17 mumax3 +1.1987595e-17 rel -2.5e-08   (DMI share 0.07)
-bulk_open        edge 6.7e-08  inner 8.5e-08  partial cells 0.0e+00   E_exch JuliaMag +7.1497211e-17 mumax3 +7.1497210e-17 rel +9.8e-09   (DMI share 0.05)
-bulk_openbc      edge 6.8e-08  inner 8.5e-08  partial cells 0.0e+00   E_exch JuliaMag +7.1757651e-17 mumax3 +7.1757653e-17 rel -2.6e-08   (DMI share 0.05)
-bulk_pbcyz       edge 7.0e-08  inner 9.6e-08  partial cells 0.0e+00   E_exch JuliaMag +9.2109761e-17 mumax3 +9.2109764e-17 rel -3.1e-08   (DMI share 0.04)
-bulk_smooth      edge 1.2e-07  inner 0.0e+00  partial cells 1.3e-07   E_exch JuliaMag +5.9202487e-17 mumax3 +5.9202490e-17 rel -4.5e-08   (DMI share 0.05)
-bulk_sphere      edge 8.9e-08  inner 1.3e-07  partial cells 0.0e+00   E_exch JuliaMag +2.4417258e-16 mumax3 +2.4417260e-16 rel -8.0e-08   (DMI share 0.05)
-ind_disc         edge 9.8e-08  inner 0.0e+00  partial cells 0.0e+00   E_exch JuliaMag +5.8674148e-17 mumax3 +5.8674150e-17 rel -3.5e-08   (DMI share 0.07)
-ind_disc_openbc  edge 9.8e-08  inner 0.0e+00  partial cells 0.0e+00   E_exch JuliaMag +5.8895467e-17 mumax3 +5.8895470e-17 rel -4.9e-08   (DMI share 0.06)
-ind_open         edge 6.0e-08  inner 8.4e-08  partial cells 0.0e+00   E_exch JuliaMag +7.1719572e-17 mumax3 +7.1719577e-17 rel -7.3e-08   (DMI share 0.06)
-ind_openbc       edge 5.8e-08  inner 8.4e-08  partial cells 0.0e+00   E_exch JuliaMag +7.1961225e-17 mumax3 +7.1961226e-17 rel -8.8e-09   (DMI share 0.06)
-ind_pbcx         edge 6.0e-08  inner 8.4e-08  partial cells 0.0e+00   E_exch JuliaMag +7.4028083e-17 mumax3 +7.4028086e-17 rel -3.8e-08   (DMI share 0.06)
-ind_pbcxy        edge 5.8e-08  inner 8.4e-08  partial cells 0.0e+00   E_exch JuliaMag +7.5704007e-17 mumax3 +7.5704006e-17 rel +1.4e-08   (DMI share 0.06)
-ind_regA         edge 8.0e-08  inner 1.1e-07  partial cells 0.0e+00   E_exch JuliaMag +9.1326722e-17 mumax3 +9.1326720e-17 rel +1.9e-08   (DMI share 0.05)
-ind_regD         edge 9.0e-03  inner 8.8e-03  partial cells 0.0e+00   E_exch JuliaMag +7.1734856e-17 mumax3 +7.1738030e-17 rel -4.4e-05   (DMI share 0.04)
-ind_smooth       edge 9.8e-08  inner 0.0e+00  partial cells 7.8e-08   E_exch JuliaMag +5.9538022e-17 mumax3 +5.9538020e-17 rel +4.0e-08   (DMI share 0.07)
+ani_open         exch edge 5.7e-08  interface    -     inner 6.4e-08  partial    -      E JuliaMag +7.1850194e-17 mumax3 +7.1850200e-17 rel -8.3e-08
+ani_open         anis edge 1.0e-07  interface    -     inner 9.0e-08  partial    -      E JuliaMag -1.4407588e-18 mumax3 -1.4407588e-18 rel +2.1e-08
+ani_regsmooth    exch edge 1.1e-07  interface 1.1e-07  inner    -     partial 4.8e-08   E JuliaMag +5.9555907e-17 mumax3 +5.9555906e-17 rel +1.8e-08
+ani_regsmooth    anis edge 9.3e-08  interface 7.2e-08  inner    -     partial 8.4e-08   E JuliaMag -3.8937612e-19 mumax3 -3.8937612e-19 rel -9.2e-09
+ani_smooth       exch edge 1.1e-07  interface    -     inner    -     partial 8.5e-08   E JuliaMag +5.9555907e-17 mumax3 +5.9555906e-17 rel +1.8e-08
+ani_smooth       anis edge 1.0e-07  interface    -     inner    -     partial 8.4e-08   E JuliaMag -1.2227798e-18 mumax3 -1.2227798e-18 rel +3.9e-08
+bulk_nz1         exch edge 1.5e-07  interface    -     inner    -     partial    -      E JuliaMag +1.1804818e-17 mumax3 +1.1804818e-17 rel +4.0e-08
+bulk_nz1_openbc  exch edge 1.5e-07  interface    -     inner    -     partial    -      E JuliaMag +1.1987595e-17 mumax3 +1.1987595e-17 rel -2.5e-08
+bulk_open        exch edge 6.7e-08  interface    -     inner 8.5e-08  partial    -      E JuliaMag +7.1497211e-17 mumax3 +7.1497210e-17 rel +9.8e-09
+bulk_openbc      exch edge 6.8e-08  interface    -     inner 8.5e-08  partial    -      E JuliaMag +7.1757651e-17 mumax3 +7.1757653e-17 rel -2.6e-08
+bulk_pbcyz       exch edge 7.0e-08  interface    -     inner 9.6e-08  partial    -      E JuliaMag +9.2109761e-17 mumax3 +9.2109764e-17 rel -3.1e-08
+bulk_regD        exch edge 9.1e-08  interface 9.1e-08  inner    -     partial    -      E JuliaMag +9.8119779e-17 mumax3 +9.8119780e-17 rel -1.5e-08
+bulk_regD_openbc exch edge 6.6e-08  interface 7.0e-08  inner 9.5e-08  partial    -      E JuliaMag +7.1630211e-17 mumax3 +7.1630215e-17 rel -5.8e-08
+bulk_regD_pbc    exch edge    -     interface 8.3e-08  inner 9.5e-08  partial    -      E JuliaMag +9.4140931e-17 mumax3 +9.4140936e-17 rel -5.2e-08
+bulk_smooth      exch edge 1.2e-07  interface    -     inner    -     partial 1.3e-07   E JuliaMag +5.9202487e-17 mumax3 +5.9202490e-17 rel -4.5e-08
+bulk_sphere      exch edge 8.9e-08  interface    -     inner 1.3e-07  partial    -      E JuliaMag +2.4417258e-16 mumax3 +2.4417260e-16 rel -8.0e-08
+ind_disc         exch edge 9.8e-08  interface    -     inner    -     partial    -      E JuliaMag +5.8674148e-17 mumax3 +5.8674150e-17 rel -3.5e-08
+ind_disc_openbc  exch edge 9.8e-08  interface    -     inner    -     partial    -      E JuliaMag +5.8895467e-17 mumax3 +5.8895470e-17 rel -4.9e-08
+ind_open         exch edge 6.0e-08  interface    -     inner 8.4e-08  partial    -      E JuliaMag +7.1719572e-17 mumax3 +7.1719577e-17 rel -7.3e-08
+ind_openbc       exch edge 5.8e-08  interface    -     inner 8.4e-08  partial    -      E JuliaMag +7.1961225e-17 mumax3 +7.1961226e-17 rel -8.8e-09
+ind_pbcx         exch edge 6.0e-08  interface    -     inner 8.4e-08  partial    -      E JuliaMag +7.4028083e-17 mumax3 +7.4028086e-17 rel -3.8e-08
+ind_pbcxy        exch edge 5.8e-08  interface    -     inner 8.4e-08  partial    -      E JuliaMag +7.5704007e-17 mumax3 +7.5704006e-17 rel +1.4e-08
+ind_regA         exch edge 8.0e-08  interface 1.1e-07  inner 7.7e-08  partial    -      E JuliaMag +9.1326722e-17 mumax3 +9.1326720e-17 rel +1.9e-08
+ind_regD         exch edge 6.0e-08  interface 5.8e-08  inner 7.3e-08  partial    -      E JuliaMag +7.1738033e-17 mumax3 +7.1738030e-17 rel +4.4e-08
+ind_regD0        exch edge 5.8e-08  interface 5.8e-08  inner 7.3e-08  partial    -      E JuliaMag +7.1709339e-17 mumax3 +7.1709340e-17 rel -1.7e-08
+ind_regD_openbc  exch edge 8.1e-08  interface 8.2e-08  inner 9.6e-08  partial    -      E JuliaMag +7.3327748e-17 mumax3 +7.3327750e-17 rel -2.6e-08
+ind_regDopp      exch edge 5.8e-08  interface 5.8e-08  inner 7.3e-08  partial    -      E JuliaMag +7.3670673e-17 mumax3 +7.3670680e-17 rel -9.1e-08
+ind_regDsign     exch edge 5.8e-08  interface 5.8e-08  inner 7.3e-08  partial    -      E JuliaMag +7.1617309e-17 mumax3 +7.1617304e-17 rel +7.1e-08
+ind_regDsmooth   exch edge 9.8e-08  interface 8.3e-08  inner    -     partial 8.5e-08   E JuliaMag +7.5451244e-17 mumax3 +7.5451246e-17 rel -3.1e-08
+ind_regDy        exch edge 5.3e-08  interface 6.6e-08  inner 5.5e-08  partial    -      E JuliaMag +9.1001020e-17 mumax3 +9.1001020e-17 rel -3.2e-09
+ind_smooth       exch edge 9.8e-08  interface    -     inner    -     partial 7.8e-08   E JuliaMag +5.9538022e-17 mumax3 +5.9538020e-17 rel +4.0e-08

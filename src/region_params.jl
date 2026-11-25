@@ -33,9 +33,10 @@ struct RegionParams{T<:AbstractFloat} <: AbstractParams
     lambda::Vector{T}
     epsilonPrime::Vector{T}
     # Per-cell fill fraction in [0,1]: 1 = fully inside the geometry, <1 = a
-    # boundary cell partially covered (edge smoothing), 0 = empty. The effective
-    # Msat a field sees is fill[cell] · Msat[region]. All ones by default, so a
-    # geometry painted with defregion! (centre sampling) behaves exactly as before.
+    # boundary cell partially covered (edge smoothing), 0 = empty. The moment of
+    # a cell (demag, energies, thermal field) is fill[cell] · Msat[region]; exchange,
+    # DMI and anisotropy fields use Msat[region]. All ones by default, so a geometry
+    # painted with defregion! (centre sampling) behaves exactly as before.
     fill::Array{T,3}
 end
 
@@ -106,7 +107,7 @@ defregioncell!(rp::RegionParams, id::Integer, i, j, k) = (defregioncell!(rp.regi
 
 Paint `shape` as region `id` with an anti-aliased edge. Each cell is sampled at
 `edgesmooth^3` sub-points (mumax3's edge smoothing); the fraction inside `shape`
-becomes the cell's fill (0..1), which scales the effective Msat. A boundary cell
+becomes the cell's fill (0..1), which scales the moment of the cell. A boundary cell
 half-covered gets `fill ≈ 0.5`; a fully covered cell gets 1. `edgesmooth = 0` (or
 1) samples the cell centre only — the plain staircase geometry, identical to
 `defregion!`.
@@ -179,10 +180,11 @@ end
 @inline msat(rp::RegionParams, i, j, k)     = @inbounds rp.Msat[_rid(rp, i, j, k)] * rp.fill[i, j, k]
 # Region Msat WITHOUT the fill factor. mumax3 scales the magnetization by the
 # cell fill only where the moment enters as a source (the demag input,
-# engine/demag.go SetMFull); the exchange field divides by the region's full
-# Msat (cuda/amul.h inv_Msat uses the Msat LUT, never the geometry vol). Using
-# the fill-scaled msat() in the exchange prefactor would inflate B_exch by 1/fill
-# at partially-covered boundary cells and stiffen the edge — see msat_region.
+# engine/demag.go SetMFull) and in the energies; the exchange, DMI and anisotropy
+# fields divide by the region's full Msat (cuda/amul.h inv_Msat uses the Msat LUT,
+# never the geometry vol). The fill-scaled msat() in those prefactors would inflate
+# the field by 1/fill at partially-covered boundary cells. (The thermal field uses
+# msat(), the moment of the cell: fluctuation-dissipation. mumax3 uses Msat there.)
 @inline msat_region(rp::RegionParams, i, j, k) = @inbounds rp.Msat[_rid(rp, i, j, k)]
 @inline fillof(rp::RegionParams, i, j, k)   = @inbounds rp.fill[i, j, k]
 @inline aex(rp::RegionParams, i, j, k)      = @inbounds rp.Aex[_rid(rp, i, j, k)]

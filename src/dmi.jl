@@ -13,7 +13,10 @@
 #     B_dmi = -(2 D / Msat) ∇×m
 #
 # All in Tesla, no μ0 (mumax3 convention; μ0 enters only demag/Zeeman). Both use
-# central differences, with index wrap-around on periodic axes.
+# central differences, with index wrap-around on periodic axes. Between two cells of
+# different D, the bond takes `dmimean` of the two (mumax3 exchAverage), so the central
+# difference is (D_r m_r - D_l m_l)/2c with the D of each bond. The bonds are symmetric
+# and the field is the exact gradient of the energy (with full cells; see isconservative).
 #
 # Free boundaries (a missing neighbour: the edge of a non-periodic axis, or an empty
 # cell), as mumax3 (cuda/dmi.cu, cuda/dmibulk.cu). An empty cell (region Msat = 0 or
@@ -34,8 +37,8 @@
 #
 #   plus nothing from the missing neighbour in the central difference. It is added
 #   here, in the DMI field, so `exchange!` keeps its Neumann rule; only the sum is
-#   mumax3's B_exch. The term is diagonal in the cells and the bonds are symmetric, so
-#   the field is the exact gradient of the energy.
+#   mumax3's B_exch. The term is diagonal in the cells, so it keeps the field an exact
+#   gradient.
 #   The DMI of an isotropic bulk material acts along z also in a film of one cell
 #   (Nz = 1): both faces count, as in mumax3, B = (D²/A Msat)(mx, my, 0).
 # - openbc = true (mumax3 OpenBC): the missing neighbour contributes nothing.
@@ -81,10 +84,26 @@ end
 @inline _dmiv(m::AbstractArray{T}, c, ok, i, j, k) where {T} =
     ok ? (@inbounds m[c, i, j, k]) : zero(T)
 
-# D-dependent prefactors of a magnetic cell: 2D/Msat and D²/(2A Msat) [T·m^…].
+# D of the bond between two cells (mumax3 engine/exchange.go exchAverage): the harmonic
+# mean if the signs agree (0 if either is 0), else sign(a+b)·√(√(-ab)·|a+b|/2), which is 0
+# for a = -b.
+@inline function dmimean(a::T, b::T) where {T}
+    a == b && return a
+    (a == 0 || b == 0) && return zero(T)
+    (a > 0) == (b > 0) && return 2 / (1 / a + 1 / b)
+    s = a + b
+    return copysign(sqrt(sqrt(-a * b) * abs(s) / 2), s)
+end
+
+# D of the bond to a neighbour, 0 if it is missing (there m counts as 0).
+@inline _dbond(f, params, Dc::T, ok, i, j, k) where {T} =
+    ok ? dmimean(Dc, f(params, i, j, k)) : zero(T)
+
+# Prefactors of a magnetic cell: 2/Msat, and D²/(2A Msat) of a missing neighbour, with
+# the cell's own D and A.
 @inline function _dmipref(::Type{T}, D, A, Ms, openbc) where {T}
     edge = (openbc || A == 0) ? zero(T) : T(D^2 / (2 * A * Ms))
-    return T(2 * D / Ms), edge
+    return T(2 / Ms), edge
 end
 
 function dmi_interfacial!(B::AbstractArray{T,4}, m::AbstractArray{T,4}, mesh::Mesh,
@@ -99,15 +118,18 @@ function dmi_interfacial!(B::AbstractArray{T,4}, m::AbstractArray{T,4}, mesh::Me
             add || (B[1, i, j, k] = B[2, i, j, k] = B[3, i, j, k] = zero(T))
             continue
         end
-        pref, edge = _dmipref(T, dind(params, i, j, k), aex(params, i, j, k),
-                              msat_region(params, i, j, k), openbc)
+        Dc = dind(params, i, j, k)
+        pref, edge = _dmipref(T, Dc, aex(params, i, j, k), msat_region(params, i, j, k), openbc)
         il, ir = _dminb(i, Nx, px); jl, jr = _dminb(j, Ny, py)
         okl = il != 0 && !isempty_cell(params, il, j, k); okr = ir != 0 && !isempty_cell(params, ir, j, k)
         ojl = jl != 0 && !isempty_cell(params, i, jl, k); ojr = jr != 0 && !isempty_cell(params, i, jr, k)
-        dmz_dx = (_dmiv(m, 3, okr, ir, j, k) - _dmiv(m, 3, okl, il, j, k)) * i2x
-        dmz_dy = (_dmiv(m, 3, ojr, i, jr, k) - _dmiv(m, 3, ojl, i, jl, k)) * i2y
-        dmx_dx = (_dmiv(m, 1, okr, ir, j, k) - _dmiv(m, 1, okl, il, j, k)) * i2x
-        dmy_dy = (_dmiv(m, 2, ojr, i, jr, k) - _dmiv(m, 2, ojl, i, jl, k)) * i2y
+        # D of each bond; the differences below carry it: D ∂m
+        dxl = T(_dbond(dind, params, Dc, okl, il, j, k)); dxr = T(_dbond(dind, params, Dc, okr, ir, j, k))
+        dyl = T(_dbond(dind, params, Dc, ojl, i, jl, k)); dyr = T(_dbond(dind, params, Dc, ojr, i, jr, k))
+        dmz_dx = (dxr * _dmiv(m, 3, okr, ir, j, k) - dxl * _dmiv(m, 3, okl, il, j, k)) * i2x
+        dmz_dy = (dyr * _dmiv(m, 3, ojr, i, jr, k) - dyl * _dmiv(m, 3, ojl, i, jl, k)) * i2y
+        dmx_dx = (dxr * _dmiv(m, 1, okr, ir, j, k) - dxl * _dmiv(m, 1, okl, il, j, k)) * i2x
+        dmy_dy = (dyr * _dmiv(m, 2, ojr, i, jr, k) - dyl * _dmiv(m, 2, ojl, i, jl, k)) * i2y
         ex = edge * (2 - okl - okr); ey = edge * (2 - ojl - ojr)   # missing neighbours
 
         bx = pref * dmz_dx + ex * m[1, i, j, k]
@@ -136,19 +158,22 @@ function dmi_bulk!(B::AbstractArray{T,4}, m::AbstractArray{T,4}, mesh::Mesh,
             add || (B[1, i, j, k] = B[2, i, j, k] = B[3, i, j, k] = zero(T))
             continue
         end
-        pref, edge = _dmipref(T, dbulk(params, i, j, k), aex(params, i, j, k),
-                              msat_region(params, i, j, k), openbc)
+        Dc = dbulk(params, i, j, k)
+        pref, edge = _dmipref(T, Dc, aex(params, i, j, k), msat_region(params, i, j, k), openbc)
         il, ir = _dminb(i, Nx, px); jl, jr = _dminb(j, Ny, py); kl, kr = _dminb(k, Nz, pz)
         okl = il != 0 && !isempty_cell(params, il, j, k); okr = ir != 0 && !isempty_cell(params, ir, j, k)
         ojl = jl != 0 && !isempty_cell(params, i, jl, k); ojr = jr != 0 && !isempty_cell(params, i, jr, k)
         oml = kl != 0 && !isempty_cell(params, i, j, kl); omr = kr != 0 && !isempty_cell(params, i, j, kr)
-        # B = -pref * ∇×m
-        dmz_dy = (_dmiv(m, 3, ojr, i, jr, k) - _dmiv(m, 3, ojl, i, jl, k)) * i2y
-        dmx_dy = (_dmiv(m, 1, ojr, i, jr, k) - _dmiv(m, 1, ojl, i, jl, k)) * i2y
-        dmz_dx = (_dmiv(m, 3, okr, ir, j, k) - _dmiv(m, 3, okl, il, j, k)) * i2x
-        dmy_dx = (_dmiv(m, 2, okr, ir, j, k) - _dmiv(m, 2, okl, il, j, k)) * i2x
-        dmy_dz = (_dmiv(m, 2, omr, i, j, kr) - _dmiv(m, 2, oml, i, j, kl)) * i2z
-        dmx_dz = (_dmiv(m, 1, omr, i, j, kr) - _dmiv(m, 1, oml, i, j, kl)) * i2z
+        # B = -pref * D ∇×m, with the D of each bond in the differences
+        dxl = T(_dbond(dbulk, params, Dc, okl, il, j, k)); dxr = T(_dbond(dbulk, params, Dc, okr, ir, j, k))
+        dyl = T(_dbond(dbulk, params, Dc, ojl, i, jl, k)); dyr = T(_dbond(dbulk, params, Dc, ojr, i, jr, k))
+        dzl = T(_dbond(dbulk, params, Dc, oml, i, j, kl)); dzr = T(_dbond(dbulk, params, Dc, omr, i, j, kr))
+        dmz_dy = (dyr * _dmiv(m, 3, ojr, i, jr, k) - dyl * _dmiv(m, 3, ojl, i, jl, k)) * i2y
+        dmx_dy = (dyr * _dmiv(m, 1, ojr, i, jr, k) - dyl * _dmiv(m, 1, ojl, i, jl, k)) * i2y
+        dmz_dx = (dxr * _dmiv(m, 3, okr, ir, j, k) - dxl * _dmiv(m, 3, okl, il, j, k)) * i2x
+        dmy_dx = (dxr * _dmiv(m, 2, okr, ir, j, k) - dxl * _dmiv(m, 2, okl, il, j, k)) * i2x
+        dmy_dz = (dzr * _dmiv(m, 2, omr, i, j, kr) - dzl * _dmiv(m, 2, oml, i, j, kl)) * i2z
+        dmx_dz = (dzr * _dmiv(m, 1, omr, i, j, kr) - dzl * _dmiv(m, 1, oml, i, j, kl)) * i2z
         ex = edge * (2 - okl - okr); ey = edge * (2 - ojl - ojr); ez = edge * (2 - oml - omr)
 
         curlx = dmz_dy - dmy_dz

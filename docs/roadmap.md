@@ -433,7 +433,7 @@ That closes the stage.
     P1000).
   - Taken up when AMD, Intel or Apple hardware is available.
 - Atomistic spin dynamics and Monte Carlo (MicroMagnetic.jl comparison, items 4–5).
-- The feature backlog above (SOT, RKKY, DMI boundary conditions, magnetoelastics).
+- The feature backlog above (SOT, RKKY, magnetoelastics).
 
 ## Future directions (after the stage closure)
 
