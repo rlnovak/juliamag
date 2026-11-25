@@ -8,6 +8,10 @@
 # Ku > 0 gives an easy axis along u; Ku < 0 gives an easy plane perpendicular
 # to u. Unlike an energy, the field does not carry the cell volume — that only
 # appears when integrating the energy over the sample.
+#
+# Msat is the region's, without the cell fill, as in mumax3 (inv_Msat) and as in the
+# exchange and DMI fields. The energy weights the cell by Msat·fill, so a partially
+# filled cell has the energy fill·Ku and the field is its exact gradient.
 
 """
     anisotropy!(B, m, mesh, mat; add=false)
@@ -26,8 +30,9 @@ function anisotropy!(B::AbstractArray{T,4}, m::AbstractArray{T,4},
     end
 
     @inbounds for k in 1:Nz, j in 1:Ny, i in 1:Nx
-        Msc = msat(params, i, j, k)
-        pref = Msc == 0 ? zero(T) : T(2 * ku(params, i, j, k) / Msc)   # Tesla, no μ0
+        # full region Msat (no fill), Tesla, no μ0; nothing in an empty cell
+        pref = isempty_cell(params, i, j, k) ? zero(T) :
+               T(2 * ku(params, i, j, k) / msat_region(params, i, j, k))
         ux, uy, uz = anisu(params, i, j, k)
         mu = m[1, i, j, k] * ux + m[2, i, j, k] * uy + m[3, i, j, k] * uz
         a = pref * mu

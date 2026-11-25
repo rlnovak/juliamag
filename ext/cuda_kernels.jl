@@ -110,13 +110,13 @@ function _k_exchange!(B, m, Aex, Mse, Msr, Nx, Ny, Nz, ix2::T, iy2::T, iz2::T,
 end
 
 # --- Uniaxial anisotropy (src/anisotropy.jl) --------------------------------
-function _k_anisotropy!(B, m, Ku, Mse, ux, uy, uz, N, add)
+function _k_anisotropy!(B, m, Ku, Mse, Msr, ux, uy, uz, N, add)
     n = _tid()
     n > N && return nothing
     @inbounds begin
         T = eltype(B)
-        Msc = _pc(Mse, n)
-        pref = Msc == zero(T) ? zero(T) : T(2) * _pc(Ku, n) / Msc
+        # full region Msat (no fill); nothing in an empty cell
+        pref = _pc(Mse, n) == zero(T) ? zero(T) : T(2) * _pc(Ku, n) / _pc(Msr, n)
         vx, vy, vz = _pc(ux, n), _pc(uy, n), _pc(uz, n)
         b = 3 * (n - Int32(1))
         mu = m[b+1] * vx + m[b+2] * vy + m[b+3] * vz

@@ -95,8 +95,8 @@ function anisotropy!(B::CuField{T}, m::CuField{T}, mesh::Mesh, mat::Material;
         return B
     end
     ux, uy, uz = mat.anisU
-    _launch(_k_anisotropy!, _ncells(m), B, m, T(mat.Ku), T(mat.Msat), T(ux), T(uy), T(uz),
-            _ncells(m), add)
+    _launch(_k_anisotropy!, _ncells(m), B, m, T(mat.Ku), T(mat.Msat), T(mat.Msat), T(ux), T(uy),
+            T(uz), _ncells(m), add)
     return B
 end
 
@@ -493,10 +493,10 @@ function JuliaMag.togpu(rp::RegionParams{T}) where {T}
     uy = CuArray(_percell([u[2] for u in rp.anisU], idm))
     uz = CuArray(_percell([u[3] for u in rp.anisU], idm))
     # Fold the per-cell fill fraction into the materialized Msat for the terms
-    # where the moment is a source (demag, anisotropy, thermal, energy),
+    # where the moment is a source (demag, thermal, energy),
     # exactly like the CPU accessor msat(rp,i,j,k) = Msat[region]·fill[cell].
-    # BUT keep the unscaled region Msat and the fill separately: the exchange and DMI
-    # prefactors divide by the FULL region Msat (mumax3 cuda/amul.h inv_Msat over
+    # BUT keep the unscaled region Msat and the fill separately: the exchange, DMI and
+    # anisotropy prefactors divide by the FULL region Msat (mumax3 cuda/amul.h inv_Msat over
     # the Msat LUT, never the geometry vol), and the fill mask marks empty
     # neighbours for the Neumann boundary. See the CPU exchange! for the rationale.
     Msat_region = CuArray(_percell(rp.Msat, idm))
@@ -531,7 +531,8 @@ function anisotropy!(B::CuField{T}, m::CuField{T}, mesh::Mesh, p::GpuRegionParam
     if !p.hasku
         add || fill!(B, zero(T)); return B
     end
-    _launch(_k_anisotropy!, _ncells(m), B, m, p.Ku, p.Msat, p.ux, p.uy, p.uz, _ncells(m), add)
+    _launch(_k_anisotropy!, _ncells(m), B, m, p.Ku, p.Msat, p.Msat_region, p.ux, p.uy, p.uz,
+            _ncells(m), add)
     return B
 end
 

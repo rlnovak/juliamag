@@ -1,3 +1,5 @@
+import Random
+
 # A shape covering a single central cell (helper for the has* test).
 cell_shape() = (x, y, z) -> abs(x) < 3e-9 && abs(y) < 3e-9
 
@@ -243,6 +245,32 @@ cell_shape() = (x, y, z) -> abs(x) < 3e-9 && abs(y) < 3e-9
         @test !JuliaMag.hasku(rp)
         defregion!(rp, 1, cell_shape())             # paint one cell region 1
         @test JuliaMag.hasku(rp)
+    end
+
+    @testset "anisotropy field ignores fill; energy is fill·Ku" begin
+        # mumax3: B_anis = 2Ku/Msat (m·u) u with the region Msat, the energy is weighted by
+        # Msat·fill. An empty cell (fill 0 or region Msat 0) has no field and no energy.
+        mesh = Mesh((4, 1, 1), (4e-9, 4e-9, 4e-9))
+        Ku, Ms = 5e5, 8e5
+        rp = RegionParams(mesh, Material(Msat = Ms, Aex = 1.3e-11, alpha = 0.02, Ku = Ku, anisU = (0.3, 0.2, 1.0)))
+        setregion!(rp, 1; Msat = 0.0)
+        defregioncell!(rp, 1, 4, 1, 1)
+        rp.fill[2, 1, 1] = 0.25
+        rp.fill[3, 1, 1] = 0.0
+        m = randommag!(Random.MersenneTwister(5), zeromag(mesh))
+        u = collect((0.3, 0.2, 1.0)) ./ sqrt(0.3^2 + 0.2^2 + 1)
+        B = fill!(similar(m), 7.0); anisotropy!(B, m, mesh, rp)
+        for i in 1:4
+            want = i <= 2 ? 2Ku / Ms * sum(m[:, i, 1, 1] .* u) .* u : zeros(3)
+            @test B[:, i, 1, 1] ≈ want rtol = 1e-13 atol = 1e-13
+        end
+        mu(i) = sum(m[:, i, 1, 1] .* u)
+        @test anisotropyenergy(m, mesh, rp) ≈ -Ku * cellvolume(mesh) * (mu(1)^2 + 0.25 * mu(2)^2) rtol = 1e-13
+        # the field is −1/(V Msat fill) ∂E/∂m (E is quadratic: exact central difference)
+        δ = randn(Random.MersenneTwister(6), size(m)...)
+        g = -cellvolume(mesh) * sum(JuliaMag.msat(rp, i, 1, 1) * sum(B[:, i, 1, 1] .* δ[:, i, 1, 1]) for i in 1:4)
+        fd = (anisotropyenergy(m .+ 0.1 .* δ, mesh, rp) - anisotropyenergy(m .- 0.1 .* δ, mesh, rp)) / 0.2
+        @test fd ≈ g rtol = 1e-11
     end
 
     @testset "edge smoothing (fractional fill)" begin
