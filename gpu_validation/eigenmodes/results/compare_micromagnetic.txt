@@ -1,0 +1,89 @@
+
+=== regions: 280 cells, 280 magnetic; max|m x B| 3.1e-13 T, <m> (0.4048, 0.0738, 0.8989)
+field, state         max|dB|/max|B| = 9.3e-13
+field, random state  max|dB|/max|B| = 5.2e-14
+operator, undamped   |y_MM - y_JM|/|y_JM| <= 3.1e-14  (5 random tangent fields)
+operator, damped     |y_MM - y_JM|/|y_JM| <= 3.0e-14  (5 random tangent fields)
+frequencies: 280 (MM matrix 2 s); largest relative difference 2.3e-13; MM max|Re|/max|Im| 4.9e-16
+   lowest 10: largest relative difference 2.3e-13
+   1  MM 26.321349356 GHz  JM 26.321349356 GHz  rel +1.2e-13
+   2  MM 36.439120099 GHz  JM 36.439120099 GHz  rel +1.2e-13
+   3  MM 44.325146354 GHz  JM 44.325146354 GHz  rel -3.3e-14
+   4  MM 50.291081732 GHz  JM 50.291081732 GHz  rel +2.3e-13
+   5  MM 54.088647775 GHz  JM 54.088647775 GHz  rel +2.3e-13
+damped (alpha 0.02): frequencies 2.3e-13, decay rates 2.4e-13 (largest relative differences to JuliaMag's damped matrix)
+   1  MM decay 3.30900713 1/ns  JM first order 3.30900739 1/ns  rel -7.9e-08 (alpha^2 = 4e-04)
+   2  MM decay 4.58142145 1/ns  JM first order 4.58142185 1/ns  rel -8.7e-08 (alpha^2 = 4e-04)
+   3  MM decay 5.57686052 1/ns  JM first order 5.57686091 1/ns  rel -6.9e-08 (alpha^2 = 4e-04)
+modes 1-10: 1 - |overlap| <= 2.2e-16
+
+=== skyrmion: 576 cells, 576 magnetic; max|m x B| 1.8e-12 T, <m> (0.0000, -0.0000, 0.7028)
+field, state         max|dB|/max|B| = 7.5e-12
+field, random state  max|dB|/max|B| = 1.2e-12
+operator, undamped   |y_MM - y_JM|/|y_JM| <= 6.6e-13  (5 random tangent fields)
+operator, damped     |y_MM - y_JM|/|y_JM| <= 6.8e-13  (5 random tangent fields)
+frequencies: 576 (MM matrix 7 s); largest relative difference 5.2e-11; MM max|Re|/max|Im| 1.1e-15
+   lowest 10: largest relative difference 5.2e-11
+   1  MM 0.212215311 GHz  JM 0.212215311 GHz  rel -5.2e-11
+   2  MM 2.130408615 GHz  JM 2.130408615 GHz  rel +5.2e-12
+   3  MM 2.232418794 GHz  JM 2.232418794 GHz  rel -1.4e-11
+   4  MM 2.540779060 GHz  JM 2.540779060 GHz  rel -2.2e-11
+   5  MM 3.047282432 GHz  JM 3.047282432 GHz  rel -5.8e-12
+damped (alpha 0.1): frequencies 5.2e-11, decay rates 5.1e-11 (largest relative differences to JuliaMag's damped matrix)
+   1  MM decay 0.14171879 1/ns  JM first order 0.14188317 1/ns  rel -1.2e-03 (alpha^2 = 1e-02)
+   2  MM decay 1.48627673 1/ns  JM first order 1.48676314 1/ns  rel -3.3e-04 (alpha^2 = 1e-02)
+   3  MM decay 1.68477501 1/ns  JM first order 1.68504923 1/ns  rel -1.6e-04 (alpha^2 = 1e-02)
+modes 1-10: 1 - |overlap| <= 2.2e-16
+
+=== vortex: 784 cells, 616 magnetic; max|m x B| 5.0e-13 T, <m> (-0.0000, -0.0000, 0.0129)
+field, state         max|dB|/max|B| = 3.8e-12
+field, random state  max|dB|/max|B| = 5.3e-13
+operator, undamped   |y_MM - y_JM|/|y_JM| <= 5.2e-13  (5 random tangent fields)
+operator, damped     |y_MM - y_JM|/|y_JM| <= 5.2e-13  (5 random tangent fields)
+frequencies: 616 (MM matrix 12 s); largest relative difference 8.6e-12; MM max|Re|/max|Im| 5.4e-15
+   lowest 10: largest relative difference 8.6e-12
+   1  MM 1.033242978 GHz  JM 1.033242978 GHz  rel +7.5e-12
+   2  MM 10.369815735 GHz  JM 10.369815735 GHz  rel +4.5e-12
+   3  MM 10.939055876 GHz  JM 10.939055876 GHz  rel +4.6e-12
+   4  MM 11.175406439 GHz  JM 11.175406439 GHz  rel +3.9e-12
+   5  MM 12.084428690 GHz  JM 12.084428690 GHz  rel +6.9e-12
+damped (alpha 0.01): frequencies 8.5e-12, decay rates 1.3e-11 (largest relative differences to JuliaMag's damped matrix)
+   1  MM decay 0.08614614 1/ns  JM first order 0.08615103 1/ns  rel -5.7e-05 (alpha^2 = 1e-04)
+   2  MM decay 0.88153663 1/ns  JM first order 0.88153312 1/ns  rel +4.0e-06 (alpha^2 = 1e-04)
+   3  MM decay 0.76852119 1/ns  JM first order 0.76852151 1/ns  rel -4.1e-07 (alpha^2 = 1e-04)
+modes 1-10: 1 - |overlap| <= 2.2e-16
+
+=== fmr: 1152 cells, 1152 magnetic; max|m x B| 3.0e-12 T, <m> (0.7914, 0.5865, 0.0000)
+field, state         max|dB|/max|B| = 4.7e-11
+field, random state  max|dB|/max|B| = 2.4e-12
+operator, undamped   |y_MM - y_JM|/|y_JM| <= 1.3e-12  (5 random tangent fields)
+operator, damped     |y_MM - y_JM|/|y_JM| <= 1.2e-12  (5 random tangent fields)
+frequencies: 1152 (MM matrix 22 s); largest relative difference 2.5e-11; MM max|Re|/max|Im| 4.4e-16
+   lowest 10: largest relative difference 2.5e-11
+   1  MM 8.271092718 GHz  JM 8.271092718 GHz  rel +6.1e-12
+   2  MM 9.403093385 GHz  JM 9.403093385 GHz  rel +1.8e-11
+   3  MM 10.840070503 GHz  JM 10.840070502 GHz  rel +1.9e-11
+   4  MM 11.234054539 GHz  JM 11.234054539 GHz  rel +2.5e-11
+   5  MM 11.993495954 GHz  JM 11.993495954 GHz  rel +1.3e-11
+damped (alpha 0.008): frequencies 2.5e-11, decay rates 1.5e-11 (largest relative differences to JuliaMag's damped matrix)
+   1  MM decay 0.64559803 1/ns  JM first order 0.64559210 1/ns  rel +9.2e-06 (alpha^2 = 6e-05)
+   2  MM decay 0.61004271 1/ns  JM first order 0.61004019 1/ns  rel +4.1e-06 (alpha^2 = 6e-05)
+   3  MM decay 0.69569941 1/ns  JM first order 0.69570038 1/ns  rel -1.4e-06 (alpha^2 = 6e-05)
+modes 1-10: 1 - |overlap| <= 4.4e-16
+state relaxed by MicroMagnetic: max|dm| 1.5e-08; 15 lowest frequencies differ by 5.1e-09
+    1  MM (own state) 8.267801 GHz  paper 8.270  rel -2.66e-04
+    2  MM (own state) 9.399351 GHz  paper 9.402  rel -2.82e-04
+    3  MM (own state) 10.835757 GHz  paper 10.839  rel -2.99e-04
+    4  MM (own state) 11.229584 GHz  paper 11.233  rel -3.04e-04
+    5  MM (own state) 11.988723 GHz  paper 11.992  rel -2.73e-04
+    6  MM (own state) 13.040825 GHz  paper 13.045  rel -3.20e-04
+    7  MM (own state) 13.811585 GHz  paper 13.816  rel -3.20e-04
+    8  MM (own state) 14.271853 GHz  paper 14.276  rel -2.90e-04
+    9  MM (own state) 15.311479 GHz  paper 15.316  rel -2.95e-04
+   10  MM (own state) 15.901762 GHz  paper 15.907  rel -3.29e-04
+   11  MM (own state) 16.712395 GHz  paper 16.718  rel -3.35e-04
+   12  MM (own state) 17.228727 GHz  paper 17.234  rel -3.06e-04
+   13  MM (own state) 17.451733 GHz  paper 17.457  rel -3.02e-04
+   14  MM (own state) 18.403150 GHz  paper 18.409  rel -3.18e-04
+   15  MM (own state) 19.800402 GHz  paper 19.806  rel -2.83e-04
+done

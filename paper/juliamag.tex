@@ -1145,10 +1145,22 @@ kernel, which follows \mumax, is increased; with the analytic tensor of
 Newell \textit{et al.}~\cite{newell1993} the frequencies differ from the table by a common factor,
 $1.00031$, and after removing that single factor all fifteen frequencies agree within the rounding of
 the table (0.5~MHz) and the damping times to 0.6~ps. We have not identified the
-origin of the factor; it is uniform, as a difference in the gyromagnetic ratio would be. The
-matrix-free solver gives the same frequencies as the dense one to $4\times10^{-15}$.
+origin of the factor; it is uniform, as a difference in the gyromagnetic ratio would be, and it is not
+specific to \JuliaMag{} (next paragraph). The matrix-free solver gives the same frequencies as the dense one to $4\times10^{-15}$.
 Figure~\ref{fig:eigen}(a) compares the frequencies with the ringdown spectrum computed with
 \oommf{} in Ref.~\cite{baker2017}.
+
+\paragraph{Comparison with MicroMagnetic.jl.}
+MicroMagnetic.jl~\cite{wang2024} linearizes the equation of motion by automatic differentiation, an
+independent route to the same operator. Given the same states, gyromagnetic ratio and open DMI
+boundaries, and Newell's tensor in both codes (each with its own implementation), we compared
+two regions that differ in $M_s$, $A$, $K_u$ and interfacial $D$, a skyrmion in a square with bulk
+DMI, a vortex disc, and the FMR problem, all with the demagnetizing field. The linear operators agree to
+$3\times10^{-14}$--$1\times10^{-12}$, all 280--1152 frequencies of each case to
+$2\times10^{-13}$--$5\times10^{-11}$, the exact damped spectra likewise, and the ten lowest modes
+have overlaps of 1 to $10^{-15}$. For the FMR problem, the state relaxed by MicroMagnetic.jl itself gives
+the same fifteen frequencies to $5\times10^{-9}$, and so the same factor to the table of
+Ref.~\cite{baker2017}.
 
 \paragraph{Gyrotropic mode of a vortex.}
 For the disc of Sec.~\ref{sec:discstt} (staircase boundary, $64\times64\times8$ cells, 25\,824
