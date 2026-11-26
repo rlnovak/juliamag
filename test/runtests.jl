@@ -26,4 +26,5 @@ using Test
     include("test_timestepper.jl")
     include("test_thermal.jl")
     include("test_precision.jl")
+    include("test_driver.jl")
 end

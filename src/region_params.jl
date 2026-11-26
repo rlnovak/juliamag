@@ -211,8 +211,26 @@ hasstt(rp::RegionParams)   = any(!iszero, @view rp.pol[_present(rp)])
 # here we expose the maximum present Msat for setup/reporting.
 maxmsat(rp::RegionParams) = maximum(@view rp.Msat[_present(rp)])
 
-# Representative scalar damping (region 0's) for the global LLG torque.
-damping(rp::RegionParams) = rp.alpha[1]
+"""
+    uniformdamping(params)
+
+The Gilbert damping if it has one value over all magnetic regions present (Msat ≠ 0), `nothing`
+if it differs between them.
+"""
+function uniformdamping(rp::RegionParams{T}) where {T}
+    all(==(rp.alpha[1]), rp.alpha) && return rp.alpha[1]
+    a = nothing
+    for r in _present(rp)
+        rp.Msat[r] == 0 && continue
+        a === nothing ? (a = rp.alpha[r]) : (a == rp.alpha[r] || return nothing)
+    end
+    return something(a, rp.alpha[1])
+end
+_needuniform(a) = a === nothing ?
+    error("the damping alpha differs between regions: only the time integrators (TimeStepper, run!) " *
+          "and the thermal field support that") : a
+# The damping as one number, for what needs it uniform (spin torques, linewidths, old solvers).
+damping(rp::RegionParams) = _needuniform(uniformdamping(rp))
 
 """
     average_region(m, rp, id) -> (mx, my, mz)

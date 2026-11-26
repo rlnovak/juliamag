@@ -48,6 +48,7 @@ end
 function Integrator(world::World{T}, m::AbstractArray{T,4};
                     alg = Tsit5(), abstol = 1e-6, reltol = 1e-5,
                     dt = 1e-15, dtmax = 1e-11, tend = 1.0) where {T}
+    _nodrive(world, "Integrator (:tsit5)")
     prob = ODEProblem(_llg_rhs!, m, (0.0, tend), world)
     integ = init(prob, alg; abstol = abstol, reltol = reltol, dt = dt,
                  dtmax = dtmax, save_everystep = false, save_start = false,

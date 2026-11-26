@@ -263,6 +263,29 @@ function _k_torque!(dm, m, B, γp, α, N)
     return nothing
 end
 
+# The same with a damping per cell (regions of different alpha).
+function _k_torque_cells!(dm, m, B, alpha, γ::T, N) where {T}
+    n = _tid()
+    n > N && return nothing
+    b = 3 * (n - Int32(1))
+    @inbounds begin
+        α = alpha[n]
+        γp = γ / (one(T) + α * α)
+        mx, my, mz = m[b+1], m[b+2], m[b+3]
+        bx, by, bz = B[b+1], B[b+2], B[b+3]
+        px = my*bz - mz*by
+        py = mz*bx - mx*bz
+        pz = mx*by - my*bx
+        qx = my*pz - mz*py
+        qy = mz*px - mx*pz
+        qz = mx*py - my*px
+        dm[b+1] = -γp * (px + α*qx)
+        dm[b+2] = -γp * (py + α*qy)
+        dm[b+3] = -γp * (pz + α*qz)
+    end
+    return nothing
+end
+
 # --- Slonczewski torque (src/stt.jl) ----------------------------------------
 function _k_slonczewski!(τ, m, ppx::T, ppy::T, ppz::T, β::T, pol::T, Λ2::T, εp::T, α::T,
                          gilb::T, N, add) where {T}

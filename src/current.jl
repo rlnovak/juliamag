@@ -78,6 +78,8 @@ Add the spin-transfer torques of `world.current` (if any) to the torque `dm`.
 function applycurrent!(dm::AbstractArray{T,4}, m::AbstractArray{T,4}, w) where {T}
     c = w.current
     c === nothing && return dm
+    uniformdamping(w.material) === nothing &&
+        error("spin torques need a uniform damping alpha; it differs between the magnetic regions")
     c.slonczewski && slonczewskitorque!(dm, m, w.mesh, c.params, c.J[3], c.fixedlayer,
                                         c.thickness; add = true)
     c.zhangli && zhanglitorque!(dm, m, w.mesh, c.params, c.J; add = true)

@@ -46,6 +46,36 @@ function torque!(dm::AbstractArray{T,4}, m::AbstractArray{T,4}, B::AbstractArray
 end
 
 """
+    lltorque!(dm, m, B, params; precess=true)
+
+The LLG torque [rad/s] with the damping of `params`, which may differ between regions.
+`precess = false` gives the pure relaxation torque −γ m×(m×B), without damping or precession
+(mumax3 `DoPrecess = false`).
+"""
+function lltorque!(dm::AbstractArray{T,4}, m::AbstractArray{T,4}, B::AbstractArray{T,4},
+                   params::AbstractParams; precess::Bool = true) where {T}
+    precess || return _damping_torque!(dm, m, B, T(γLL))
+    α = uniformdamping(params)
+    α === nothing && return _lltorque_cells!(dm, m, B, params)
+    return torque!(dm, m, B, α)
+end
+function _lltorque_cells!(dm::AbstractArray{T,4}, m::AbstractArray{T,4}, B::AbstractArray{T,4},
+                          params::AbstractParams) where {T}
+    @inbounds for k in axes(m, 4), j in axes(m, 3), i in axes(m, 2)
+        α = T(alphaof(params, i, j, k))
+        γ′ = T(γLL) / (1 + α^2)
+        mx, my, mz = m[1, i, j, k], m[2, i, j, k], m[3, i, j, k]
+        bx, by, bz = B[1, i, j, k], B[2, i, j, k], B[3, i, j, k]
+        px = my*bz - mz*by; py = mz*bx - mx*bz; pz = mx*by - my*bx
+        qx = my*pz - mz*py; qy = mz*px - mx*pz; qz = mx*py - my*px
+        dm[1, i, j, k] = -γ′ * (px + α*qx)
+        dm[2, i, j, k] = -γ′ * (py + α*qy)
+        dm[3, i, j, k] = -γ′ * (pz + α*qz)
+    end
+    return dm
+end
+
+"""
     maxtorque(dm) -> T
 
 The largest torque magnitude over all cells, `max_cell |dm/dt|`. Used as the
@@ -73,7 +103,7 @@ torque of the effective field plus the spin-transfer torques of `world.current`
 function llgrhs!(dm::AbstractArray{T,4}, m::AbstractArray{T,4}, w) where {T}
     B = w._Bbuf
     effectivefield!(B, m, w)
-    torque!(dm, m, B, damping(w.material))
+    lltorque!(dm, m, B, w.material)
     applycurrent!(dm, m, w)
     return dm
 end

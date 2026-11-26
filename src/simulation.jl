@@ -65,11 +65,12 @@ mutable struct Simulation{T<:AbstractFloat,W<:World{T},A<:AbstractArray{T,4},H<:
     peakerr::Float64
     # Output.
     outdir::Union{Nothing,String}
-    ovf::Vector{Any}             # OVF autosaves: (name, period, start, count) per quantity
+    ovf::Vector{Any}             # OVF autosaves: (name, period, start, count, field) per quantity
     autonum::Dict{String,Int}    # next file number per OVF name
     verbose::Bool
     log::IO
     _stepper::Any                # cached TimeStepper (buffers), or nothing
+    precess::Bool                # mumax3 DoPrecess
 end
 
 function Simulation(mesh::Mesh, params::AbstractParams; demag = true, Bext = (0, 0, 0),
@@ -88,7 +89,7 @@ function _newsim(world::World{T}, m, hostworld; verbose = true, log = stdout) wh
         world, m, DataTable(), 0.0, hostworld,
         :rk45, 1e-5, 0.0, 0.0, 0.0, 0.8, 1e-15, 1e-6, 1e-5, 0.0, Random.default_rng(),
         0, 0, 0, 0.0, 0.0,
-        nothing, Any[], Dict{String,Int}(), verbose, log, nothing)
+        nothing, Any[], Dict{String,Int}(), verbose, log, nothing, true)
 end
 
 # Copy of `sim` with another world / state (togpu, tocpu); settings and output kept.
@@ -98,7 +99,7 @@ function _rebuild(sim::Simulation, world::World{T}, m, hostworld) where {T}
         sim.solver, sim.maxerr, sim.fixdt, sim.mindt, sim.maxdt, sim.headroom, sim.dt,
         sim.abstol, sim.reltol, sim.temperature, sim.rng,
         sim.nsteps, sim.nundone, sim.nevals, sim.lasterr, sim.peakerr,
-        sim.outdir, sim.ovf, sim.autonum, sim.verbose, sim.log, nothing)
+        sim.outdir, sim.ovf, sim.autonum, sim.verbose, sim.log, nothing, sim.precess)
     return s
 end
 
@@ -166,6 +167,8 @@ function setcurrent!(sim::Simulation, ::Nothing)
     return sim
 end
 
+setdrive!(sim::Simulation, f) = (setdrive!(sim.world, f); setdrive!(sim.hostworld, f); sim)
+
 """
     settemperature!(sim, T; rng=Random.default_rng())
 
@@ -182,24 +185,25 @@ end
 
 """
     setsolver!(sim, solver=sim.solver; maxerr, fixdt, mindt, maxdt, headroom,
-               abstol, reltol)
+               abstol, reltol, precess)
 
 Choose the time integrator by name — mumax3's `:euler`, `:heun`, `:rk23`, `:rk4`,
 `:rk45` (Dormand–Prince, the default), or OrdinaryDiffEq's `:tsit5` — and its
 settings, with mumax3's names and defaults: `maxerr = 1e-5` (MaxErr), `fixdt = 0`
 (FixDt; > 0 fixes the step), `mindt`, `maxdt` (0 = no bound), `headroom = 0.8`.
-`abstol`, `reltol` apply to `:tsit5` only.
+`abstol`, `reltol` apply to `:tsit5` only. `precess = false` integrates the relaxation torque
+−γ m×(m×B) alone (mumax3 `DoPrecess = false`; not with `:tsit5`).
 """
 function setsolver!(sim::Simulation, solver::Symbol = sim.solver;
                     maxerr = sim.maxerr, fixdt = sim.fixdt, mindt = sim.mindt,
                     maxdt = sim.maxdt, headroom = sim.headroom,
-                    abstol = sim.abstol, reltol = sim.reltol)
+                    abstol = sim.abstol, reltol = sim.reltol, precess::Bool = sim.precess)
     solver in SOLVERS || solver === :tsit5 ||
         throw(ArgumentError("unknown solver :$solver; choose one of " *
                             join(map(string, (SOLVERS..., :tsit5)), ", ")))
     sim.solver = solver
     sim.maxerr = maxerr; sim.fixdt = fixdt; sim.mindt = mindt; sim.maxdt = maxdt
-    sim.headroom = headroom; sim.abstol = abstol; sim.reltol = reltol
+    sim.headroom = headroom; sim.abstol = abstol; sim.reltol = reltol; sim.precess = precess
     sim._stepper = nothing
     return sim
 end
@@ -265,6 +269,7 @@ Append one table row now (mumax3 `TableSave`). On the GPU, the columns without a
 GPU method are evaluated on a host copy of the state.
 """
 function tablesave!(sim::Simulation)
+    _drive!(sim.world, sim.t); _drive!(sim.hostworld, sim.t)
     row = Float64[]
     mh = nothing
     for q in sim.table.quantities
@@ -284,35 +289,40 @@ savenow!(sim::Simulation) = tablesave!(sim)
 writetable(sim::Simulation, path::AbstractString) = writetable(sim.table, path)
 
 """
-    save!(sim; name="m")
+    save!(sim; name="m", field=nothing)
 
 Write the magnetization to `outdir/<name>NNNNNN.ovf` now, numbering the files per
-name from 0 (mumax3 `Save(m)`). Requires an output directory ([`setoutdir!`](@ref)).
+name from 0 (mumax3 `Save(m)`). Requires an output directory ([`setoutdir!`](@ref)). Another
+field is written with `field`, a function of the simulation that returns a host array
+(1 or 3, Nx, Ny, Nz), or that and its mesh.
 """
-function save!(sim::Simulation; name::AbstractString = "m")
+function save!(sim::Simulation; name::AbstractString = "m", field = nothing)
     sim.outdir === nothing &&
         throw(ArgumentError("save!: set an output directory first (setoutdir! or outdir=)"))
     n = get(sim.autonum, name, 0)
     path = joinpath(sim.outdir, @sprintf("%s%06d.ovf", name, n))
-    saveovf(path, _hoststate(sim), sim.world.mesh;
+    _drive!(sim.world, sim.t); _drive!(sim.hostworld, sim.t)
+    a = field === nothing ? _hoststate(sim) : field(sim)
+    f, msh = a isa Tuple ? a : (a, sim.world.mesh)
+    saveovf(path, f, msh;
             title = @sprintf("%s t=%.6e s", name, sim.t))
     sim.autonum[name] = n + 1
     return path
 end
 
 """
-    autosave!(sim, period; name="m")
+    autosave!(sim, period; name="m", field=nothing)
 
 Save the magnetization as OVF every `period` seconds of simulated time during
 [`run!`](@ref), starting with the current state (mumax3 `AutoSave(m, period)`).
-`0` stops it.
+`0` stops it. `field`: as in [`save!`](@ref).
 """
-function autosave!(sim::Simulation, period::Real; name::AbstractString = "m")
+function autosave!(sim::Simulation, period::Real; name::AbstractString = "m", field = nothing)
     filter!(a -> a[1] != name, sim.ovf)
     if period != 0
         sim.outdir === nothing &&
             throw(ArgumentError("autosave!: set an output directory first (setoutdir! or outdir=)"))
-        push!(sim.ovf, Any[String(name), Float64(period), sim.t, -1])
+        push!(sim.ovf, Any[String(name), Float64(period), sim.t, -1, field])
     end
     return sim
 end
@@ -326,7 +336,7 @@ _outputdue(sim::Simulation) =
 function _dooutput!(sim::Simulation)
     for a in sim.ovf
         if _needsave(a[2], a[3], a[4], sim.t)
-            save!(sim; name = a[1])
+            save!(sim; name = a[1], field = a[5])
             a[4] += 1
         end
     end
@@ -378,9 +388,11 @@ end
     relax!(sim; kwargs...)
 
 Relax the magnetization to equilibrium with the energy minimizer, in place
-(mumax3 `Minimize`). Keyword arguments go to [`Minimizer`](@ref).
+(mumax3 `Minimize`). Keyword arguments go to [`Minimizer`](@ref). See [`relaxllg!`](@ref) for
+mumax3's `Relax`.
 """
 function relax!(sim::Simulation; kwargs...)
+    _drive!(sim.world, sim.t)
     mn = Minimizer(sim.world, sim.m; kwargs...)
     minimize!(mn)
     copyto!(sim.m, mn.m)
@@ -410,13 +422,13 @@ function run!(sim::Simulation, duration::Real; solver = nothing, kwargs...)
     end
     if !isempty(kwargs) || solver !== sim.solver
         saved = (sim.solver, sim.maxerr, sim.fixdt, sim.mindt, sim.maxdt, sim.headroom,
-                 sim.abstol, sim.reltol)
+                 sim.abstol, sim.reltol, sim.precess)
         try
             setsolver!(sim, solver; kwargs...)
             return _run!(sim, duration)
         finally
             sim.solver, sim.maxerr, sim.fixdt, sim.mindt, sim.maxdt, sim.headroom,
-                sim.abstol, sim.reltol = saved
+                sim.abstol, sim.reltol, sim.precess = saved
             sim._stepper = nothing
         end
     end
@@ -433,39 +445,156 @@ function _run!(sim::Simulation, duration::Real)
     legacy && tablesave!(sim)
     _dooutput!(sim)                            # every autosave that is due (OVF, table)
     if solver === :tsit5
+        sim.precess || throw(ArgumentError(":tsit5 does not support precess = false; use one of $(join(SOLVERS, ", "))"))
         _run_tsit5!(sim, t_end)
     else
-        ts = _stepper!(sim)
-        try
-            advanceto!(ts, t_end; onstep = function (ts)
-                sim.t = ts.t
-                # a fixed step keeps its error on the device: check it (NaN) before
-                # writing output, not only at the end of the run
-                _outputdue(sim) && _syncerr!(ts)
-                _dooutput!(sim)
-            end)
-        finally                                # also when the run stops with an error
-            sim.t = ts.t
-            sim.dt = ts.dt
-            sim.nsteps += ts.nsteps; sim.nundone += ts.nundone; sim.nevals += ts.nevals
-            sim.lasterr = ts.lasterr; sim.peakerr = max(sim.peakerr, ts.peakerr)
-            ts.nsteps = ts.nundone = ts.nevals = 0
-        end
+        _stepping!(sim, ts -> advanceto!(ts, t_end; onstep = ts -> _stepoutput!(sim, ts)))
     end
     legacy && tablesave!(sim)
     _logend(sim, time() - wall0, sim.nsteps - s0, sim.nundone - u0, sim.nevals - e0)
     return sim
 end
 
+# The time, the step and the counters of the stepper, taken to the simulation.
+function _sync!(sim::Simulation, ts::TimeStepper)
+    sim.t = ts.t
+    sim.dt = ts.dt
+    sim.nsteps += ts.nsteps; sim.nundone += ts.nundone; sim.nevals += ts.nevals
+    ts.nsteps = ts.nundone = ts.nevals = 0
+    sim.lasterr = ts.lasterr; sim.peakerr = max(sim.peakerr, ts.peakerr)
+    return sim
+end
+
+# After an accepted step: the state of the stepper and the output that is due.
+function _stepoutput!(sim::Simulation, ts::TimeStepper)
+    _sync!(sim, ts)
+    # a fixed step keeps its error on the device: check it (NaN) before
+    # writing output, not only at the end of the run
+    _outputdue(sim) && (_syncerr!(ts); _sync!(sim, ts))
+    _dooutput!(sim)
+end
+
+# `f(ts)` on the stepper of the simulation; the time, step and counters are taken back also when
+# it stops with an error.
+function _stepping!(sim::Simulation, f)
+    ts = _stepper!(sim)
+    try
+        f(ts)
+    finally
+        _sync!(sim, ts)
+    end
+    return sim
+end
+
+"""
+    runwhile!(sim, cond)
+
+Integrate while `cond(sim)` is true, evaluated before every step (mumax3 `RunWhile`), with the
+scheduled output. `cond` sees the current `sim.t`, `sim.m` and counters.
+"""
+function runwhile!(sim::Simulation, cond)
+    sim.solver === :tsit5 && throw(ArgumentError("runwhile!: not available with :tsit5"))
+    _dooutput!(sim)
+    wall0 = time()
+    s0, u0, e0 = sim.nsteps, sim.nundone, sim.nevals
+    sim.verbose && println(sim.log, "[JuliaMag] ", _timestamp(), "  run while a condition holds, from t = ", sim.t, " s")
+    while cond(sim)
+        _stepping!(sim, ts -> (ts.fsal = false; _stepwhile!(sim, ts, cond)))
+    end
+    _logend(sim, time() - wall0, sim.nsteps - s0, sim.nundone - u0, sim.nevals - e0)
+    return sim
+end
+function _stepwhile!(sim::Simulation, ts::TimeStepper, cond)
+    ts.alarm = Inf
+    while true
+        ok = step!(ts)                         # an undone step counts for the condition too (mumax3 NEval)
+        _syncerr!(ts)                          # (a fixed step: the errors, for a condition on them)
+        ok ? _stepoutput!(sim, ts) : _sync!(sim, ts)
+        cond(sim) || break
+    end
+    _syncerr!(ts)
+end
+
+"""
+    steps!(sim, n)
+
+Take `n` accepted steps (mumax3 `Steps`), with the scheduled output.
+"""
+function steps!(sim::Simulation, n::Integer)
+    stop = sim.nsteps + n
+    return runwhile!(sim, s -> s.nsteps < stop)
+end
+
+"""
+    relaxllg!(sim; threshold=-1) -> Bool
+
+mumax3's `Relax`: integrate the relaxation torque −γ m×(m×B), plus the spin torques of a current,
+with the adaptive Bogacki–Shampine solver, without precession, thermal field or advance of
+time. First while the energy decreases (checked every 3 steps), then while the torque does,
+tightening the error tolerance by √2 down to 1e-9; with `threshold` > 0 [T], until the largest
+torque is below it at every tolerance. Returns whether it converged.
+"""
+function relaxllg!(sim::Simulation; threshold::Real = -1.0)
+    _drive!(sim.world, sim.t)
+    w = sim.world
+    drive = w.drive
+    w.drive = nothing                          # the time stands still
+    ts = TimeStepper(w, sim.m; solver = :rk23, maxerr = sim.maxerr, mindt = sim.mindt, maxdt = sim.maxdt,
+                     headroom = sim.headroom, dt = sim.dt, t = sim.t, precess = false)
+    function steps3()
+        _dooutput!(sim); w.drive = nothing     # (a table column may have put it back)
+        n = 0
+        while n < 3
+            step!(ts) && (n += 1)
+        end
+        ts.t = sim.t                           # the time stands still
+        _sync!(sim, ts)
+    end
+    energy() = energy!(w._Bbuf, sim.m, w)
+    try
+        steps3(); E0 = energy()
+        steps3(); E1 = energy()
+        while E1 < E0
+            steps3(); E0, E1 = E1, energy()
+        end
+        # now the torque, less noisy than the energy; k[1] is the torque at the state (FSAL)
+        avg() = Float64(_gdot(ts.k[1], ts.k[1]))
+        if threshold > 0
+            while true
+                while _maxvecnorm(ts.k[1]) > threshold * γLL
+                    steps3()
+                end
+                ts.maxerr /= sqrt(2)
+                ts.maxerr < 1e-9 && break
+            end
+        else
+            T1 = avg()
+            while ts.maxerr > 1e-9
+                ts.maxerr /= sqrt(2)
+                steps3(); T0, T1 = T1, avg()
+                while T1 < T0
+                    steps3(); T0, T1 = T1, avg()
+                end
+            end
+        end
+    finally
+        w.drive = drive
+        ts.t = sim.t
+        _sync!(sim, ts)
+        sim._stepper = nothing
+    end
+    return true
+end
+
 # The cached stepper for the current settings (buffers reused between runs).
 function _stepper!(sim::Simulation)
     ts = sim._stepper
     if !(ts isa TimeStepper) || ts.m !== sim.m || ts.world !== sim.world ||
-       ts.solver !== sim.solver || (ts.Bth === nothing) != (sim.temperature == 0)
+       ts.solver !== sim.solver || (ts.Bth === nothing) != (sim.temperature == 0) || ts.precess != sim.precess
         ts = TimeStepper(sim.world, sim.m; solver = sim.solver, maxerr = sim.maxerr,
                          fixdt = sim.fixdt, mindt = sim.mindt, maxdt = sim.maxdt,
                          headroom = sim.headroom, dt = sim.dt,
-                         temperature = sim.temperature, rng = sim.rng, t = sim.t)
+                         temperature = sim.temperature, rng = sim.rng, t = sim.t, precess = sim.precess)
         sim._stepper = ts
     end
     ts.t = sim.t; ts.dt = sim.fixdt > 0 ? sim.fixdt : sim.dt
@@ -524,6 +653,8 @@ Slonczewski torque. This function ignores a current set with `setcurrent!`.
 """
 function runcurrent!(sim::Simulation{T}, J, duration::Real;
                      every = 20e-12, dt = 5e-14) where {T}
+    _nodrive(sim.world, "runcurrent!")
+    sim.precess || throw(ArgumentError("runcurrent! does not support precess = false"))
     world, msh, mat = sim.world, sim.world.mesh, sim.world.material
     tbl = sim.table
     Jt = NTuple{3,T}(J)

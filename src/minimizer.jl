@@ -30,13 +30,18 @@
 #    torque threshold even at equilibrium.
 
 """
-    Minimizer(world, m; dt=1e-13, stopdm=1e-6, dmsamples=10)
+    Minimizer(world, m; dt=1e-13, stopdm=1e-6, dmsamples=10, mumax=false, parity=0)
 
 Energy minimizer state for `m` under `world`.
 
 - `dt`: initial Barzilai-Borwein step (time-like, seconds).
 - `stopdm`: convergence threshold on the recent max cell displacement ‖Δm‖.
 - `dmsamples`: how many recent Δm values must all be below `stopdm` to stop.
+- `mumax`: every detail of mumax3's `Minimize`: first step 1e-4 T⁻¹ (5.7e-16 s), Barzilai–Borwein
+  steps of either sign, m normalized after every step, spin torques of a current included. The
+  default starts with 1e-13 s and takes the magnitude of the step, without spin torques. Where a state
+  can fall into either of two minima the two can end in different ones. `parity` (0 or 1): which of
+  the two Barzilai–Borwein formulas comes first (mumax3: the parity of `NSteps`).
 """
 mutable struct Minimizer{T<:AbstractFloat,W<:World,A<:AbstractArray{T,4}}
     world::W
@@ -51,16 +56,28 @@ mutable struct Minimizer{T<:AbstractFloat,W<:World,A<:AbstractArray{T,4}}
     τlast::A
     mlast::A
     dmhist::Vector{T}        # recent max‖Δm‖ values (ring)
+    mumax::Bool
+    parity::Int
+    peak::Float64            # largest max‖Δm‖ of all steps
 end
 
 function Minimizer(world::World{T}, m::AbstractArray{T,4};
-                   dt = 1e-13, stopdm = 1e-6, dmsamples = 10) where {T}
+                   mumax::Bool = false, dt = mumax ? 1e-4 / γLL : 1e-13, stopdm = 1e-6, dmsamples = 10,
+                   parity::Integer = 0) where {T}
     # γ scales the torque to units of 1/time so the BB step `dt` is a genuine
     # (adaptive) time step, as in mumax3. The initial dt is time-like (~1e-13 s);
     # BB grows it from there.
     Minimizer{T,typeof(world),typeof(m)}(world, m, T(dt), T(γLL), T(stopdm), dmsamples, 0,
                                similar(m), similar(m), similar(m), similar(m),
-                               fill(T(Inf), dmsamples))
+                               fill(T(Inf), dmsamples), mumax, Int(mod(parity, 2)), 0.0)
+end
+
+# The torque the minimizer follows.
+function _mintorque!(mn::Minimizer)
+    effectivefield!(mn.B, mn.m, mn.world)
+    _damping_torque!(mn.τ, mn.m, mn.B, mn.γ)
+    mn.mumax && applycurrent!(mn.τ, mn.m, mn.world)
+    return mn.τ
 end
 
 # Damping torque τ = -γ m × (m × B), written into `τ` (units 1/time).
@@ -94,7 +111,7 @@ function _cayley_step!(m::AbstractArray{T,4}, τ, dt) where {T}
         nz = (f * m0z + 4dt * tz) * inv_d
         m[1, I] = nx; m[2, I] = ny; m[3, I] = nz
         d2 = (nx - m0x)^2 + (ny - m0y)^2 + (nz - m0z)^2
-        d2 > dmmax && (dmmax = d2)
+        (d2 > dmmax || isnan(d2)) && (dmmax = d2)      # a NaN stays
     end
     return dmmax
 end
@@ -120,7 +137,7 @@ end
 One Barzilai-Borwein minimizer step. Returns the max cell displacement this step.
 """
 function minimizestep!(mn::Minimizer{T}) where {T}
-    m, B, τ = mn.m, mn.B, mn.τ
+    m, τ = mn.m, mn.τ
 
     # Torque τ was computed at the end of the previous step (or step 0 below).
     # Save the current state, then move with the current (τ, dt).
@@ -128,8 +145,7 @@ function minimizestep!(mn::Minimizer{T}) where {T}
     copyto!(mn.τlast, τ)
 
     if mn.step == 0
-        effectivefield!(B, m, mn.world)
-        _damping_torque!(τ, m, B, mn.γ)
+        _mintorque!(mn)
         copyto!(mn.τlast, τ)
     end
 
@@ -137,18 +153,27 @@ function minimizestep!(mn::Minimizer{T}) where {T}
     dmmax = _cayley_step!(m, τ, mn.dt)
 
     # Recompute the torque at the new state.
-    effectivefield!(B, m, mn.world)
-    _damping_torque!(τ, m, B, mn.γ)
+    _mintorque!(mn)
 
     # Barzilai-Borwein step size for the NEXT iteration.
     #   dm = m - m_old,  dk = τ_old - τ  (sign reversed, as in mumax3)
     ss, sy, yy = _bb_sums(m, mn.mlast, mn.τlast, τ)
-    if sy != 0 && yy != 0
-        mn.dt = iseven(mn.step) ? abs(ss / sy) : abs(sy / yy)
+    if mn.mumax
+        nom, div = iseven(mn.step + mn.parity) ? (ss, sy) : (sy, yy)
+        mn.dt = div != 0 ? nom / div : T(1e-4 / γLL)
+    else
+        if sy != 0 && yy != 0
+            mn.dt = iseven(mn.step) ? abs(ss / sy) : abs(sy / yy)
+        end
+        isfinite(mn.dt) && mn.dt > 0 || (mn.dt = T(1e-13))
     end
-    isfinite(mn.dt) && mn.dt > 0 || (mn.dt = T(1e-13))
+
+    # mumax3 normalizes m here. In Float64 |m| drifts by ~1e-14 in a minimization and it is left
+    # out; in Float32 the drift reached 3e-6 (energy off by 1e-6).
+    (mn.mumax || T !== Float64) && normalize!(m)
 
     mn.dmhist[mod(mn.step, mn.dmsamples)+1] = sqrt(dmmax)
+    mn.peak = max(mn.peak, Float64(sqrt(dmmax)))
     mn.step += 1
     return sqrt(dmmax)
 end
@@ -162,6 +187,7 @@ Run the minimizer until the recent `dmsamples` displacements are all below
 function minimize!(mn::Minimizer{T}; maxsteps = 100_000, verbose = false) where {T}
     for _ in 1:maxsteps
         dm = minimizestep!(mn)
+        isnan(dm) && error("the minimization diverged (m is not finite)")
         if verbose && mn.step % 500 == 0
             mx, my, mz = average(mn.m)
             println("  minimize step ", mn.step, "  max‖Δm‖ = ", dm,

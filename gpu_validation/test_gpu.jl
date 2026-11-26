@@ -444,10 +444,40 @@ function gneb_terms(T)
     end
 end
 
+# Damping per region, drive, relaxllg! on the GPU against the CPU.
+function driver_terms(T)
+    tol = T == Float64 ? 1e-11 : 2e-4
+    mesh = Mesh((16, 12, 2), (4e-9, 4e-9, 4e-9))
+    rp = RegionParams(mesh, Material(Msat = T(8e5), Aex = T(1.3e-11), alpha = T(0.02)))
+    setregion!(rp, 1; alpha = 0.5, Msat = 5e5); setregion!(rp, 2; Msat = 0.0, alpha = 0.9)
+    defregion!(rp, 1, XRange(0, Inf)); defregion!(rp, 2, Circle(16e-9))
+    w = World(mesh, rp; Bext = (0.01, 0.02, 0.1)); wg = togpu(w)
+    Random.seed!(8); m = clearempty!(randommag!(Random.default_rng(), zeromag(T, mesh)), rp); mg = togpu(m)
+    check("driver: torque, alpha per region", llgrhs!(similar(mg), mg, wg), llgrhs!(similar(m), m, w), T == Float64 ? 1e-12 : 1e-5)
+    B = effectivefield!(similar(m), m, w); Bg = togpu(B)
+    check("driver: relaxation torque", lltorque!(similar(mg), mg, Bg, wg.material; precess = false),
+          lltorque!(similar(m), m, B, rp; precess = false), T == Float64 ? 1e-12 : 1e-5)
+    for s in (:heun, :rk23, :rk4, :rk45)
+        a = copy(m); b = togpu(m)
+        for (x, y) in ((a, w), (b, wg))
+            setdrive!(y, (u, t) -> setexternalfield!(u, (0.05 * sin(2π * 5e10 * t), 0, 0.1)))
+            advanceto!(TimeStepper(y, x; solver = s, fixdt = 1e-14), 4e-13)
+            setdrive!(y, nothing)
+        end
+        check("driver: drive, $s", b, a, tol)
+    end
+    if T == Float64
+        mk() = (s = Simulation(mesh, Material(Msat = 8e5, Aex = 1.3e-11, alpha = 0.02); verbose = false, Bext = (0.05, 0.02, 0)); setmag!(s, UniformConfig(1, 1, 0.1)); s)
+        a = mk(); relaxllg!(a); b = togpu(mk()); relaxllg!(b)
+        check("driver: relaxllg!", b.m, a.m, 1e-5)
+    end
+end
+
 for T in (Float64, Float32)
     println("\n================ ", T, " ================")
     gneb_terms(T)
     eig_terms(T)
+    driver_terms(T)
     mI, mB = mats(T)
     for (lab, mesh, mat) in (
             ("mat open 3D Dind", Mesh((20, 16, 4), (3e-9, 3e-9, 2e-9)), mI),

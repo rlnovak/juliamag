@@ -33,7 +33,7 @@ using JuliaMag
 ```
 
 The optional GPU and GUI features have their own dependencies; see
-[Going further](#7-going-further).
+[Going further](#10-going-further).
 
 ---
 
@@ -365,7 +365,9 @@ has a JuliaMag counterpart:
 | `Temp = 300` | `settemperature!(sim, 300)` |
 | `SetSolver(5)`, `MaxErr`, `FixDt`, `MinDt`, `MaxDt`, `Headroom` | `setsolver!(sim, :rk45; maxerr, fixdt, mindt, maxdt, headroom)` |
 | `minimize()` | `relax!(sim)` |
-| `run(1e-9)` | `run!(sim, 1e-9)` |
+| `relax()` | `relaxllg!(sim)` |
+| `run(1e-9)`, `steps(n)`, `runwhile(cond)` | `run!(sim, 1e-9)`, `steps!(sim, n)`, `runwhile!(sim, cond)` |
+| `B_ext = vector(0, 0, f(t))` | `setdrive!(sim, (w, t) -> setexternalfield!(w, (0, 0, f(t))))` |
 | `TableAdd(maxTorque)`, `TableAutosave(5e-12)`, `TableSave()` | `tableadd!(sim, q_maxtorque())`, `tableautosave!(sim, 5e-12)`, `tablesave!(sim)` |
 | `AutoSave(m, 1e-10)`, `Save(m)` | `autosave!(sim, 1e-10)`, `save!(sim)` |
 | output directory `script.out/` | `Simulation(…; outdir = "run.out")` or `setoutdir!(sim, dir)` |

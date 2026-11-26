@@ -30,6 +30,7 @@ mutable struct World{T<:AbstractFloat,P,M<:AbstractParams,B<:AbstractArray{T,4}}
     _Bbuf::B                          # scratch effective-field buffer for integrators
     current::Union{Nothing,SpinCurrent{T}}   # spin-polarized current (STT), or nothing
     openbc::Bool                      # DMI boundaries: open (true) or chiral (false)
+    drive::Any                        # (world, t) -> sets Bext / current at time t, or nothing
 end
 
 function World(mesh::Mesh, mat::AbstractParams; demag::Bool = true,
@@ -43,8 +44,25 @@ function World(mesh::Mesh, mat::AbstractParams; demag::Bool = true,
     # kernel is rounded to T (as mumax3 does for its float32 kernel).
     plan = demag ? DemagPlan(demagkernel(Float64, mesh; accuracy = accuracy), mesh, Msref, T) : nothing
     Bbuf = zeros(T, 3, mesh.size...)
-    World{T,typeof(plan),typeof(mat),typeof(Bbuf)}(mesh, mat, plan, NTuple{3,T}(Bext), Bbuf, nothing, openbc)
+    World{T,typeof(plan),typeof(mat),typeof(Bbuf)}(mesh, mat, plan, NTuple{3,T}(Bext), Bbuf, nothing, openbc, nothing)
 end
+
+"""
+    setdrive!(world, f)   /   setdrive!(sim, f)
+
+Time-dependent applied field and current: `f(world, t)` is called with the time of every
+evaluation of the equation of motion (each stage of the solvers of [`TimeStepper`](@ref), as
+mumax3 does) and before every output, and sets `world.Bext` ([`setexternalfield!`](@ref)) or the
+current ([`setcurrent!`](@ref)). `nothing` removes it. The older integrators (`:tsit5`, `Integrator`,
+`Solver`, `runthermal!`, `runcurrent!`) refuse it; `Minimizer`, `GNEB` and `eigenmodes` use the field
+and the current as last set.
+"""
+setdrive!(w::World, f) = (w.drive = f; w)
+
+_nodrive(w::World, name) = w.drive === nothing ||
+    throw(ArgumentError("$name does not support a time-dependent drive (setdrive!); use run! or TimeStepper"))
+# Apply the drive at time t.
+_drive!(w::World, t) = (w.drive === nothing || w.drive(w, Float64(t)); w)
 
 """
     setcurrent!(world, J; zhangli=true, slonczewski=false, fixedlayer=(0,0,1),

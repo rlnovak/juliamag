@@ -53,6 +53,7 @@ end
 
 function Solver(world::World{T}, m::Array{T,4};
                dt = 1e-15, maxerr = 1e-5, mindt = 1e-18, maxdt = 1e-11) where {T}
+    _nodrive(world, "Solver")
     k = ntuple(_ -> similar(m), 7)
     Solver{T,typeof(world)}(world, m, T(dt), T(maxerr), T(mindt), T(maxdt),
                             zero(T), 0, 0, k, similar(m), similar(m), similar(m))

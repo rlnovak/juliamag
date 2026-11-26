@@ -423,7 +423,7 @@ struct GpuRegionParams{T<:AbstractFloat} <: AbstractParams
     Dind::CuArray{T,4}
     Dbulk::CuArray{T,4}
     alpha::CuArray{T,4}     # per-cell damping (for the thermal field)
-    alpha0::T               # region-0 damping, the global LLG torque scale
+    alpha0::T               # the damping if it is uniform over the magnet, NaN otherwise
     hasku::Bool
     hasdind::Bool
     hasdbulk::Bool
@@ -433,7 +433,12 @@ JuliaMag.hasku(p::GpuRegionParams)   = p.hasku
 JuliaMag.hasdind(p::GpuRegionParams) = p.hasdind
 JuliaMag.hasdbulk(p::GpuRegionParams)= p.hasdbulk
 JuliaMag.hasdmi(p::GpuRegionParams)  = p.hasdind || p.hasdbulk
-JuliaMag.damping(p::GpuRegionParams) = p.alpha0
+JuliaMag.uniformdamping(p::GpuRegionParams) = isnan(p.alpha0) ? nothing : p.alpha0
+JuliaMag.damping(p::GpuRegionParams) = JuliaMag._needuniform(JuliaMag.uniformdamping(p))
+function JuliaMag._lltorque_cells!(dm::CuField{T}, m::CuField{T}, B::CuField{T}, p::GpuRegionParams{T}) where {T}
+    _launch(_k_torque_cells!, _ncells(m), dm, m, B, p.alpha, T(γLL), _ncells(m))
+    return dm
+end
 # Host copies of the per-cell fill and Msat·fill (isconservative, GNEB weights).
 JuliaMag._cellfill(p::GpuRegionParams) = Array(p.fill)
 JuliaMag._msatcells(p::GpuRegionParams, ::Mesh) = Array(p.Msat)
@@ -499,7 +504,7 @@ function JuliaMag.togpu(rp::RegionParams{T}) where {T}
     fillcu = CuArray(reshape(Array{T}(rp.fill), 1, Nx, Ny, Nz))
     Msat_eff = Msat_region .* fillcu
     GpuRegionParams{T}(Msat_eff, Msat_region, fillcu, pc(rp.Aex), pc(rp.Ku), ux, uy, uz,
-                       pc(rp.Dind), pc(rp.Dbulk), pc(rp.alpha), T(rp.alpha[1]),
+                       pc(rp.Dind), pc(rp.Dbulk), pc(rp.alpha), T(something(JuliaMag.uniformdamping(rp), NaN)),
                        hasku(rp), hasdind(rp), hasdbulk(rp))
 end
 
@@ -608,7 +613,7 @@ function JuliaMag.togpu(w::World{T}) where {T}
     gmat  = w.material isa RegionParams ? togpu(w.material) : w.material
     Bbuf  = CuArray(w._Bbuf)
     World{T,typeof(gplan),typeof(gmat),typeof(Bbuf)}(
-        w.mesh, gmat, gplan, w.Bext, Bbuf, w.current, w.openbc)   # the SpinCurrent is plain numbers
+        w.mesh, gmat, gplan, w.Bext, Bbuf, w.current, w.openbc, w.drive)   # the SpinCurrent is plain numbers
 end
 
 # --- Simulation on the GPU ---------------------------------------------------

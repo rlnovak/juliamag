@@ -15,14 +15,14 @@ damped (alpha 0.02): frequencies 2.3e-13, decay rates 2.4e-13 (largest relative 
    1  MM decay 3.30900713 1/ns  JM first order 3.30900739 1/ns  rel -7.9e-08 (alpha^2 = 4e-04)
    2  MM decay 4.58142145 1/ns  JM first order 4.58142185 1/ns  rel -8.7e-08 (alpha^2 = 4e-04)
    3  MM decay 5.57686052 1/ns  JM first order 5.57686091 1/ns  rel -6.9e-08 (alpha^2 = 4e-04)
-modes 1-10: 1 - |overlap| <= 2.2e-16
+modes 1-10 (0 degenerate ones skipped): 1 - |overlap| <= 2.2e-16
 
 === skyrmion: 576 cells, 576 magnetic; max|m x B| 1.8e-12 T, <m> (0.0000, -0.0000, 0.7028)
 field, state         max|dB|/max|B| = 7.5e-12
 field, random state  max|dB|/max|B| = 1.2e-12
 operator, undamped   |y_MM - y_JM|/|y_JM| <= 6.6e-13  (5 random tangent fields)
 operator, damped     |y_MM - y_JM|/|y_JM| <= 6.8e-13  (5 random tangent fields)
-frequencies: 576 (MM matrix 7 s); largest relative difference 5.2e-11; MM max|Re|/max|Im| 1.1e-15
+frequencies: 576 (MM matrix 5 s); largest relative difference 5.2e-11; MM max|Re|/max|Im| 1.1e-15
    lowest 10: largest relative difference 5.2e-11
    1  MM 0.212215311 GHz  JM 0.212215311 GHz  rel -5.2e-11
    2  MM 2.130408615 GHz  JM 2.130408615 GHz  rel +5.2e-12
@@ -33,14 +33,14 @@ damped (alpha 0.1): frequencies 5.2e-11, decay rates 5.1e-11 (largest relative d
    1  MM decay 0.14171879 1/ns  JM first order 0.14188317 1/ns  rel -1.2e-03 (alpha^2 = 1e-02)
    2  MM decay 1.48627673 1/ns  JM first order 1.48676314 1/ns  rel -3.3e-04 (alpha^2 = 1e-02)
    3  MM decay 1.68477501 1/ns  JM first order 1.68504923 1/ns  rel -1.6e-04 (alpha^2 = 1e-02)
-modes 1-10: 1 - |overlap| <= 2.2e-16
+modes 1-10 (0 degenerate ones skipped): 1 - |overlap| <= 2.2e-16
 
 === vortex: 784 cells, 616 magnetic; max|m x B| 5.0e-13 T, <m> (-0.0000, -0.0000, 0.0129)
 field, state         max|dB|/max|B| = 3.8e-12
 field, random state  max|dB|/max|B| = 5.3e-13
 operator, undamped   |y_MM - y_JM|/|y_JM| <= 5.2e-13  (5 random tangent fields)
 operator, damped     |y_MM - y_JM|/|y_JM| <= 5.2e-13  (5 random tangent fields)
-frequencies: 616 (MM matrix 12 s); largest relative difference 8.6e-12; MM max|Re|/max|Im| 5.4e-15
+frequencies: 616 (MM matrix 7 s); largest relative difference 8.6e-12; MM max|Re|/max|Im| 5.4e-15
    lowest 10: largest relative difference 8.6e-12
    1  MM 1.033242978 GHz  JM 1.033242978 GHz  rel +7.5e-12
    2  MM 10.369815735 GHz  JM 10.369815735 GHz  rel +4.5e-12
@@ -51,7 +51,7 @@ damped (alpha 0.01): frequencies 8.5e-12, decay rates 1.3e-11 (largest relative 
    1  MM decay 0.08614614 1/ns  JM first order 0.08615103 1/ns  rel -5.7e-05 (alpha^2 = 1e-04)
    2  MM decay 0.88153663 1/ns  JM first order 0.88153312 1/ns  rel +4.0e-06 (alpha^2 = 1e-04)
    3  MM decay 0.76852119 1/ns  JM first order 0.76852151 1/ns  rel -4.1e-07 (alpha^2 = 1e-04)
-modes 1-10: 1 - |overlap| <= 2.2e-16
+modes 1-10 (0 degenerate ones skipped): 1 - |overlap| <= 2.2e-16
 
 === fmr: 1152 cells, 1152 magnetic; max|m x B| 3.0e-12 T, <m> (0.7914, 0.5865, 0.0000)
 field, state         max|dB|/max|B| = 4.7e-11
@@ -69,7 +69,7 @@ damped (alpha 0.008): frequencies 2.5e-11, decay rates 1.5e-11 (largest relative
    1  MM decay 0.64559803 1/ns  JM first order 0.64559210 1/ns  rel +9.2e-06 (alpha^2 = 6e-05)
    2  MM decay 0.61004271 1/ns  JM first order 0.61004019 1/ns  rel +4.1e-06 (alpha^2 = 6e-05)
    3  MM decay 0.69569941 1/ns  JM first order 0.69570038 1/ns  rel -1.4e-06 (alpha^2 = 6e-05)
-modes 1-10: 1 - |overlap| <= 4.4e-16
+modes 1-10 (0 degenerate ones skipped): 1 - |overlap| <= 4.4e-16
 state relaxed by MicroMagnetic: max|dm| 1.5e-08; 15 lowest frequencies differ by 5.1e-09
     1  MM (own state) 8.267801 GHz  paper 8.270  rel -2.66e-04
     2  MM (own state) 9.399351 GHz  paper 9.402  rel -2.82e-04

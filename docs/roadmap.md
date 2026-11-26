@@ -350,8 +350,9 @@ KernelAbstractions was removed from this queue: see "Future features".
 
 **2. Eigenmodes / FMR.** Detailed plan: [`plan_neb_eigen.md`](plan_neb_eigen.md) §2.
 - **Status, 2026-11-25: DONE**, `src/eigenmodes.jl`, `gpu_validation/eigenmodes/README.md`.
-  Not done: a ringdown of the FMR problem with JuliaMag's own integrators, a Kittel film with
-  demag, a cross-check with MicroMagnetic.jl's eigensolver, and zero modes (refused).
+  Cross-check with MicroMagnetic.jl's eigensolver DONE (2e-13 to 5e-11, four cases). Not done: a
+  ringdown of the FMR problem with JuliaMag's own integrators, a Kittel film with demag, and
+  zero modes (refused).
 - **Method.** Linearize the LLG about an equilibrium in the local tangent frame
   (two components per cell):
   - Small systems: a dense eigenproblem.
@@ -370,6 +371,18 @@ Each item: implementation, tests (CPU, then GPU), validation against an analytic
 result and a reference code, paper section, commit. Ask before starting each.
 
 **3. A mumax3-style input file.** After items 1–2.
+- **Decision, 2026-11-25 (user): scripts look like Julia**, not like mumax3's Go subset. An
+  interpreter of mumax3's .mx3 language was written without asking and removed (a7efd7e in the
+  history). Still open: whether to build the Julia-syntax script described below, or to stay
+  with the `Simulation` driver.
+- Kept from that work, as Julia functions: damping per region in the LLG torque (before, the α of
+  region 0 was used for every cell, silently), time-dependent field and current (`setdrive!`), mumax3's
+  `Relax` (`relaxllg!`), `Minimizer(mumax = true)`, `runwhile!`, `steps!`, `setsolver!(precess = false)`,
+  other fields in `save!`/`autosave!`; in Float32 the minimizer normalizes m, as mumax3 (|m| drifted
+  by 3e-6, the energy by 1e-6).
+- Limits of JuliaMag itself that came up: no cubic or second-order anisotropy, no magnetoelasticity, no frozen
+  spins, uniform B_ext and J, material parameters constant in time, spin-torque parameters and
+  temperature uniform, no interlayer coupling beyond the exchange of touching cells, no moving window, no RK56.
 - **Goal.** A simulation is described as simply as in mumax3: a short script of
   plain statements, with no Julia boilerplate (no `sim` argument threaded through
   every call, no array types, no explicit `togpu`). For example:

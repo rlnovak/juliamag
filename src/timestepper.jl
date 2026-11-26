@@ -87,11 +87,12 @@ mutable struct TimeStepper{T<:AbstractFloat,W,A<:AbstractArray{T,4},R,C}
     Bth::Union{Nothing,A}        # thermal field of the current step
     fsal::Bool                   # k[1] holds the torque at the current state
     alarm::Float64               # end of the current run: no step crosses it
+    precess::Bool                # false: relaxation torque only (mumax3 DoPrecess)
 end
 
 function TimeStepper(world, m::AbstractArray{T,4}; solver::Symbol = :rk45, maxerr = 1e-5,
                      fixdt = 0.0, mindt = 0.0, maxdt = 0.0, headroom = 0.8, dt = 1e-15,
-                     temperature = 0.0, rng = Random.default_rng(), t = 0.0) where {T}
+                     temperature = 0.0, rng = Random.default_rng(), t = 0.0, precess::Bool = true) where {T}
     solver in SOLVERS ||
         throw(ArgumentError("unknown solver :$solver; choose one of $(join(SOLVERS, ", "))"))
     fixdt >= 0 && maxerr > 0 && headroom > 0 ||
@@ -107,17 +108,19 @@ function TimeStepper(world, m::AbstractArray{T,4}; solver::Symbol = :rk45, maxer
     TimeStepper{T,typeof(world),typeof(m),typeof(rng),typeof(acc)}(
         world, m, solver, Float64(t), fixdt > 0 ? Float64(fixdt) : Float64(dt), Float64(fixdt),
         Float64(maxerr), Float64(mindt), Float64(maxdt), Float64(headroom), Float64(temperature),
-        rng, 0, 0, 0, 0.0, 0.0, 0, acc, false, k, similar(m), similar(m), Bth, false, Inf)
+        rng, 0, 0, 0, 0.0, 0.0, 0, acc, false, k, similar(m), similar(m), Bth, false, Inf, precess)
 end
 
 # One evaluation of the right-hand side (mumax3's torqueFn): LLG + spin torques, with
-# the thermal field of the current step added to the effective field.
-function _eval!(dm, m, ts::TimeStepper)
+# the thermal field of the current step added to the effective field. `c`: the stage, at time
+# t + c·dt (a time-dependent drive is set for it).
+function _eval!(dm, m, ts::TimeStepper, c = 0.0)
     w = ts.world
     B = w._Bbuf
+    w.drive === nothing || _drive!(w, ts.t + c * ts.dt)
     effectivefield!(B, m, w)
     ts.Bth === nothing || (B .+= ts.Bth)
-    torque!(dm, m, B, damping(w.material))
+    lltorque!(dm, m, B, w.material; precess = ts.precess)
     applycurrent!(dm, m, w)
     ts.nevals += 1
     return dm
@@ -296,7 +299,7 @@ function _step_heun!(ts::TimeStepper{T}) where {T}
     h = T(ts.dt)
     _eval!(dy0, m, ts)
     @. m = m + h * dy0
-    _eval!(dy, m, ts)
+    _eval!(dy, m, ts, 1.0)
     err = _steperr!(ts, dy0, dy)
     if isfinite(err) && _accept(ts, err)
         @. m = m + T(0.5) * h * dy - T(0.5) * h * dy0
@@ -323,9 +326,9 @@ function _step_rk4!(ts::TimeStepper{T}) where {T}
     h = T(ts.dt)
     copyto!(m0, m)
     _eval!(k1, m, ts)
-    @. m = m + T(1/2) * h * k1;  normalize!(m);  _eval!(k2, m, ts)
-    @. m = m0 + T(1/2) * h * k2; normalize!(m);  _eval!(k3, m, ts)
-    @. m = m0 + h * k3;          normalize!(m);  _eval!(k4, m, ts)
+    @. m = m + T(1/2) * h * k1;  normalize!(m);  _eval!(k2, m, ts, 1/2)
+    @. m = m0 + T(1/2) * h * k2; normalize!(m);  _eval!(k3, m, ts, 1/2)
+    @. m = m0 + h * k3;          normalize!(m);  _eval!(k4, m, ts, 1.0)
     err = _steperr!(ts, k1, k4)
     if isfinite(err) && _accept(ts, err)
         @. m = m0 + T(1/6) * h * k1 + T(1/3) * h * k2 + T(1/3) * h * k3 + T(1/6) * h * k4
@@ -351,11 +354,11 @@ function _step_rk23!(ts::TimeStepper{T}) where {T}
     ts.fsal || (_eval!(k1, m, ts); ts.fsal = true)
     h = T(ts.dt)
     copyto!(m0, m)
-    @. m = m + T(1/2) * h * k1;  normalize!(m);  _eval!(k2, m, ts)
-    @. m = m0 + T(3/4) * h * k2; normalize!(m);  _eval!(k3, m, ts)
+    @. m = m + T(1/2) * h * k1;  normalize!(m);  _eval!(k2, m, ts, 1/2)
+    @. m = m0 + T(3/4) * h * k2; normalize!(m);  _eval!(k3, m, ts, 3/4)
     @. m = m0 + T(2/9) * h * k1 + T(1/3) * h * k2 + T(4/9) * h * k3   # 3rd order
     normalize!(m)
-    _eval!(k4, m, ts)
+    _eval!(k4, m, ts, 1.0)
     e = ts.err
     @. e = T(7/24 - 2/9) * k1 + T(1/4 - 1/3) * k2 + T(1/3 - 4/9) * k3 + T(1/8) * k4
     err = _steperr!(ts, e)
@@ -382,20 +385,20 @@ function _step_rk45!(ts::TimeStepper{T}) where {T}
     h = T(ts.dt)
     copyto!(m0, m)
     @. m = m + T(1/5) * h * k1
-    normalize!(m); _eval!(k2, m, ts)
+    normalize!(m); _eval!(k2, m, ts, 1/5)
     @. m = m0 + T(3/40) * h * k1 + T(9/40) * h * k2
-    normalize!(m); _eval!(k3, m, ts)
+    normalize!(m); _eval!(k3, m, ts, 3/10)
     @. m = m0 + T(44/45) * h * k1 + T(-56/15) * h * k2 + T(32/9) * h * k3
-    normalize!(m); _eval!(k4, m, ts)
+    normalize!(m); _eval!(k4, m, ts, 4/5)
     @. m = m0 + T(19372/6561) * h * k1 + T(-25360/2187) * h * k2 + T(64448/6561) * h * k3 +
            T(-212/729) * h * k4
-    normalize!(m); _eval!(k5, m, ts)
+    normalize!(m); _eval!(k5, m, ts, 8/9)
     @. m = m0 + T(9017/3168) * h * k1 + T(-355/33) * h * k2 + T(46732/5247) * h * k3 +
            T(49/176) * h * k4 + T(-5103/18656) * h * k5
-    normalize!(m); _eval!(k6, m, ts)
+    normalize!(m); _eval!(k6, m, ts, 1.0)
     @. m = m0 + T(35/384) * h * k1 + T(500/1113) * h * k3 + T(125/192) * h * k4 +
            T(-2187/6784) * h * k5 + T(11/84) * h * k6                    # 5th order
-    normalize!(m); _eval!(k7, m, ts)
+    normalize!(m); _eval!(k7, m, ts, 1.0)
     e = ts.err
     @. e = T(35/384 - 5179/57600) * k1 + T(500/1113 - 7571/16695) * k3 +
            T(125/192 - 393/640) * k4 + T(-2187/6784 + 92097/339200) * k5 +

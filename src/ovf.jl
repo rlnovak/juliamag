@@ -87,8 +87,8 @@ end
 """
     saveovf(filename, m, mesh; title="JuliaMag", valuemultiplier=1.0)
 
-Write a `(3, Nx, Ny, Nz)` magnetization array to an OVF 2.0 text file, readable
-by OOMMF, mumax3, and ParaView. The cell origin follows the package convention
+Write a `(3, Nx, Ny, Nz)` magnetization array (or a scalar field, `(1, Nx, Ny, Nz)`) to an
+OVF 2.0 text file, readable by OOMMF, mumax3, and ParaView. The cell origin follows the package convention
 (mesh centred on the geometric centre): cell `(i,j,k)` sits at
 `(-L + cellsize)/2 + (i-1)·cellsize`. `valuemultiplier` scales the stored values
 (use `Msat` to write A/m instead of unit vectors).
@@ -96,6 +96,8 @@ by OOMMF, mumax3, and ParaView. The cell origin follows the package convention
 function saveovf(filename::AbstractString, m::AbstractArray{<:Real,4}, mesh::Mesh;
                  title = "JuliaMag", valuemultiplier = 1.0)
     nx, ny, nz = mesh.size
+    nc = size(m, 1)
+    nc in (1, 3) || throw(ArgumentError("saveovf: 1 or 3 components"))
     cx, cy, cz = mesh.cellsize
     Lx, Ly, Lz = worldsize(mesh)
     # Cell-centre of the first cell, with the origin at the geometric centre.
@@ -113,15 +115,16 @@ function saveovf(filename::AbstractString, m::AbstractArray{<:Real,4}, mesh::Mes
         println(io, "# valuemultiplier: ", vm)
         println(io, "# xmin: ", -Lx / 2, "\n# ymin: ", -Ly / 2, "\n# zmin: ", -Lz / 2)
         println(io, "# xmax: ",  Lx / 2, "\n# ymax: ",  Ly / 2, "\n# zmax: ",  Lz / 2)
-        println(io, "# valuedim: 3")
-        println(io, "# valuelabels: mx my mz")
+        println(io, "# valuedim: ", nc)
+        println(io, "# valuelabels: ", nc == 3 ? "mx my mz" : "value")
         println(io, "# xbase: ", x0, "\n# ybase: ", y0, "\n# zbase: ", z0)
         println(io, "# xnodes: ", nx, "\n# ynodes: ", ny, "\n# znodes: ", nz)
         println(io, "# xstepsize: ", cx, "\n# ystepsize: ", cy, "\n# zstepsize: ", cz)
         println(io, "# End: Header")
         println(io, "# Begin: Data Text")
         for k in 1:nz, j in 1:ny, i in 1:nx
-            println(io, m[1, i, j, k] / vm, " ", m[2, i, j, k] / vm, " ", m[3, i, j, k] / vm)
+            nc == 3 ? println(io, m[1, i, j, k] / vm, " ", m[2, i, j, k] / vm, " ", m[3, i, j, k] / vm) :
+                      println(io, m[1, i, j, k] / vm)
         end
         println(io, "# End: Data Text")
         println(io, "# End: Segment")

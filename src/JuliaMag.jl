@@ -80,9 +80,9 @@ export DemagPlan, demagfield!
 include("current.jl")
 export SpinCurrent, sttparams, applycurrent!
 include("effective_field.jl")
-export World, setexternalfield!, effectivefield!, linearfield!, setcurrent!
+export World, setexternalfield!, effectivefield!, linearfield!, setcurrent!, setdrive!
 include("llg.jl")
-export torque!, maxtorque, llgrhs!
+export torque!, lltorque!, maxtorque, llgrhs!
 include("solver.jl")
 export Solver, step!, runtime!, relax!
 include("minimizer.jl")
@@ -127,7 +127,7 @@ export material, materialnames
 
 # --- Simulation wrapper ----------------------------------------------------
 include("simulation.jl")
-export Simulation, setmag!, savequantities!, savenow!, run!, runcurrent!
+export Simulation, setmag!, savequantities!, savenow!, run!, runcurrent!, runwhile!, steps!, relaxllg!
 export setsolver!, settemperature!, setoutdir!, tableautosave!, save!, autosave!, deviceinfo
 
 # --- Finite-temperature (Langevin) dynamics --------------------------------
