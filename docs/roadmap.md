@@ -371,6 +371,8 @@ Each item: implementation, tests (CPU, then GPU), validation against an analytic
 result and a reference code, paper section, commit. Ask before starting each.
 
 **3. A mumax3-style input file.** After items 1–2.
+- **Before the GUI (user, 2026-11-25):** excitations that vary in space and time, then currents
+  from anisotropic magnetoresistance; plan in [`plan_fields_amr.md`](plan_fields_amr.md).
 - **Decision, 2026-11-25 (user): scripts look like Julia**, not like mumax3's Go subset. An
   interpreter of mumax3's .mx3 language was written without asking and removed (a7efd7e in the
   history). Still open: whether to build the Julia-syntax script described below, or to stay
@@ -450,6 +452,8 @@ That closes the stage.
     results to rounding and their cost (1.11 ms per Float32 evaluation on the
     P1000).
   - Taken up when AMD, Intel or Apple hardware is available.
+- **Cubic and second-order uniaxial anisotropy** (user, 2026-11-25). The materials of the library that
+  are cubic (Fe, Ni) list only |K1| as a uniaxial constant today.
 - Atomistic spin dynamics and Monte Carlo (MicroMagnetic.jl comparison, items 4–5).
 - The feature backlog above (SOT, RKKY, magnetoelastics).
 
