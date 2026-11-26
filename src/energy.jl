@@ -104,6 +104,20 @@ function zeemanenergy(m::AbstractArray{T,4}, Bext, mesh::Mesh, params::AbstractP
 end
 
 """
+    zeemanenergy(m, world) -> E   [J]
+
+The energy in the whole applied field of `world`: the uniform part and the terms of
+[`addfield!`](@ref).
+"""
+function zeemanenergy(m::AbstractArray{T,4}, w::World{T}) where {T}
+    E = any(!iszero, w.Bext) ? zeemanenergy(m, w.Bext, w.mesh, w.material) : zero(T)
+    isempty(w.Bterms) && return E
+    return E + T(_termenergy(m, w))
+end
+# -V Σ Ms m·(Σ_k c_k M_k), Float64 (on the device for a GPU world)
+_termenergy(m, w) = sum(q -> q.c == 0 ? 0.0 : 2q.c * _energy_from_field(m, q.map, (0, 0, 0), w.material, w.mesh), w.Bterms; init = 0.0)
+
+"""
     energy!(B, m, world) -> E   [J, Float64]
 
 The effective field of `m` into `B` ([`effectivefield!`](@ref)) and the total
@@ -121,7 +135,10 @@ returned in Float64 (barriers are small differences of large totals).
 """
 function energy!(B::AbstractArray{T,4}, m::AbstractArray{T,4}, w::World{T}) where {T}
     effectivefield!(B, m, w)
-    return _energy_from_field(m, B, w.Bext, w.material, w.mesh)
+    E = _energy_from_field(m, B, w.Bext, w.material, w.mesh)
+    # B holds the terms once; the applied field enters the energy with −1, not −1/2
+    isempty(w.Bterms) || (E += _termenergy(m, w) / 2)
+    return E
 end
 
 """
@@ -183,8 +200,8 @@ function totalenergy(m::AbstractArray{T,4}, w::World{T}) where {T}
     if w.demagplan !== nothing
         E += demagenergy(m, w.demagplan, w.mesh, w.material)
     end
-    if any(!iszero, w.Bext)
-        E += zeemanenergy(m, w.Bext, w.mesh, w.material)
+    if any(!iszero, w.Bext) || !isempty(w.Bterms)
+        E += zeemanenergy(m, w)
     end
     return E
 end

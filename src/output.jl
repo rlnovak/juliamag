@@ -56,7 +56,7 @@ q_exchangeenergy() = Quantity("E_exch", "J", 1, (w, m, t) -> [Float64(exchangeen
 q_demagenergy() = Quantity("E_demag", "J", 1,
     (w, m, t) -> [w.demagplan === nothing ? 0.0 : Float64(demagenergy(m, w.demagplan, w.mesh, w.material))])
 "Zeeman energy [J]."
-q_zeemanenergy() = Quantity("E_zeeman", "J", 1, (w, m, t) -> [Float64(zeemanenergy(m, w.Bext, w.mesh, w.material))])
+q_zeemanenergy() = Quantity("E_zeeman", "J", 1, (w, m, t) -> [Float64(zeemanenergy(m, w))])
 "Anisotropy energy [J]."
 q_anisenergy() = Quantity("E_anis", "J", 1, (w, m, t) -> [Float64(anisotropyenergy(m, w.mesh, w.material))])
 
@@ -73,8 +73,25 @@ function q_maxtorque()
     end; device = true)
 end
 
-"Applied (Zeeman) field [T]."
-q_Bext() = Quantity("B_ext", "T", 3, (w, m, t) -> collect(Float64.(w.Bext)); device = true)
+"Applied field [T], averaged over the mesh (the uniform part and the terms of `addfield!`)."
+q_Bext() = Quantity("B_ext", "T", 3, function (w, m, t)
+    b = collect(Float64.(w.Bext))
+    for q in w.Bterms
+        n = length(q.map) ÷ 3
+        b .+= q.c .* [Float64(sum(Float64, view(q.map, c:c, :, :, :))) / n for c in 1:3]
+    end
+    b
+end; device = true)
+"Current density [A/m²], averaged over the mesh (the uniform part and the terms of `addcurrent!`)."
+q_J() = Quantity("J", "A/m2", 3, function (w, m, t)
+    w.current === nothing && return zeros(3)
+    b = collect(Float64.(w.current.J))
+    for q in w.Jterms
+        n = length(q.map) ÷ 3
+        b .+= q.c .* [Float64(sum(Float64, view(q.map, c:c, :, :, :))) / n for c in 1:3]
+    end
+    b
+end; device = true)
 
 "Vortex core position (x,y,z) [m] and polarity."
 q_vortexcore() = Quantity("vortex", "m", 4, (w, m, t) -> collect(Float64.(vortexcore(m, w.mesh))); device = true)

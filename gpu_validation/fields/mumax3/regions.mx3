@@ -1,0 +1,16 @@
+// Field per region, functions of time (B_ext.SetRegion), on a film.
+SetGridsize(128, 64, 1)
+SetCellsize(4e-9, 4e-9, 4e-9)
+Msat = 800e3; Aex = 13e-12; alpha = 0.02
+DefRegion(1, xrange(-inf, 0))
+DefRegion(2, xrange(0, inf))
+m = uniform(1, 0.1, 0)
+minimize()
+B_ext.SetRegion(1, vector(0.01*sin(2*pi*3e9*t), 0, 0.002))
+B_ext.SetRegion(2, vector(0, 0.008*cos(2*pi*5e9*t), 0))
+TableAdd(B_ext)
+TableAdd(E_Zeeman)
+TableAdd(E_total)
+TableAdd(m.region(1))
+tableautosave(10e-12)
+run(1e-9)

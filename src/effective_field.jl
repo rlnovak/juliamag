@@ -31,6 +31,10 @@ mutable struct World{T<:AbstractFloat,P,M<:AbstractParams,B<:AbstractArray{T,4}}
     current::Union{Nothing,SpinCurrent{T}}   # spin-polarized current (STT), or nothing
     openbc::Bool                      # DMI boundaries: open (true) or chiral (false)
     drive::Any                        # (world, t) -> sets Bext / current at time t, or nothing
+    Bterms::Vector{MapTerm{B}}        # applied field: maps × functions of time (excitation.jl)
+    Jterms::Vector{MapTerm{B}}        # current density: the same
+    Jbuf::Union{Nothing,B}            # the current density per cell, when there are Jterms
+    conduction::Any                   # electric conduction with AMR (conduction.jl), or nothing
 end
 
 function World(mesh::Mesh, mat::AbstractParams; demag::Bool = true,
@@ -44,7 +48,8 @@ function World(mesh::Mesh, mat::AbstractParams; demag::Bool = true,
     # kernel is rounded to T (as mumax3 does for its float32 kernel).
     plan = demag ? DemagPlan(demagkernel(Float64, mesh; accuracy = accuracy), mesh, Msref, T) : nothing
     Bbuf = zeros(T, 3, mesh.size...)
-    World{T,typeof(plan),typeof(mat),typeof(Bbuf)}(mesh, mat, plan, NTuple{3,T}(Bext), Bbuf, nothing, openbc, nothing)
+    World{T,typeof(plan),typeof(mat),typeof(Bbuf)}(mesh, mat, plan, NTuple{3,T}(Bext), Bbuf, nothing, openbc, nothing,
+                                                    MapTerm{typeof(Bbuf)}[], MapTerm{typeof(Bbuf)}[], nothing, nothing)
 end
 
 """
@@ -59,10 +64,91 @@ and the current as last set.
 """
 setdrive!(w::World, f) = (w.drive = f; w)
 
-_nodrive(w::World, name) = w.drive === nothing ||
-    throw(ArgumentError("$name does not support a time-dependent drive (setdrive!); use run! or TimeStepper"))
-# Apply the drive at time t.
-_drive!(w::World, t) = (w.drive === nothing || w.drive(w, Float64(t)); w)
+# Whether something of the world depends on time.
+_hastime(w::World) = w.drive !== nothing || any(_timedependent, w.Bterms) || any(_timedependent, w.Jterms) ||
+    (w.conduction !== nothing && any(q -> !(q.f isa Real), w.conduction.contacts))
+_nodrive(w::World, name) = _hastime(w) &&
+    throw(ArgumentError("$name does not support a field or current that depends on time (setdrive!, " *
+                        "addfield!, addcurrent! with a function); use run! or TimeStepper"))
+# Set everything that depends on time to time t.
+function _drive!(w::World, t)
+    w.drive === nothing || w.drive(w, Float64(t))
+    for q in w.Bterms
+        q.c = _factor(q.f, t)
+    end
+    for q in w.Jterms
+        q.c = _factor(q.f, t)
+    end
+    if w.conduction !== nothing
+        for q in w.conduction.contacts
+            q.value = _factor(q.f, t)
+        end
+    end
+    return w
+end
+
+"""
+    addfield!(world, map, f=1; t=0)   /   addfield!(sim, map, f=1)
+
+Add the term `map × f(t)` to the applied field (mumax3 `B_ext.Add(mask, f)`): `map` is a
+`(3, Nx, Ny, Nz)` array in tesla ([`fieldmap`](@ref), [`regionmap`](@ref)), `f` a function of time or
+a number. The function is evaluated at every stage of the solvers, as the uniform part with
+[`setdrive!`](@ref). Every part of the code that uses the applied field sees the terms: the effective
+field, the Zeeman and total energies, the minimizer, GNEB and the eigenmodes (at the field of the present
+time). [`clearfields!`](@ref) removes them.
+"""
+function addfield!(w::World{T}, map, f = 1.0; t = 0.0) where {T}
+    q = MapTerm(_devicemap(w._Bbuf, map), f, _factor(f, t))
+    push!(w.Bterms, q)
+    return w
+end
+"Remove the terms added with [`addfield!`](@ref)."
+clearfields!(w::World) = (empty!(w.Bterms); w)
+
+"""
+    addcurrent!(world, map, f=1; t=0)   /   addcurrent!(sim, map, f=1)
+
+Add the term `map × f(t)` [A/m²] to the current density of the spin torques (mumax3 `J.Add(mask, f)`).
+The current itself (its torques, fixed layer, parameters) is set first with
+[`setcurrent!`](@ref), whose uniform `J` may be `(0, 0, 0)`. The Zhang-Li torque then takes the
+current of each cell, as mumax3; the Slonczewski torque its z component. [`clearcurrents!`](@ref)
+removes them.
+"""
+function addcurrent!(w::World{T}, map, f = 1.0; t = 0.0) where {T}
+    w.current === nothing && throw(ArgumentError("addcurrent!: set the current and its torques first, with setcurrent! (J may be (0, 0, 0))"))
+    q = MapTerm(_devicemap(w._Bbuf, map), f, _factor(f, t))
+    push!(w.Jterms, q)
+    w.Jbuf === nothing && (w.Jbuf = similar(w._Bbuf))
+    return w
+end
+"Remove the terms added with [`addcurrent!`](@ref)."
+clearcurrents!(w::World) = (empty!(w.Jterms); w)
+
+# B += the terms of the applied field
+function _addterms!(B::AbstractArray{T,4}, terms) where {T}
+    for q in terms
+        q.c == 0 || (B .+= T(q.c) .* q.map)
+    end
+    return B
+end
+
+"""
+    appliedfield!(B, world) -> B
+
+The applied field of each cell [T]: the uniform part and the terms of [`addfield!`](@ref), at the
+time last set.
+"""
+appliedfield!(B::AbstractArray{T,4}, w::World{T}) where {T} = _addterms!(zeeman!(B, w.Bext), w.Bterms)
+
+# The current density of each cell into w.Jbuf: J, the terms, and the current of the conduction for the
+# state m.
+function _currentdensity!(w::World{T}, m) where {T}
+    J = w.current.J
+    zeeman!(w.Jbuf, J)                         # (writes a uniform vector)
+    _addterms!(w.Jbuf, w.Jterms)
+    w.conduction === nothing || (w.Jbuf .+= solveconduction!(w, m).j)
+    return w.Jbuf
+end
 
 """
     setcurrent!(world, J; zhangli=true, slonczewski=false, fixedlayer=(0,0,1),
@@ -70,14 +156,15 @@ _drive!(w::World, t) = (w.drive === nothing || w.drive(w, Float64(t)); w)
     setcurrent!(world, nothing)
 
 Set (or remove) the spin-polarized current density `J` [A/m²] whose spin-transfer
-torques every integrator adds to the LLG torque; see [`SpinCurrent`](@ref).
+torques every integrator adds to the LLG torque; see [`SpinCurrent`](@ref). Without `params`, each cell
+takes the parameters of its region (Msat, pol, xi, lambda, epsilonPrime, alpha), as mumax3.
 """
 function setcurrent!(w::World{T}, J; zhangli::Bool = true, slonczewski::Bool = false,
                      fixedlayer = (0, 0, 1), thickness = nothing, params = nothing) where {T}
     th = thickness === nothing ? w.mesh.size[3] * w.mesh.cellsize[3] : thickness
     pm = params === nothing ? sttparams(w.material) : params
     w.current = SpinCurrent(J, Material{T}(pm); zhangli = zhangli, slonczewski = slonczewski,
-                            fixedlayer = fixedlayer, thickness = th)
+                            fixedlayer = fixedlayer, thickness = th, fromworld = params === nothing)
     return w
 end
 setcurrent!(w::World, ::Nothing) = (w.current = nothing; w)
@@ -99,6 +186,7 @@ function effectivefield!(B::AbstractArray{T,4}, m::AbstractArray{T,4}, w::World{
     if any(!iszero, w.Bext)
         zeeman!(B, w.Bext; add = true)
     end
+    _addterms!(B, w.Bterms)
     return B
 end
 

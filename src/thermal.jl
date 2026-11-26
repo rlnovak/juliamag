@@ -59,6 +59,7 @@ around 1e-14–1e-13 s is typical. A strongly damped material equilibrates faste
 function runthermal!(sim::Simulation{T}, duration::Real, temperature::Real;
                      dt = 1e-14, every = nothing, rng = Random.default_rng()) where {T}
     _nodrive(sim.world, "runthermal!")
+    sim.world.current === nothing || throw(ArgumentError("runthermal! does not include spin torques; use settemperature! and run!"))
     sim.precess || throw(ArgumentError("runthermal! does not support precess = false"))
     world, mesh, params = sim.world, sim.world.mesh, sim.world.material
     m = sim.m

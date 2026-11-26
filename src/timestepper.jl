@@ -88,11 +88,13 @@ mutable struct TimeStepper{T<:AbstractFloat,W,A<:AbstractArray{T,4},R,C}
     fsal::Bool                   # k[1] holds the torque at the current state
     alarm::Float64               # end of the current run: no step crosses it
     precess::Bool                # false: relaxation torque only (mumax3 DoPrecess)
+    timed::Bool                  # set the field and current at the time of every stage
 end
 
 function TimeStepper(world, m::AbstractArray{T,4}; solver::Symbol = :rk45, maxerr = 1e-5,
                      fixdt = 0.0, mindt = 0.0, maxdt = 0.0, headroom = 0.8, dt = 1e-15,
-                     temperature = 0.0, rng = Random.default_rng(), t = 0.0, precess::Bool = true) where {T}
+                     temperature = 0.0, rng = Random.default_rng(), t = 0.0, precess::Bool = true,
+                     timed::Bool = true) where {T}
     solver in SOLVERS ||
         throw(ArgumentError("unknown solver :$solver; choose one of $(join(SOLVERS, ", "))"))
     fixdt >= 0 && maxerr > 0 && headroom > 0 ||
@@ -108,7 +110,7 @@ function TimeStepper(world, m::AbstractArray{T,4}; solver::Symbol = :rk45, maxer
     TimeStepper{T,typeof(world),typeof(m),typeof(rng),typeof(acc)}(
         world, m, solver, Float64(t), fixdt > 0 ? Float64(fixdt) : Float64(dt), Float64(fixdt),
         Float64(maxerr), Float64(mindt), Float64(maxdt), Float64(headroom), Float64(temperature),
-        rng, 0, 0, 0, 0.0, 0.0, 0, acc, false, k, similar(m), similar(m), Bth, false, Inf, precess)
+        rng, 0, 0, 0, 0.0, 0.0, 0, acc, false, k, similar(m), similar(m), Bth, false, Inf, precess, timed)
 end
 
 # One evaluation of the right-hand side (mumax3's torqueFn): LLG + spin torques, with
@@ -117,7 +119,7 @@ end
 function _eval!(dm, m, ts::TimeStepper, c = 0.0)
     w = ts.world
     B = w._Bbuf
-    w.drive === nothing || _drive!(w, ts.t + c * ts.dt)
+    ts.timed && _hastime(w) && _drive!(w, ts.t + c * ts.dt)
     effectivefield!(B, m, w)
     ts.Bth === nothing || (B .+= ts.Bth)
     lltorque!(dm, m, B, w.material; precess = ts.precess)
@@ -454,5 +456,6 @@ function advanceto!(ts::TimeStepper, tend::Real; onstep = _ -> nothing)
         step!(ts) && onstep(ts)
     end
     _syncerr!(ts)                                  # fixed step: errors to the host, NaN check
+    ts.timed && _hastime(ts.world) && _drive!(ts.world, ts.t)    # field and current at the end time
     return ts
 end

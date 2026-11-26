@@ -79,6 +79,8 @@ export DemagPlan, demagfield!
 # --- Dynamics --------------------------------------------------------------
 include("current.jl")
 export SpinCurrent, sttparams, applycurrent!
+include("excitation.jl")
+export fieldmap, regionmap, addfield!, clearfields!, addcurrent!, clearcurrents!, appliedfield!
 include("effective_field.jl")
 export World, setexternalfield!, effectivefield!, linearfield!, setcurrent!, setdrive!
 include("llg.jl")
@@ -117,7 +119,7 @@ export vortexcore, skyrmionpos, domainwallpos, topologicalcharge
 include("output.jl")
 export Quantity, DataTable, tableadd!, tablesave!, writetable, tableheader
 export q_time, q_m, q_m_region, q_energy, q_exchangeenergy, q_demagenergy,
-       q_zeemanenergy, q_anisenergy, q_maxtorque, q_Bext, q_vortexcore,
+       q_zeemanenergy, q_anisenergy, q_maxtorque, q_Bext, q_J, q_contacts, q_resistance, q_vortexcore,
        q_skyrmionpos, q_dwpos, q_topocharge
 export average_region, average_magnet
 
@@ -129,6 +131,10 @@ export material, materialnames
 include("simulation.jl")
 export Simulation, setmag!, savequantities!, savenow!, run!, runcurrent!, runwhile!, steps!, relaxllg!
 export setsolver!, settemperature!, setoutdir!, tableautosave!, save!, autosave!, deviceinfo
+
+# --- Electric conduction with anisotropic magnetoresistance -------------------
+include("conduction.jl")
+export setconduction!, setresistivity!, addcontact!, solveconduction!, potentialmap, currentmap
 
 # --- Finite-temperature (Langevin) dynamics --------------------------------
 include("thermal.jl")

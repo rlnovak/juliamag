@@ -132,7 +132,7 @@ end
 # --- Spin-transfer torques (uniform Material) ------------------------------
 # Same prefactors as the CPU methods (src/stt.jl), computed on the host in T.
 
-function zhanglitorque!(τ::CuField{T}, m::CuField{T}, mesh::Mesh, mat::Material, J;
+function zhanglitorque!(τ::CuField{T}, m::CuField{T}, mesh::Mesh, mat::Material, J::Tuple;
                         add::Bool = true) where {T}
     mat.pol == 0 && return τ
     Nx, Ny, Nz = _dims(mesh); px, py, pz = _pbc(mesh)
@@ -156,6 +156,27 @@ function slonczewskitorque!(τ::CuField{T}, m::CuField{T}, mesh::Mesh, mat::Mate
     gilb = T(1 / (1 + α^2))
     _launch(_k_slonczewski!, _ncells(m), τ, m, ppx, ppy, ppz, β, T(mat.pol), Λ^2, εp, α,
             gilb, _ncells(m), add)
+    return τ
+end
+
+# Per-cell current and parameters: scalars of a Material, or the per-cell arrays of a GpuRegionParams.
+_sttpar(p::Material{T}) where {T} = (T(p.Msat), T(p.pol), T(p.xi), T(p.lambda), T(p.epsilonPrime), T(p.alpha))
+function zhanglitorque!(τ::CuField{T}, m::CuField{T}, mesh::Mesh, par::AbstractParams, J::CuField{T};
+                        add::Bool = true) where {T}
+    Nx, Ny, Nz = _dims(mesh); px, py, pz = _pbc(mesh)
+    cx, cy, cz = mesh.cellsize
+    Ms, pol, xi, _, _, alpha = _sttpar(par)
+    _launch(_k_zhangli_map!, Nx * Ny * Nz, τ, m, J, Ms, pol, xi, alpha, T(μB / (2 * qe)), Nx, Ny, Nz,
+            T(1 / cx), T(1 / cy), T(1 / cz), px, py, pz, add)
+    return τ
+end
+
+function slonczewskitorque!(τ::CuField{T}, m::CuField{T}, mesh::Mesh, par::AbstractParams,
+                            J::CuField{T}, p, thickness::Real; add::Bool = true) where {T}
+    Ms, pol, _, lambda, εp, alpha = _sttpar(par)
+    ppx, ppy, ppz = normalize3(NTuple{3,T}(p))
+    _launch(_k_slonczewski_map!, _ncells(m), τ, m, J, Ms, pol, lambda, εp, alpha, ppx, ppy, ppz,
+            T(γLL * (ħ / qe) / thickness), _ncells(m), add)
     return τ
 end
 
@@ -427,7 +448,11 @@ struct GpuRegionParams{T<:AbstractFloat} <: AbstractParams
     hasku::Bool
     hasdind::Bool
     hasdbulk::Bool
+    pol::CuArray{T,4}; xi::CuArray{T,4}; lambda::CuArray{T,4}; epsprime::CuArray{T,4}   # spin torques
+    sttuniform::Bool
 end
+JuliaMag._sttuniform(p::GpuRegionParams) = p.sttuniform
+_sttpar(p::GpuRegionParams) = (p.Msat_region, p.pol, p.xi, p.lambda, p.epsprime, p.alpha)
 Base.eltype(::GpuRegionParams{T}) where {T} = T
 JuliaMag.hasku(p::GpuRegionParams)   = p.hasku
 JuliaMag.hasdind(p::GpuRegionParams) = p.hasdind
@@ -505,7 +530,8 @@ function JuliaMag.togpu(rp::RegionParams{T}) where {T}
     Msat_eff = Msat_region .* fillcu
     GpuRegionParams{T}(Msat_eff, Msat_region, fillcu, pc(rp.Aex), pc(rp.Ku), ux, uy, uz,
                        pc(rp.Dind), pc(rp.Dbulk), pc(rp.alpha), T(something(JuliaMag.uniformdamping(rp), NaN)),
-                       hasku(rp), hasdind(rp), hasdbulk(rp))
+                       hasku(rp), hasdind(rp), hasdbulk(rp),
+                       pc(rp.pol), pc(rp.xi), pc(rp.lambda), pc(rp.epsilonPrime), JuliaMag._sttuniform(rp))
 end
 
 # Demag dispatch for a world whose material was materialized to GpuRegionParams:
@@ -612,8 +638,11 @@ function JuliaMag.togpu(w::World{T}) where {T}
     gplan = w.demagplan === nothing ? nothing : togpu(w.demagplan)
     gmat  = w.material isa RegionParams ? togpu(w.material) : w.material
     Bbuf  = CuArray(w._Bbuf)
+    term(q) = JuliaMag.MapTerm(CuArray(q.map), q.f, q.c)
+    w.conduction === nothing || error("togpu: the electric conduction (setconduction!) runs on the CPU only for now")
     World{T,typeof(gplan),typeof(gmat),typeof(Bbuf)}(
-        w.mesh, gmat, gplan, w.Bext, Bbuf, w.current, w.openbc, w.drive)   # the SpinCurrent is plain numbers
+        w.mesh, gmat, gplan, w.Bext, Bbuf, w.current, w.openbc, w.drive,   # the SpinCurrent is plain numbers
+        [term(q) for q in w.Bterms], [term(q) for q in w.Jterms], w.Jbuf === nothing ? nothing : CuArray(w.Jbuf), nothing)
 end
 
 # --- Simulation on the GPU ---------------------------------------------------

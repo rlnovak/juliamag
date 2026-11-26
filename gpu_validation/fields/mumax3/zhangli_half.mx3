@@ -1,0 +1,15 @@
+// Zhang-Li current in half of a square only (J.SetRegion), on a vortex (standard problem 5 geometry).
+SetGridsize(32, 32, 4)
+SetCellsize(100e-9/32, 100e-9/32, 10e-9/4)
+Msat = 800e3; Aex = 13e-12; alpha = 0.1
+DefRegion(1, xrange(0, inf))
+m = vortex(1, 1)
+minimize()
+Pol = 1.0
+xi  = 0.05
+J.SetRegion(1, vector(1e12, 0, 0))
+TableAdd(J)
+TableAdd(E_total)
+TableAdd(ext_corepos)
+tableautosave(5e-12)
+run(1e-9)

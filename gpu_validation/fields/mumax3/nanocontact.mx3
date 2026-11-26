@@ -1,0 +1,17 @@
+// Slonczewski current through a nanocontact only (J.SetRegion), in a disc.
+SetGridsize(64, 64, 1)
+SetCellsize(2e-9, 2e-9, 4e-9)
+setgeom(circle(128e-9))
+Msat = 800e3; Aex = 10.8e-12; alpha = 0.01
+DefRegion(1, circle(40e-9))
+m = vortex(1, 1)
+minimize()
+DisableZhangLiTorque = true
+lambda = 1.0; Pol = 0.37; epsilonprime = 0.01
+fixedlayer = vector(cos(20*pi/180), sin(20*pi/180), 0)
+J.SetRegion(1, vector(0, 0, 1e12))
+TableAdd(J)
+TableAdd(E_total)
+TableAdd(ext_corepos)
+tableautosave(10e-12)
+run(2e-9)

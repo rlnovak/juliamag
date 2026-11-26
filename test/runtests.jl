@@ -27,4 +27,6 @@ using Test
     include("test_thermal.jl")
     include("test_precision.jl")
     include("test_driver.jl")
+    include("test_excitation.jl")
+    include("test_conduction.jl")
 end

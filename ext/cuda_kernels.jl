@@ -347,6 +347,73 @@ function _k_zhangli!(τ, m, Nx, Ny, Nz, wx::T, wy::T, wz::T, usex, usey, usez,
     return nothing
 end
 
+# The same with a current density per cell and the parameters of each cell (src/stt.jl): Ms, pol, xi,
+# alpha are scalars (a Material) or per-cell arrays (_pc).
+function _k_zhangli_map!(τ, m, J, Ms, pol, xi, alpha, pre::T, Nx, Ny, Nz, icx::T, icy::T, icz::T, px, py, pz, add) where {T}
+    n = _tid()
+    n > Nx * Ny * Nz && return nothing
+    i, j, k = _ijk(n, Nx, Ny)
+    tx = zero(T); ty = zero(T); tz = zero(T)
+    @inbounds begin
+        ms = _pc(Ms, n); p = _pc(pol, n)
+        if ms != zero(T) && p != zero(T)
+            α = _pc(alpha, n); ξ = _pc(xi, n)
+            b = pre / (ms * (one(T) + ξ*ξ))
+            Jx = p * J[1,i,j,k]; Jy = p * J[2,i,j,k]; Jz = p * J[3,i,j,k]
+            hx = zero(T); hy = zero(T); hz = zero(T)
+            if Jx != zero(T)
+                il = _nbm(i, Nx, px); ir = _nbp(i, Nx, px); w = (b * icx) * Jx
+                hx += w*(m[1,ir,j,k]-m[1,il,j,k]); hy += w*(m[2,ir,j,k]-m[2,il,j,k]); hz += w*(m[3,ir,j,k]-m[3,il,j,k])
+            end
+            if Jy != zero(T)
+                jl = _nbm(j, Ny, py); jr = _nbp(j, Ny, py); w = (b * icy) * Jy
+                hx += w*(m[1,i,jr,k]-m[1,i,jl,k]); hy += w*(m[2,i,jr,k]-m[2,i,jl,k]); hz += w*(m[3,i,jr,k]-m[3,i,jl,k])
+            end
+            if Jz != zero(T) && Nz > Int32(1)
+                kl = _nbm(k, Nz, pz); kr = _nbp(k, Nz, pz); w = (b * icz) * Jz
+                hx += w*(m[1,i,j,kr]-m[1,i,j,kl]); hy += w*(m[2,i,j,kr]-m[2,i,j,kl]); hz += w*(m[3,i,j,kr]-m[3,i,j,kl])
+            end
+            gfac = -one(T) / (one(T) + α*α); c1 = one(T) + ξ*α; c2 = ξ - α
+            mx, my, mz = m[1,i,j,k], m[2,i,j,k], m[3,i,j,k]
+            px1 = my*hz - mz*hy; py1 = mz*hx - mx*hz; pz1 = mx*hy - my*hx
+            qx = my*pz1 - mz*py1; qy = mz*px1 - mx*pz1; qz = mx*py1 - my*px1
+            tx = gfac * (c1*qx + c2*px1); ty = gfac * (c1*qy + c2*py1); tz = gfac * (c1*qz + c2*pz1)
+        end
+    end
+    _store!(τ, 1, i, j, k, tx, add); _store!(τ, 2, i, j, k, ty, add); _store!(τ, 3, i, j, k, tz, add)
+    return nothing
+end
+
+function _k_slonczewski_map!(τ, m, J, Ms, pol, lambda, εp_, alpha, ppx::T, ppy::T, ppz::T, pre::T, N, add) where {T}
+    n = _tid()
+    n > N && return nothing
+    b = 3 * (n - Int32(1))
+    tx = zero(T); ty = zero(T); tz = zero(T)
+    @inbounds begin
+        ms = _pc(Ms, n); p = _pc(pol, n); Jz = J[b+3]
+        if Jz != zero(T) && ms != zero(T) && p != zero(T)
+            α = _pc(alpha, n); Λ = _pc(lambda, n); Λ2 = Λ*Λ; εp = _pc(εp_, n)
+            β = (pre / ms) * Jz
+            gilb = one(T) / (one(T) + α*α)
+            mx, my, mz = m[b+1], m[b+2], m[b+3]
+            pm = ppx*mx + ppy*my + ppz*mz
+            ε = p * Λ2 / ((Λ2 + one(T)) + (Λ2 - one(T)) * pm)
+            A = β * ε; Bs = β * εp
+            f1 = gilb * (A + α*Bs); f2 = gilb * (Bs - α*A)
+            pxm_x = ppy*mz - ppz*my; pxm_y = ppz*mx - ppx*mz; pxm_z = ppx*my - ppy*mx
+            tx = f1*(my*pxm_z - mz*pxm_y) + f2*pxm_x
+            ty = f1*(mz*pxm_x - mx*pxm_z) + f2*pxm_y
+            tz = f1*(mx*pxm_y - my*pxm_x) + f2*pxm_z
+        end
+        if add
+            τ[b+1] += tx; τ[b+2] += ty; τ[b+3] += tz
+        else
+            τ[b+1] = tx; τ[b+2] = ty; τ[b+3] = tz
+        end
+    end
+    return nothing
+end
+
 # --- Normalize (src/magnetization.jl) ----------------------------------------
 # Max-norm reduction: acc[1] and acc[2] ← max(acc[i], max_n |s·a_n|²) (or
 # |s·(a_n − b_n)|² if diff), as unsigned bit patterns of the float type. Each warp

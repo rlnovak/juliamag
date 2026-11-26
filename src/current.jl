@@ -35,10 +35,11 @@ struct SpinCurrent{T<:AbstractFloat}
     fixedlayer::NTuple{3,T}
     thickness::T
     params::Material{T}
+    fromworld::Bool          # the parameters are those of the world's material (per cell when they differ)
 end
 
 function SpinCurrent(J, params::Material{T}; zhangli::Bool = true, slonczewski::Bool = false,
-                     fixedlayer = (0, 0, 1), thickness::Real) where {T}
+                     fixedlayer = (0, 0, 1), thickness::Real, fromworld::Bool = false) where {T}
     zhangli || slonczewski ||
         throw(ArgumentError("SpinCurrent: enable at least one of zhangli, slonczewski"))
     params.pol != 0 ||
@@ -47,7 +48,7 @@ function SpinCurrent(J, params::Material{T}; zhangli::Bool = true, slonczewski::
     p = NTuple{3,T}(fixedlayer)
     slonczewski && all(iszero, p) &&
         throw(ArgumentError("SpinCurrent: the fixed-layer polarization must not be zero"))
-    SpinCurrent{T}(NTuple{3,T}(J), zhangli, slonczewski, p, T(thickness), params)
+    SpinCurrent{T}(NTuple{3,T}(J), zhangli, slonczewski, p, T(thickness), params, fromworld)
 end
 
 """
@@ -57,6 +58,21 @@ The `Material` the spin torques take their parameters from: the material itself,
 or for a `RegionParams` the first magnetic region (lowest id with Msat > 0).
 """
 sttparams(m::Material) = m
+
+# Whether the parameters of the spin torques (Msat, pol, xi, lambda, epsilonPrime, alpha) are the same
+# in all magnetic regions.
+_sttuniform(::Material) = true
+function _sttuniform(rp::RegionParams)
+    tabs = (rp.Msat, rp.pol, rp.xi, rp.lambda, rp.epsilonPrime, rp.alpha)
+    all(t -> all(==(t[1]), t), tabs) && return true
+    ref = nothing
+    for r in _present(rp)
+        rp.Msat[r] == 0 && continue
+        v = map(t -> t[r], tabs)
+        ref === nothing ? (ref = v) : (ref == v || return false)
+    end
+    return true
+end
 sttparams(p::AbstractParams) =
     throw(ArgumentError("sttparams: pass the STT parameters explicitly (params = a Material) " *
                         "for a $(nameof(typeof(p))); a Simulation takes them from its host World"))
@@ -78,10 +94,20 @@ Add the spin-transfer torques of `world.current` (if any) to the torque `dm`.
 function applycurrent!(dm::AbstractArray{T,4}, m::AbstractArray{T,4}, w) where {T}
     c = w.current
     c === nothing && return dm
-    uniformdamping(w.material) === nothing &&
-        error("spin torques need a uniform damping alpha; it differs between the magnetic regions")
-    c.slonczewski && slonczewskitorque!(dm, m, w.mesh, c.params, c.J[3], c.fixedlayer,
-                                        c.thickness; add = true)
-    c.zhangli && zhanglitorque!(dm, m, w.mesh, c.params, c.J; add = true)
+    if isempty(w.Jterms) && w.conduction === nothing && !(c.fromworld && !_sttuniform(w.material))
+        # one current density and one set of parameters
+        uniformdamping(w.material) === nothing &&
+            error("spin torques with explicit `params` need a uniform damping alpha; it differs between the magnetic regions")
+        c.slonczewski && slonczewskitorque!(dm, m, w.mesh, c.params, c.J[3], c.fixedlayer,
+                                            c.thickness; add = true)
+        c.zhangli && zhanglitorque!(dm, m, w.mesh, c.params, c.J; add = true)
+    else
+        # the current density and the parameters of each cell, as mumax3 (zhangli2.cu, slonczewski2.cu)
+        w.Jbuf === nothing && (w.Jbuf = similar(w._Bbuf))
+        J = _currentdensity!(w, m)
+        par = c.fromworld ? w.material : c.params
+        c.slonczewski && slonczewskitorque!(dm, m, w.mesh, par, J, c.fixedlayer, c.thickness; add = true)
+        c.zhangli && zhanglitorque!(dm, m, w.mesh, par, J; add = true)
+    end
     return dm
 end

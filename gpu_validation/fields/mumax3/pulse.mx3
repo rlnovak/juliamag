@@ -1,0 +1,21 @@
+// Gaussian field pulse, in space and in time, on a vortex in a disc (as mumax3's hard-disk example: B_ext.add(mask, f(t))).
+SetGridsize(64, 64, 1)
+SetCellsize(200e-9/64, 200e-9/64, 10e-9)
+setgeom(circle(200e-9))
+Msat = 800e3; Aex = 13e-12; alpha = 0.01
+m = vortex(1, 1)
+minimize()
+mask := newVectorMask(64, 64, 1)
+for i := 0; i < 64; i++ {
+    for j := 0; j < 64; j++ {
+        r := index2coord(i, j, 0)
+        mask.setVector(i, j, 0, vector(exp(-(pow(r.X()-40e-9, 2) + pow(r.Y(), 2))/(2*30e-9*30e-9)), 0, 0))
+    }
+}
+B_ext.add(mask, 0.02*exp(-pow((t-0.2e-9)/50e-12, 2)))
+TableAdd(B_ext)
+TableAdd(E_Zeeman)
+TableAdd(E_total)
+TableAdd(ext_corepos)
+tableautosave(10e-12)
+run(2e-9)

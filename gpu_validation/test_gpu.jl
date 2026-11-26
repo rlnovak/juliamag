@@ -473,11 +473,41 @@ function driver_terms(T)
     end
 end
 
+# Field and current maps (src/excitation.jl): effective field, energies, torques per cell, a run.
+function excitation_terms(T)
+    tol = T == Float64 ? 1e-12 : 2e-5
+    mesh = Mesh((16, 12, 3), (4e-9, 4e-9, 3e-9))
+    rp = RegionParams(mesh, Material(Msat = T(8e5), Aex = T(1.3e-11), alpha = T(0.05), pol = T(0.4), xi = T(0.1), lambda = T(1.3), epsilonPrime = T(0.02)))
+    setregion!(rp, 0; Msat = 0.0); setregion!(rp, 1; Msat = 8e5, Aex = 1.3e-11)
+    setgeometry!(rp, Ellipse(60e-9, 44e-9); id = 1, edgesmooth = 3)
+    setregion!(rp, 2; Msat = 5e5, Aex = 1e-11, pol = 0.7, xi = 0.03, lambda = 1.0, epsilonPrime = 0.0, alpha = 0.2)
+    defregion!(rp, 2, Circle(20e-9))                 # spin-torque parameters per region
+    for (lab, par) in (("material", Material(Msat = T(8e5), Aex = T(1.3e-11), alpha = T(0.05), pol = T(0.4), xi = T(0.1), lambda = T(1.3), epsilonPrime = T(0.02))), ("regions", rp))
+        w = World(mesh, par; Bext = (0.01, 0, 0))
+        addfield!(w, fieldmap(T, mesh, (x, y, z) -> (0, 0, exp(-(x^2 + y^2) / (2 * (15e-9)^2)))), t -> 0.05 * sin(2π * 1e10 * t))
+        addfield!(w, fieldmap(T, mesh, XRange(0, Inf), (0.02, 0.01, 0)))
+        setcurrent!(w, (1e11, 0, 0); zhangli = true, slonczewski = true, fixedlayer = (0, 0.3, 1))
+        addcurrent!(w, fieldmap(T, mesh, (x, y, z) -> (2e12 * cos(y / 20e-9), 1e12, 3e12 * (x > 0))), t -> 1 + 1e9 * t)
+        JuliaMag._drive!(w, 1.3e-11)
+        wg = togpu(w)
+        Random.seed!(9); m = clearempty!(randommag!(Random.default_rng(), zeromag(T, mesh)), par); mg = togpu(m)
+        check("maps $lab: effective field", effectivefield!(similar(mg), mg, wg), effectivefield!(similar(m), m, w), tol)
+        check("maps $lab: applied field", appliedfield!(similar(mg), wg), appliedfield!(similar(m), w), tol)
+        check("maps $lab: energy!", [energy!(similar(mg), mg, wg)], [energy!(similar(m), m, w)], T == Float64 ? 1e-12 : 1e-5)
+        check("maps $lab: Zeeman energy", [zeemanenergy(Array(mg), w)], [JuliaMag._termenergy(mg, wg) + zeemanenergy(m, w.Bext, mesh, par)], T == Float64 ? 1e-12 : 1e-5)
+        check("maps $lab: torque with currents per cell", llgrhs!(similar(mg), mg, wg), llgrhs!(similar(m), m, w), tol)
+        a = copy(m); b = copy(mg)
+        advanceto!(TimeStepper(w, a; solver = :rk45, fixdt = 2e-14), 2e-12); advanceto!(TimeStepper(wg, b; solver = :rk45, fixdt = 2e-14), 2e-12)
+        check("maps $lab: 100 steps with fields and currents of time", b, a, T == Float64 ? 1e-11 : 1e-4)
+    end
+end
+
 for T in (Float64, Float32)
     println("\n================ ", T, " ================")
     gneb_terms(T)
     eig_terms(T)
     driver_terms(T)
+    excitation_terms(T)
     mI, mB = mats(T)
     for (lab, mesh, mat) in (
             ("mat open 3D Dind", Mesh((20, 16, 4), (3e-9, 3e-9, 2e-9)), mI),

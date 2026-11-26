@@ -168,6 +168,20 @@ function setcurrent!(sim::Simulation, ::Nothing)
 end
 
 setdrive!(sim::Simulation, f) = (setdrive!(sim.world, f); setdrive!(sim.hostworld, f); sim)
+function addfield!(sim::Simulation, map, f = 1.0)
+    addfield!(sim.world, map, f; t = sim.t)
+    sim.hostworld === sim.world || addfield!(sim.hostworld, map, f; t = sim.t)
+    return sim
+end
+function addcurrent!(sim::Simulation, map, f = 1.0)
+    addcurrent!(sim.world, map, f; t = sim.t)
+    sim.hostworld === sim.world || addcurrent!(sim.hostworld, map, f; t = sim.t)
+    return sim
+end
+clearfields!(sim::Simulation) = (clearfields!(sim.world); clearfields!(sim.hostworld); sim)
+clearcurrents!(sim::Simulation) = (clearcurrents!(sim.world); clearcurrents!(sim.hostworld); sim)
+"The vector `v` in region `id` of the simulation's regions, zero elsewhere ([`regionmap`](@ref))."
+regionmap(sim::Simulation, id::Integer, v) = regionmap(sim.hostworld.material, id, v)
 
 """
     settemperature!(sim, T; rng=Random.default_rng())
@@ -537,12 +551,11 @@ torque is below it at every tolerance. Returns whether it converged.
 function relaxllg!(sim::Simulation; threshold::Real = -1.0)
     _drive!(sim.world, sim.t)
     w = sim.world
-    drive = w.drive
-    w.drive = nothing                          # the time stands still
     ts = TimeStepper(w, sim.m; solver = :rk23, maxerr = sim.maxerr, mindt = sim.mindt, maxdt = sim.maxdt,
-                     headroom = sim.headroom, dt = sim.dt, t = sim.t, precess = false)
+                     headroom = sim.headroom, dt = sim.dt, t = sim.t, precess = false,
+                     timed = false)            # the time stands still
     function steps3()
-        _dooutput!(sim); w.drive = nothing     # (a table column may have put it back)
+        _dooutput!(sim)
         n = 0
         while n < 3
             step!(ts) && (n += 1)
@@ -578,7 +591,6 @@ function relaxllg!(sim::Simulation; threshold::Real = -1.0)
             end
         end
     finally
-        w.drive = drive
         ts.t = sim.t
         _sync!(sim, ts)
         sim._stepper = nothing

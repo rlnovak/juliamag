@@ -429,6 +429,39 @@ perpendicular current that term shifts a vortex gyration frequency by about 4%
 `Material`: the material itself, or for a `RegionParams` the first magnetic
 region (`sttparams`). `setcurrent!(sim, nothing)` removes the current.
 
+**Fields and currents in space and time.** The applied field is the uniform `B_ext` plus terms,
+each a map on the mesh times a function of time (mumax3's `B_ext.Add(mask, f(t))`); the same for the
+current density of the spin torques.
+
+```julia
+# a Gaussian pulse, in space and in time
+pulse = fieldmap(mesh) do x, y, z                    # tesla per unit of f
+    (exp(-((x - 40e-9)^2 + y^2) / (2 * (30e-9)^2)), 0, 0)
+end
+addfield!(sim, pulse, t -> 0.02exp(-((t - 0.2e-9) / 50e-12)^2))
+
+# a field in one region, oscillating, and a constant one
+addfield!(sim, regionmap(sim, 2, (0, 1, 0)), t -> 0.008cos(2π * 5e9 * t))
+addfield!(sim, regionmap(sim, 1, (0, 0, 1)), 0.002)
+
+# a current through a nanocontact: the torques first, then the map (A/m²)
+setcurrent!(sim, (0, 0, 0); zhangli = false, slonczewski = true, fixedlayer = (1, 0, 0))
+addcurrent!(sim, regionmap(sim, 1, (0, 0, 1e12)))
+```
+
+- The functions are evaluated at the time of every stage of the solvers. The maps stay on the GPU,
+  with nothing copied from the host during a run.
+- Every part of the code that uses the field sees the terms: the effective field, the Zeeman and
+  total energies, the minimizer, GNEB and the eigenmodes, at the time last set.
+- `fieldmap(mesh, shape, v)` gives `v` inside a shape; `clearfields!` and `clearcurrents!` remove the
+  terms.
+- A term adds to the uniform part. mumax3's `B_ext.SetRegion(r, v)` replaces it in region r instead.
+- With a current, each cell takes the spin-torque parameters of its region (Msat, pol, xi, lambda,
+  epsilonPrime, alpha), as mumax3. Pass `params` to `setcurrent!` for one set of parameters everywhere.
+- `setdrive!(sim, (w, t) -> …)` changes the uniform field or current with time.
+- The older integrators (`:tsit5`, `runthermal!`, `Solver`) refuse functions of time; the last two
+  also refuse spin torques.
+
 **Output.**
 - **The table.** It always starts with `t` and ⟨m⟩, the magnet average (fill
   weighted, empty cells excluded, as mumax3's table `m`); add columns with
@@ -457,7 +490,8 @@ The available table quantities:
 | `q_energy()` | `E_total` | total energy [J] |
 | `q_exchangeenergy()`, `q_demagenergy()`, `q_zeemanenergy()`, `q_anisenergy()` | one each | per-term energies |
 | `q_maxtorque()` | `maxTorque` | max \|dm/dt\|/γ of the full right-hand side (spin torques included) [T], as mumax3 |
-| `q_Bext()` | `B_extx,y,z` | applied field [T] |
+| `q_Bext()` | `B_extx,y,z` | applied field [T], averaged over the mesh (with the terms) |
+| `q_J()` | `Jx,y,z` | current density [A/m²], averaged over the mesh |
 | `q_vortexcore()` | `x, y, z, polarity` | vortex core (mumax3 `ext_corepos`) |
 | `q_skyrmionpos()` | `x, y, z` | skyrmion centroid |
 | `q_dwpos()` | `x, y, z` | domain-wall position |

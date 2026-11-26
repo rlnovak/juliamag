@@ -23,7 +23,10 @@ _withpol(rp) = (r = deepcopy(rp); fill!(r.pol, 0.5); r)
         @test JuliaMag.uniformdamping(r2) == 0.1
         setregion!(r2, 0; Msat = 0.0); setregion!(r2, 1; alpha = 0.3, Msat = 8e5); defregioncell!(r2, 1, 2, 1, 1)
         @test JuliaMag.uniformdamping(r2) == 0.3 == JuliaMag.damping(r2)     # the magnet, not the empty region 0
-        @test_throws ErrorException llgrhs!(similar(m), m, setcurrent!(World(mesh, _withpol(rp); demag = false), (1e12, 0, 0)))
+        # a current takes the alpha of each cell (as mumax3); with explicit parameters, alpha must be uniform
+        wc = setcurrent!(World(mesh, _withpol(rp); demag = false), (1e12, 0, 0))
+        @test all(isfinite, llgrhs!(similar(m), m, wc))
+        @test_throws ErrorException llgrhs!(similar(m), m, setcurrent!(World(mesh, _withpol(rp); demag = false), (1e12, 0, 0); params = Material(Msat = 8e5, Aex = 0.0, alpha = 0.1, pol = 0.5)))
     end
     @testset "drive: order of the solvers" begin
         mesh = Mesh((1, 1, 1), (3e-9, 3e-9, 3e-9))
