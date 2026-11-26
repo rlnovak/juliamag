@@ -462,6 +462,60 @@ addcurrent!(sim, regionmap(sim, 1, (0, 0, 1e12)))
 - The older integrators (`:tsit5`, `runthermal!`, `Solver`) refuse functions of time; the last two
   also refuse spin torques.
 
+**Currents from anisotropic magnetoresistance.** Instead of prescribing the current density, JuliaMag
+can compute it. It solves for the electric potential in the sample, fed through contacts, with a
+resistivity that depends on the local magnetization:
+
+    ∇·(σ(m) ∇φ) = 0,   j = −σ(m) ∇φ,   ρ = ρ⊥ I + (ρ∥ − ρ⊥) m mᵀ.
+
+The current then flows around the domain walls and the vortex cores, and the planar Hall field
+appears where m is oblique to j.
+
+```julia
+# a disc (region 1) between two non-magnetic leads (4, 5) with contacts at their ends (2, 3)
+setconduction!(sim; rho_par = 204e-9, rho_perp = 200e-9, regions = [1, 2, 3, 4, 5])
+for r in 2:5
+    setresistivity!(sim, r; rho_par = 200e-9)        # isotropic leads (ρ∥ = ρ⊥)
+end
+addcontact!(sim, 2; current = 2e-3)                  # 2 mA into the sample (a function of t is allowed)
+addcontact!(sim, 3; potential = 0.0)                 # the ground
+setcurrent!(sim, (0, 0, 0); zhangli = true)          # the spin torques take the computed j
+tableadd!(sim, q_resistance()); tableadd!(sim, q_contacts(2))
+autosave!(sim, 50e-12; name = "j", field = currentmap)
+autosave!(sim, 50e-12; name = "phi", field = potentialmap)
+run!(sim, 3e-9)
+```
+
+- **When it is solved.** The potential is solved at every stage of the solvers, for the state of
+  that stage, and at every output. The current density of the conduction adds to `J` and to the
+  terms of `addcurrent!`. `solveconduction!(sim)` returns the solution for the present state:
+  - `phi`, the potential [V];
+  - `j`, the current density [A/m²];
+  - `contacts`, the potential `V` and the current `I` of each contact.
+- **Which cells conduct.**
+  - Every region with Msat conducts, by default; pass `regions` to choose them instead.
+  - Set resistivities per region with `setresistivity!`; `Inf` makes a region an insulator.
+  - A region without Msat (a lead) conducts isotropically with ρ⊥.
+  - A partially filled cell (edge smoothing) conducts with its fill times σ. Its current density is
+    that of the material.
+  - A change of the regions, the geometry or Msat is taken into account at the next solve.
+- **Contacts.**
+  - A contact is a region held at a potential, or fed a total current, each constant or a function
+    of time.
+  - Contacts are perfect conductors. Their cells carry no current density, so make them
+    non-magnetic.
+  - Without a contact held at a potential, the last current contact is the ground (0 V), and the
+    currents must sum to zero.
+  - Cells not connected to any contact become insulators, with a warning.
+  - A contact cut off from the contacts held at a potential is an error.
+- **Precision and device.** The solver works in Float64 on the CPU, for every precision and device.
+  On the GPU, m is copied to the host and j back at each stage. A solve costs about one to three
+  evaluations of the effective field: BiCGSTAB, preconditioned by the isotropic problem, starting
+  from the last solution.
+- **Not included.** The Oersted field of j(r) is not computed.
+- **Validation.** `gpu_validation/amr/` has the analytic strip, an independent finite-element
+  reference (agreement 4e-9 in R) and the linearity of the AMR effect on a gyrating vortex.
+
 **Output.**
 - **The table.** It always starts with `t` and ⟨m⟩, the magnet average (fill
   weighted, empty cells excluded, as mumax3's table `m`); add columns with
@@ -491,7 +545,9 @@ The available table quantities:
 | `q_exchangeenergy()`, `q_demagenergy()`, `q_zeemanenergy()`, `q_anisenergy()` | one each | per-term energies |
 | `q_maxtorque()` | `maxTorque` | max \|dm/dt\|/γ of the full right-hand side (spin torques included) [T], as mumax3 |
 | `q_Bext()` | `B_extx,y,z` | applied field [T], averaged over the mesh (with the terms) |
-| `q_J()` | `Jx,y,z` | current density [A/m²], averaged over the mesh |
+| `q_J()` | `Jx,y,z` | current density [A/m²], averaged over the mesh (prescribed `J` and terms) |
+| `q_contacts(n)` | `V1, I1, …, Vn, In` | potential [V] and current fed into the sample [A] of each contact (conduction) |
+| `q_resistance(a=1, b=2)` | `R` | (V_a − V_b)/I_a [Ω], the two-terminal resistance (conduction) |
 | `q_vortexcore()` | `x, y, z, polarity` | vortex core (mumax3 `ext_corepos`) |
 | `q_skyrmionpos()` | `x, y, z` | skyrmion centroid |
 | `q_dwpos()` | `x, y, z` | domain-wall position |

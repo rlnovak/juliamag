@@ -1,0 +1,6 @@
+vortex disc 128 nm x 10 nm, 2 mA through two leads, Zhang-Li (P 0.4, xi 0.05), 3 ns
+drho/rho_perp = 0.00: R(0) = 49.173299 Ohm, R mean = 49.173299 Ohm, R peak-to-peak = 0.00e+00 Ohm, core radius max = 23.83 nm
+drho/rho_perp = 0.02: R(0) = 49.471514 Ohm, R mean = 49.471258 Ohm, R peak-to-peak = 1.22e-03 Ohm, core radius max = 24.22 nm
+drho/rho_perp = 0.04: R(0) = 49.766476 Ohm, R mean = 49.765968 Ohm, R peak-to-peak = 2.40e-03 Ohm, core radius max = 24.60 nm
+R(0): change 0.02 -> 0.298215 Ohm, 0.04 -> 0.593176 Ohm, ratio 1.9891 (linear: 2)
+core displacement by AMR: max 0.411 nm (0.02), 0.786 nm (0.04); max |d(0.04) - 2 d(0.02)| = 0.037 nm (0.05 of d(0.04))

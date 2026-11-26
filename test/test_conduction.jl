@@ -5,10 +5,12 @@ using JuliaMag, Test, Random
     Δρ = ρpar - ρperp
     h = 2e-9
     # a strip of 100 × 10 cells; contacts: the first and the last column
-    function strip(θ; nx = 200, ny = 10, contact1 = (; current = 1e-3), contact2 = (; potential = 0.0), mesh = Mesh((nx, ny, 1), (h, h, h)))
+    function strip(θ; nx = 200, ny = 10, contact1 = (; current = 1e-3), contact2 = (; potential = 0.0), mesh = Mesh((nx, ny, 1), (h, h, h)),
+                   extra = rp -> nothing, T = Float64)
         rp = RegionParams(mesh, Material(Msat = 8e5, Aex = 1.3e-11, alpha = 0.1, pol = 0.5))
         defregion!(rp, 1, XRange(-Inf, -(nx / 2 - 1) * h)); defregion!(rp, 2, XRange((nx / 2 - 1) * h, Inf))
-        w = World(mesh, rp; demag = false)
+        extra(rp)
+        w = World(mesh, T === Float64 ? rp : RegionParams{T}(rp); demag = false)
         setconduction!(w; rho_par = ρpar, rho_perp = ρperp)
         addcontact!(w, 1; contact1...); addcontact!(w, 2; contact2...)
         m = uniform(mesh, (cos(θ), sin(θ), 0))
@@ -76,6 +78,99 @@ using JuliaMag, Test, Random
         v = World(mesh, w.material; demag = false); setcurrent!(v, (1e-3 / (10h * h), 0, 0))
         τu = llgrhs!(similar(mt), mt, v)
         @test τ0[:, 10:190, :, :] ≈ τu[:, 10:190, :, :] rtol = 1e-7
+    end
+
+    Rof(c) = (c.contacts[1].V - c.contacts[2].V) / c.contacts[1].I
+
+    @testset "Float32 world: solved in Float64" begin
+        θ = 0.5
+        w, m, = strip(θ); c = solveconduction!(w, m)
+        w32, = strip(θ; T = Float32); c32 = solveconduction!(w32, Float32.(m))
+        @test c32.contacts[2].I ≈ -1e-3 rtol = 1e-9                     # no charge lost
+        @test maximum(abs, c32.j .- c.j) < 1e-6 * maximum(abs, c.j)      # (m rounded to Float32)
+        τ = llgrhs!(similar(Float32.(m)), Float32.(m), (setcurrent!(w32, (0, 0, 0)); w32))
+        @test all(isfinite, τ)
+    end
+
+    @testset "islands, inconsistent contacts" begin
+        cut(rp) = (setregion!(rp, 5; Msat = 0.0); defregion!(rp, 5, XRange(-h, h)))           # an insulating column
+        w, m, = strip(0.2; extra = cut)
+        @test_throws ErrorException solveconduction!(w, m)          # contact 1 not connected to the potential contact
+        w, m, = strip(0.2; extra = cut, contact1 = (; potential = 1.0))
+        c = solveconduction!(w, m)
+        @test abs(c.contacts[1].I) < 1e-13 && abs(c.contacts[2].I) < 1e-13
+        # an insulating block (6 × 8 cells) over the strip; a 2 × 2 island inside it, and a cell inside it
+        # that touches a conducting cell at a corner only
+        cellat(xc, yc) = (x, y, z) -> abs(x - xc) < h / 2 && abs(y - yc) < h / 2
+        block(rp) = (setregion!(rp, 5; Msat = 0.0); defregion!(rp, 5, (x, y, z) -> abs(x) < 3h && y > -3h))
+        dent(rp) = (block(rp); defregion!(rp, 0, cellat(-2.5h, -2.5h)))
+        hole(rp) = (block(rp); defregion!(rp, 0, (x, y, z) -> abs(x) < h && abs(y - 2h) < h))
+        corner(rp) = (dent(rp); defregion!(rp, 0, cellat(-1.5h, -1.5h)))
+        for (f, ref) in ((hole, block), (corner, dent))
+            R0 = Rof(solveconduction!(strip(0.2; extra = ref)[1:2]...))
+            w, m, = strip(0.2; extra = f)
+            c = @test_logs (:warn, r"not connected") solveconduction!(w, m)
+            @test Rof(c) ≈ R0 rtol = 1e-10
+        end
+        # contacts fed currents only: they must sum to zero, and there must be two
+        w, m, = strip(0.2; contact1 = (; current = 1e-3), contact2 = (; current = 5e-3))
+        @test_throws ErrorException solveconduction!(w, m)
+        mesh = Mesh((40, 4, 1), (h, h, h)); rp = RegionParams(mesh, Material(Msat = 8e5, Aex = 1e-11, alpha = 0.1))
+        defregion!(rp, 1, XRange(-Inf, -19h)); w = World(mesh, rp; demag = false)
+        setconduction!(w; rho_par = ρpar, rho_perp = ρperp); addcontact!(w, 1; current = 1e-3)
+        @test_throws ErrorException solveconduction!(w, uniform(mesh, (1, 0, 0)))
+        # contacts at nearly the same potential: the accuracy follows the difference
+        w1, m, = strip(0.4; contact1 = (; potential = 1.0), contact2 = (; potential = 0.0))
+        w2, = strip(0.4; contact1 = (; potential = 1.0), contact2 = (; potential = 0.999))
+        c1 = solveconduction!(w1, m); R1 = 1 / c1.contacts[1].I
+        @test 0.001 / solveconduction!(w2, m).contacts[1].I ≈ R1 rtol = 1e-9
+    end
+
+    @testset "changes of the regions; leads without Msat; contacts carry no j" begin
+        block(rp) = (setregion!(rp, 5; Msat = 0.0); defregion!(rp, 5, (x, y, z) -> abs(x) < 10h && y > -2h))
+        w, m, = strip(0.3); R1 = Rof(solveconduction!(w, m))
+        block(w.material)                                         # after the first solve
+        R2 = Rof(solveconduction!(w, m))
+        @test R2 > 1.05R1
+        @test R2 ≈ Rof(solveconduction!(strip(0.3; extra = block)[1:2]...)) rtol = 1e-8       # (warm against cold start)
+        # a lead without Msat is isotropic even where m ≠ 0 (World API, m not cleared)
+        lead(rp) = (setregion!(rp, 6; Msat = 0.0); defregion!(rp, 6, XRange(-50h, 50h)))
+        w, m, mesh = strip(0.0; extra = lead)
+        setresistivity!(w, 6; rho_par = ρpar, rho_perp = ρperp)
+        wi, = strip(0.0; extra = lead); setresistivity!(wi, 6; rho_par = ρperp, rho_perp = ρperp)
+        @test Rof(solveconduction!(w, m)) ≈ Rof(solveconduction!(wi, m)) rtol = 1e-10
+        c = solveconduction!(w, m)
+        @test all(==(0), c.j[:, 1, :, 1]) && all(==(0), c.j[:, end, :, 1])
+    end
+
+    @testset "partially filled cells" begin
+        # a strip 10.5 cells wide on a 12-cell grid: the edge cells are a quarter full (edge smoothing)
+        nx, ny = 100, 12
+        mesh = Mesh((nx, ny, 1), (h, h, h))
+        rp = RegionParams(mesh, Material(Msat = 8e5, Aex = 1.3e-11, alpha = 0.1))
+        setregion!(rp, 0; Msat = 0.0)
+        setgeometry!(rp, (x, y, z) -> abs(y) < 5.25h; id = 1, edgesmooth = 8)
+        @test count(f -> 0 < f < 1, rp.fill) == 2nx
+        defregion!(rp, 2, XRange(-Inf, -(nx / 2 - 1) * h)); defregion!(rp, 3, XRange((nx / 2 - 1) * h, Inf))
+        w = World(mesh, rp; demag = false)
+        setconduction!(w; rho_par = ρperp, rho_perp = ρperp)
+        addcontact!(w, 2; current = 1e-3); addcontact!(w, 3; potential = 0.0)
+        c = solveconduction!(w, uniform(mesh, (1, 0, 0)))
+        @test Rof(c) ≈ ρperp * (nx - 2) * h / (10.5h * h) rtol = 1e-9
+        j = 1e-3 / (10.5h * h)                                   # the current density of the material, edge cells too
+        @test all(x -> isapprox(x, j; rtol = 1e-8), c.j[1, 3:nx-2, :, 1])
+    end
+
+    @testset "3D: m out of plane" begin
+        mesh = Mesh((60, 4, 3), (h, h, h))
+        w, m, = strip(0.0; nx = 60, ny = 4, mesh = mesh)
+        m = uniform(mesh, (0, 0, 1)); c = solveconduction!(w, m)
+        jx = 1e-3 / (4h * 3h)
+        @test (c.phi[1, 29, 2, 2] - c.phi[1, 31, 2, 2]) / 2h / jx ≈ ρperp rtol = 1e-8
+        @test maximum(abs, c.j[2:3, 3:58, :, :]) < 1e-9 * jx
+        m = uniform(mesh, (1, 1, 1) ./ sqrt(3)); c = solveconduction!(w, m)
+        Ez = -(c.phi[1, 30, 2, 3] - c.phi[1, 30, 2, 1]) / 2h
+        @test Ez / jx ≈ Δρ / 3 rtol = 1e-6                        # E = ρ j: the z row of ρ times x̂
     end
 
     @testset "Simulation: table and maps" begin

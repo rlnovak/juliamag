@@ -639,10 +639,9 @@ function JuliaMag.togpu(w::World{T}) where {T}
     gmat  = w.material isa RegionParams ? togpu(w.material) : w.material
     Bbuf  = CuArray(w._Bbuf)
     term(q) = JuliaMag.MapTerm(CuArray(q.map), q.f, q.c)
-    w.conduction === nothing || error("togpu: the electric conduction (setconduction!) runs on the CPU only for now")
     World{T,typeof(gplan),typeof(gmat),typeof(Bbuf)}(
         w.mesh, gmat, gplan, w.Bext, Bbuf, w.current, w.openbc, w.drive,   # the SpinCurrent is plain numbers
-        [term(q) for q in w.Bterms], [term(q) for q in w.Jterms], w.Jbuf === nothing ? nothing : CuArray(w.Jbuf), nothing)
+        [term(q) for q in w.Bterms], [term(q) for q in w.Jterms], w.Jbuf === nothing ? nothing : CuArray(w.Jbuf), w.conduction)   # (solved on the host)
 end
 
 # --- Simulation on the GPU ---------------------------------------------------

@@ -373,6 +373,10 @@ result and a reference code, paper section, commit. Ask before starting each.
 **3. A mumax3-style input file.** After items 1–2.
 - **Before the GUI (user, 2026-11-25):** excitations that vary in space and time, then currents
   from anisotropic magnetoresistance; plan in [`plan_fields_amr.md`](plan_fields_amr.md).
+  **Done 2026-11-26.** Fields and currents in space and time: `addfield!`, `addcurrent!`,
+  validated against mumax3 (`gpu_validation/fields/`). AMR conduction: `setconduction!`,
+  `addcontact!`, validated against an analytic strip, an independent finite-element reference and
+  the linearity of the AMR effect on a vortex (`gpu_validation/amr/`).
 - **Decision, 2026-11-25 (user): scripts look like Julia**, not like mumax3's Go subset. An
   interpreter of mumax3's .mx3 language was written without asking and removed (a7efd7e in the
   history). Still open: whether to build the Julia-syntax script described below, or to stay
@@ -383,8 +387,8 @@ result and a reference code, paper section, commit. Ask before starting each.
   other fields in `save!`/`autosave!`; in Float32 the minimizer normalizes m, as mumax3 (|m| drifted
   by 3e-6, the energy by 1e-6).
 - Limits of JuliaMag itself that came up: no cubic or second-order anisotropy, no magnetoelasticity, no frozen
-  spins, uniform B_ext and J, material parameters constant in time, spin-torque parameters and
-  temperature uniform, no interlayer coupling beyond the exchange of touching cells, no moving window, no RK56.
+  spins, material parameters constant in time, temperature uniform (B_ext and J per cell and
+  spin-torque parameters per region since 2026-11-26), no interlayer coupling beyond the exchange of touching cells, no moving window, no RK56.
 - **Goal.** A simulation is described as simply as in mumax3: a short script of
   plain statements, with no Julia boilerplate (no `sim` argument threaded through
   every call, no array types, no explicit `togpu`). For example:
@@ -441,6 +445,10 @@ The **driver ergonomics group above** is done (2026-11-20). Next, in order (see
 That closes the stage.
 
 ## Future features
+
+- **Oersted field of the computed current.** With the AMR conduction, the field of j(r) (Biot–Savart,
+  a convolution like the demag field, by FFT) would add to the effective field like an applied field.
+  Left for later (user, 2026-11-25).
 
 - **KernelAbstractions.jl, multi-backend GPU.** Deferred 2026-11-23: only NVIDIA
   hardware is available to test it.

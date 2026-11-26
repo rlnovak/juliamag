@@ -6,9 +6,12 @@
 #     σ = ρ⁻¹,  ρ = ρ⊥ I + (ρ∥ − ρ⊥) m mᵀ   ⇒   σ = (1/ρ⊥) [I − (Δρ/ρ∥) m mᵀ],   Δρ = ρ∥ − ρ⊥
 #
 # (quasi-static: charges relax in femtoseconds). ρ∥ and ρ⊥ are given per region; a region without them
-# is an insulator, a region without Msat (m = 0) conducts isotropically with ρ⊥. Contacts are regions
-# held at a potential, or fed a total current (their cells share one unknown potential). All other
-# boundaries are insulating, n·j = 0.
+# is an insulator, a region without Msat conducts isotropically with ρ⊥. A partially filled cell
+# (edge smoothing) conducts with its fill times σ, and its current density is that of the material,
+# the face currents over fill × area. Contacts are regions held at a potential, or fed a total current
+# (their cells share one unknown potential); they are perfect conductors, and their cells carry no
+# current density. All other boundaries are insulating, n·j = 0. Cells not connected to any contact
+# are insulators (with a warning).
 #
 # Discretization: finite volumes on the cells. The current through the face between cells P and Q
 # (along axis d, area A_d, spacing h_d) is
@@ -18,14 +21,26 @@
 # with σ the mean of the two cells' tensors and g_e the mean of the two cells' gradients along e
 # (central differences, one-sided next to an insulator). F_QP = −F_PQ to the last bit, so current is
 # conserved cell by cell. A contact is a perfect conductor: its potential holds on its faces, and the
-# current through a face of a contact is that of the cell on the other side, over half a cell. The off-diagonal terms (planar Hall effect) make the operator not symmetric:
-# it is solved by BiCGSTAB with a Jacobi preconditioner, from the last solution.
+# current through a face of a contact is that of the cell on the other side, over half a cell, with
+# its tangential gradient (second order on the face, see _faceflux). The
+# off-diagonal terms (planar Hall effect) make the operator not symmetric: it is solved by BiCGSTAB,
+# from the last solution, preconditioned by the isotropic problem on the same cells (two-point
+# fluxes with the mean conductivity σ⊥(1 − (Δρ/ρ∥)/3)), whose sparse Cholesky factor is computed once.
+# AMR changes σ by a few per cent, so a few iterations suffice.
 #
 # Contacts: by superposition. φ = φ₀ + Σ_c V_c ψ_c, with φ₀ the solution with the potential contacts at
 # their values and the current contacts at 0, ψ_c the solution with contact c at 1 and all others at 0;
 # the potentials V_c of the current contacts then follow from their currents (a small linear system).
-# Without a potential contact the last current contact is the ground (0 V); its current is minus the sum
-# of the others.
+# Without a potential contact the last current contact is the ground (0 V); the currents must then sum
+# to zero.
+#
+# The conduction is solved on the host (CPU) in Float64, also for a Float32 world or a simulation on
+# the GPU: m is copied to the host and the current density back, once per evaluation. (In Float32 the
+# solver stalls at a residual of about 1e-6, which loses charge at the 1e-3 level.) With the
+# preconditioner a solve costs about one to three evaluations of the effective field.
+
+using SparseArrays: sparse
+using LinearAlgebra: cholesky, Symmetric
 
 """
     Contact
@@ -50,8 +65,11 @@ Resistivities per region, contacts, and the state of the solver of [`setconducti
 of interest: `phi` (1,Nx,Ny,Nz) [V], `j` (3,Nx,Ny,Nz) [A/m²], `contacts`, `iterations` (last solve).
 """
 mutable struct Conduction{A}
-    rhopar::Vector{Float64}          # per region (Inf: insulator)
+    host::Any                        # the host World it belongs to (mesh, regions, geometry)
+    rhopar::Vector{Float64}          # per region, set explicitly (NaN: not set; Inf: insulator)
     rhoperp::Vector{Float64}
+    rhodef::NTuple{2,Float64}        # (ρ∥, ρ⊥) of the regions with Msat, when `magnetic`
+    magnetic::Bool                   # regions = :magnetic: every region with Msat conducts (at each setup)
     contacts::Vector{Contact}
     code::Any                        # per cell: 0 insulator, 1 free, 1 + c contact c (Int32, device)
     sp::A                            # per cell 1/ρ⊥ (0 in an insulator), (1,Nx,Ny,Nz)
@@ -65,42 +83,70 @@ mutable struct Conduction{A}
     maxiter::Int
     iterations::Int
     ready::Bool                      # cell codes and resistivities up to date with the regions
+    free::Vector{Int}                # linear indices of the free cells
+    pre::Any                         # Cholesky factor of the isotropic problem (preconditioner)
+    xh::Vector{Float64}              # host scratch for the preconditioner
+    jdev::Any                        # (device j, host j in the device type) of a GPU World
+    fill::A                          # per cell fill of the conducting cells
+    mh::A                            # m in Float64 on the host (3,Nx,Ny,Nz)
+    snap::Any                        # regions, fill and Msat at the last setup
 end
 
 """
     setconduction!(sim; rho_par, rho_perp, regions=:magnetic, tol=1e-13, maxiter=20_000)
 
 Electric conduction with anisotropic magnetoresistance in the cells of `regions` (`:magnetic`: every
-region with Msat; or a list of region ids), with resistivities `rho_par` (m ∥ j) and `rho_perp` [Ω m].
-Per region with [`setresistivity!`](@ref); contacts with [`addcontact!`](@ref). The potential is solved
-at every stage of the solvers when a current is set ([`setcurrent!`](@ref): its spin torques then take
-the current density of the conduction, added to `J` and the terms of [`addcurrent!`](@ref)), and at
-every output. Table columns: [`q_contacts`](@ref), [`q_resistance`](@ref); fields: [`potentialmap`](@ref),
-[`currentmap`](@ref).
+region with Msat, as the regions are at each solve; or a list of region ids), with resistivities
+`rho_par` (m ∥ j) and `rho_perp` [Ω m]. Per region with [`setresistivity!`](@ref); contacts with
+[`addcontact!`](@ref). The potential is solved at every stage of the solvers when a current is set
+([`setcurrent!`](@ref): its spin torques then take the current density of the conduction, added to `J`
+and the terms of [`addcurrent!`](@ref)), and at every output. Table columns: [`q_contacts`](@ref),
+[`q_resistance`](@ref); fields: [`potentialmap`](@ref), [`currentmap`](@ref).
+
+Solved in Float64 on the host whatever the precision and device of the simulation. A region without
+Msat conducts isotropically with `rho_perp`; a partially filled cell conducts with its fill. Contacts
+are perfect conductors with no current density in their cells (make them non-magnetic, Msat = 0, so
+that no spin torque is missed). Changes of the regions, the geometry or Msat are taken into account at
+the next solve.
 """
-function setconduction!(w::World{T}; rho_par, rho_perp, regions = :magnetic, tol = T === Float64 ? 1e-13 : 1e-6,
-                        maxiter::Integer = 20_000) where {T}
-    rpar = fill(Inf, MAXREGIONS); rperp = fill(Inf, MAXREGIONS)
-    ids = regions === :magnetic ? [r - 1 for r in 1:MAXREGIONS if _regionmsat(w.material, r - 1) != 0] : collect(regions)
-    for id in ids
-        rpar[id+1] = rho_par; rperp[id+1] = rho_perp
+function setconduction!(w::World; rho_par, rho_perp, regions = :magnetic, tol = 1e-13, maxiter::Integer = 20_000)
+    rpar = fill(NaN, MAXREGIONS); rperp = fill(NaN, MAXREGIONS)
+    if regions !== :magnetic
+        for id in regions
+            rpar[id+1] = rho_par; rperp[id+1] = rho_perp
+        end
     end
-    z = zeros(T, 1, w.mesh.size...)
-    dev(a) = copyto!(similar(w._Bbuf, size(a)), a)
-    sz1 = dev(z); sz3 = dev(zeros(T, 3, w.mesh.size...))
+    w._Bbuf isa Array || throw(ArgumentError("setconduction!: call it on the host World (with a Simulation, setconduction!(sim) shares it with the GPU World)"))
+    sz1 = zeros(1, w.mesh.size...); sz3 = zeros(3, w.mesh.size...)
     mk() = similar(sz1)
-    w.conduction = Conduction{typeof(sz1)}(rpar, rperp, Contact[], nothing, mk(), mk(), fill!(mk(), 0), fill!(similar(sz3), 0),
+    w.conduction = Conduction{typeof(sz1)}(w, rpar, rperp, (Float64(rho_par), Float64(rho_perp)), regions === :magnetic,
+                                           Contact[], nothing, mk(), mk(), fill!(mk(), 0), fill!(similar(sz3), 0),
                                            typeof(sz1)[], similar(sz3), mk(), mk(), mk(), mk(), mk(), mk(), mk(), mk(), mk(),
-                                           Float64(tol), Int(maxiter), 0, false)
+                                           Float64(tol), Int(maxiter), 0, false, Int[], nothing, Float64[], nothing,
+                                           fill!(mk(), 0), similar(sz3), nothing)
     return w
 end
 _regionmsat(m::Material, id) = id == 0 ? m.Msat : zero(m.Msat)
 _regionmsat(rp::RegionParams, id) = (id + 1 in _present(rp)) ? rp.Msat[id+1] : zero(eltype(rp))
 
+# (ρ∥, ρ⊥) of region r: set explicitly, or the defaults for a region with Msat (regions = :magnetic),
+# or an insulator.
+function _resistivity(c::Conduction, material, r)
+    isnan(c.rhoperp[r+1]) || return (c.rhopar[r+1], c.rhoperp[r+1])
+    c.magnetic && _regionmsat(material, r) != 0 && return c.rhodef
+    return (Inf, Inf)
+end
+
+# What the cells depend on: the region map, the fill and Msat per region.
+_regionsnap(rp::RegionParams) = (copy(rp.regions.id), copy(rp.fill), copy(rp.Msat))
+_regionsnap(m::Material) = (m.Msat,)
+_samesnap(s, rp::RegionParams) = s isa Tuple{Any,Any,Any} && s[1] == rp.regions.id && s[2] == rp.fill && s[3] == rp.Msat
+_samesnap(s, m::Material) = s isa Tuple{Any} && s[1] == m.Msat
+
 """
     setresistivity!(sim, region; rho_par, rho_perp=rho_par)
 
-The resistivities [Ω m] of one region; `Inf` makes it an insulator. A lead without Msat conducts
+The resistivities [Ω m] of one region; `Inf` makes it an insulator. A region without Msat conducts
 isotropically with `rho_perp`.
 """
 function setresistivity!(w::World, region::Integer; rho_par, rho_perp = rho_par)
@@ -133,42 +179,141 @@ _conduction(w::World) = w.conduction === nothing ? throw(ArgumentError("call set
 
 # Codes and resistivities per cell from the regions (host), then to the device.
 function _setupcells!(c::Conduction, w::World)
-    mesh = w.mesh; n = mesh.size
+    mesh = w.mesh; n = mesh.size; per = ntuple(d -> isperiodic(mesh, d), 3)
+    isempty(c.contacts) && error("conduction: add at least one contact (addcontact!)")
     ids = _regionids(w.material, mesh)
     fl = _cellfill(w.material)
-    code = zeros(Int32, 1, n...); sp = zeros(1, n...); an = zeros(1, n...)
+    code = zeros(Int32, 1, n...); sp = zeros(1, n...); an = zeros(1, n...); fc = zeros(1, n...)
     for I in CartesianIndices(n)
         r = ids[I]
-        fl === nothing || fl[I] > 0 || continue
-        isfinite(c.rhoperp[r+1]) || continue
+        f = fl === nothing ? 1.0 : Float64(fl[I])
+        f > 0 || continue
+        ρpar, ρperp = _resistivity(c, w.material, r)
+        isfinite(ρperp) || continue
         k = findfirst(q -> q.region == r, c.contacts)
         code[1, I] = k === nothing ? 1 : 1 + k
-        sp[1, I] = 1 / c.rhoperp[r+1]
-        an[1, I] = (c.rhopar[r+1] - c.rhoperp[r+1]) / c.rhopar[r+1]
+        sp[1, I] = f / ρperp
+        an[1, I] = _regionmsat(w.material, r) == 0 ? 0.0 : (ρpar - ρperp) / ρpar     # no m: isotropic
+        fc[1, I] = f
     end
     for (k, q) in enumerate(c.contacts)
         any(==(1 + k), code) || error("contact $k: region $(q.region) has no conducting cell")
     end
-    any(==(1), code) || error("conduction: no conducting cell outside the contacts")
     for I in CartesianIndices(n), d in 1:3                 # two contacts must not touch
-        J = ntuple(e -> e == d ? I[e] + 1 : I[e], 3)
-        J[d] <= n[d] || continue
-        a = code[1, I]; b = code[1, J...]
-        a > 1 && b > 1 && a != b && error("conduction: contacts $(a - 1) and $(b - 1) touch")
+        n[d] > 1 || continue
+        b = _nb(I[d], n[d], per[d], 1); b == 0 && continue
+        J = ntuple(e -> e == d ? b : I[e], 3)
+        a = code[1, I]; q = code[1, J...]
+        a > 1 && q > 1 && a != q && error("conduction: contacts $(a - 1) and $(q - 1) touch")
     end
-    isempty(c.contacts) && error("conduction: add at least one contact (addcontact!)")
-    T = eltype(c.sp)
-    c.code = copyto!(similar(c.sp, Int32, size(code)), code)
-    copyto!(c.sp, T.(sp)); copyto!(c.an, T.(an))
+    _connect!(code, sp, an, fc, c, n, per)
+    any(==(1), code) || error("conduction: no conducting cell outside the contacts")
+    c.code = code
+    copyto!(c.sp, sp); copyto!(c.an, an); copyto!(c.fill, fc)
+    _isotropicfactor!(c, code, sp, an, mesh)
     nb = 1 + count(q -> q.kind === :current, c.contacts)
     while length(c.basis) < nb
         push!(c.basis, fill!(similar(c.sp), 0))
     end
+    c.snap = _regionsnap(w.material)
     c.ready = true
     return c
 end
 _regionids(::Material, mesh) = zeros(Int, mesh.size...)
 _regionids(rp::RegionParams, mesh) = Int.(rp.regions.id)
+
+# The connected parts of the conductor (through faces). A part without a contact has no defined
+# potential: its cells become insulators, with a warning. A part whose contacts are all fed a current
+# has its potential defined only by the ground: an error if there are potential contacts elsewhere, or
+# more than one such part.
+function _connect!(code, sp, an, fc, c::Conduction, n, per)
+    lab = zeros(Int, n...); nparts = 0
+    parts = Vector{Vector{CartesianIndex{3}}}()
+    stack = CartesianIndex{3}[]
+    for I0 in CartesianIndices(n)
+        (code[1, I0] != 0 && lab[I0] == 0) || continue
+        nparts += 1; cells = CartesianIndex{3}[]
+        lab[I0] = nparts; push!(stack, I0)
+        while !isempty(stack)
+            I = pop!(stack); push!(cells, I)
+            for d in 1:3, sgn in (-1, 1)
+                n[d] > 1 || continue
+                b = _nb(I[d], n[d], per[d], sgn); b == 0 && continue
+                Q = CartesianIndex(ntuple(e -> e == d ? b : I[e], 3))
+                (code[1, Q] != 0 && lab[Q] == 0) || continue
+                lab[Q] = nparts; push!(stack, Q)
+            end
+        end
+        push!(parts, cells)
+    end
+    anypot = any(q -> q.kind === :potential, c.contacts)
+    floating = 0; currentonly = 0
+    for cells in parts
+        ks = unique(Int(code[1, I]) - 1 for I in cells if code[1, I] > 1)
+        if isempty(ks)
+            floating += length(cells)
+            for I in cells
+                code[1, I] = 0; sp[1, I] = 0; an[1, I] = 0; fc[1, I] = 0
+            end
+        elseif !any(k -> c.contacts[k].kind === :potential, ks)
+            anypot && error("conduction: contacts $(sort(ks)) are not connected to a contact held at a potential")
+            currentonly += 1
+        end
+    end
+    currentonly > 1 && error("conduction: the contacts form $currentonly separate conductors, and none is held at a potential")
+    floating > 0 && @warn "conduction: $floating cells are not connected to any contact; they are treated as insulators"
+    return code
+end
+
+# The preconditioner: the isotropic problem on the free cells, two-point fluxes with σ⊥(1 − an/3) (the
+# mean over directions of σ_dd), contacts as Dirichlet faces at half a cell. Symmetric positive
+# definite (there is a contact): sparse Cholesky, once per setup.
+function _isotropicfactor!(c::Conduction, code, sp, an, mesh::Mesh)
+    n = mesh.size; h = mesh.cellsize; per = ntuple(d -> isperiodic(mesh, d), 3)
+    area = (h[2] * h[3], h[1] * h[3], h[1] * h[2])
+    lin = LinearIndices(n)
+    free = [lin[I] for I in CartesianIndices(n) if code[1, I] == 1]
+    idx = zeros(Int, n...); idx[free] .= 1:length(free)
+    σ(I) = sp[1, I] * (1 - an[1, I] / 3)
+    rows = Int[]; cols = Int[]; vals = Float64[]
+    for I in CartesianIndices(n)
+        code[1, I] == 1 || continue
+        p = idx[I]; diag = 0.0
+        for d in 1:3, sgn in (-1, 1)
+            n[d] > 1 || continue
+            b = _nb(I[d], n[d], per[d], sgn); b == 0 && continue
+            Q = CartesianIndex(ntuple(e -> e == d ? b : I[e], 3))
+            cq = code[1, Q]
+            cq == 0 && continue
+            if cq > 1
+                diag += 2area[d] / h[d] * σ(I)
+            else
+                g = area[d] / h[d] * 0.5 * (σ(I) + σ(Q))
+                diag += g
+                push!(rows, p); push!(cols, idx[Q]); push!(vals, -g)
+            end
+        end
+        push!(rows, p); push!(cols, p); push!(vals, diag)
+    end
+    A0 = sparse(rows, cols, vals, length(free), length(free))
+    c.pre = cholesky(Symmetric(A0))
+    c.free = free
+    c.xh = zeros(length(free))
+    return c
+end
+
+# y = A0⁻¹ x on the free cells (y = 0 elsewhere)
+function _precondition!(y, x, c::Conduction)
+    @inbounds for (i, l) in enumerate(c.free)
+        c.xh[i] = x[l]
+    end
+    z = c.pre \ c.xh
+    fill!(y, 0)
+    @inbounds for (i, l) in enumerate(c.free)
+        y[l] = z[i]
+    end
+    return y
+end
 
 # --- the operator, CPU (the CUDA extension has the same as kernels) ---------------------------------
 
@@ -207,7 +352,10 @@ end
 @inline function _faceflux(::Type{T}, d, cP, cQ, mP, mQ, spP, spQ, anP, anQ, φP, φQ, GP, GQ, area, h) where {T}
     cP > 1 && cQ > 1 && return zero(T)          # two contacts do not touch (checked at the setup)
     if cP > 1 || cQ > 1
-        # a contact: its potential on the face, the tensor and the gradient of the other cell
+        # a contact: its potential on the face, half a cell away; the tensor and the tangential gradient
+        # of the other cell. (On the equipotential face ∂_eφ = 0, but the gradient at the cell centre,
+        # (h/2) ∂_d∂_eφ, cancels the O(h) error of the one-sided ∂_dφ: there ∂_eeφ = 0, so the equation
+        # gives σ_dd ∂_ddφ = −2σ_de ∂_deφ. Without it the face flux is first order.)
         m_, sp_, an_, G_ = cP > 1 ? (mQ, spQ, anQ, GQ) : (mP, spP, anP, GP)
         σd = ntuple(e -> sp_ * ((e == d) - an_ * m_[d] * m_[e]), 3)
         f = σd[d] * (φQ - φP) / T(h / 2)
@@ -227,14 +375,15 @@ end
     return -T(area) * f
 end
 
-# out[P] = Σ_faces F_out(P) for the conducting cells; with `curr`, the current density of each cell instead.
+# out[P] = Σ_faces F_out(P) for the conducting cells; with `curr`, the current density of each cell
+# instead: the mean of its two face currents along each axis over fill × area (0 in a contact).
 function _divergence!(out::Array{T,4}, phi::Array{T,4}, G::Array{T,4}, m::Array{T,4}, code, sp, an, mesh::Mesh;
-                      curr::Union{Nothing,Array{T,4}} = nothing) where {T}
+                      curr::Union{Nothing,Array{T,4}} = nothing, fc = nothing) where {T}
     n = mesh.size; h = mesh.cellsize; per = ntuple(d -> isperiodic(mesh, d), 3)
     area = (h[2] * h[3], h[1] * h[3], h[1] * h[2])
     @inbounds for k in 1:n[3], j in 1:n[2], i in 1:n[1]
         I = (i, j, k)
-        if code[1, i, j, k] == 0
+        if code[1, i, j, k] == 0 || (curr !== nothing && code[1, i, j, k] > 1)
             curr === nothing ? (out[1, i, j, k] = 0) : (curr[1, i, j, k] = curr[2, i, j, k] = curr[3, i, j, k] = 0)
             continue
         end
@@ -256,7 +405,7 @@ function _divergence!(out::Array{T,4}, phi::Array{T,4}, G::Array{T,4}, m::Array{
                 s += F
                 fd += sgn > 0 ? F : -F          # current along +d through this face
             end
-            jc = Base.setindex(jc, fd / T(2area[d]), d)
+            jc = Base.setindex(jc, fd / (T(2area[d]) * (fc === nothing ? one(T) : T(fc[1, i, j, k]))), d)
         end
         if curr === nothing
             out[1, i, j, k] = s
@@ -267,7 +416,7 @@ function _divergence!(out::Array{T,4}, phi::Array{T,4}, G::Array{T,4}, m::Array{
     return curr === nothing ? out : curr
 end
 
-# Jacobi diagonal: Σ_faces A_d σ_dd / h_d
+# Jacobi diagonal of the free cells, Σ_faces A_d σ_dd / h_d (0 elsewhere): the scale of the residual
 function _jacobi!(dg::Array{T,4}, m::Array{T,4}, code, sp, an, mesh::Mesh) where {T}
     n = mesh.size; h = mesh.cellsize; per = ntuple(d -> isperiodic(mesh, d), 3)
     area = (h[2] * h[3], h[1] * h[3], h[1] * h[2])
@@ -283,7 +432,7 @@ function _jacobi!(dg::Array{T,4}, m::Array{T,4}, code, sp, an, mesh::Mesh) where
                 s += code[1, Q...] > 1 ? T(2area[d] / h[d]) * σP : T(area[d] / h[d]) * T(0.5) * (σP + σQ)
             end
         end
-        dg[1, i, j, k] = s == 0 ? one(T) : s
+        dg[1, i, j, k] = s
     end
     return dg
 end
@@ -331,18 +480,19 @@ function _applyop!(y, x, c::Conduction, m, mesh)
     return _freemask(y, c.code)
 end
 
-# Solve: φ free so that the divergence vanishes, with the contact cells as they are in φ. BiCGSTAB with
-# Jacobi, from φ itself. Returns the iterations.
-function _solvephi!(phi, c::Conduction, m, mesh, vmax)
+# Solve: φ free so that the divergence vanishes, with the contact cells as they are in φ. BiCGSTAB
+# preconditioned by the isotropic problem, from φ itself. `vrange`: the spread of the contact potentials.
+# Returns the iterations.
+function _solvephi!(phi, c::Conduction, m, mesh, vrange)
     T = eltype(phi)
     _jacobi!(c.dg, m, c.code, c.sp, c.an, mesh)
     # r = −div(φ) on the free cells
     _cellgradients!(c.G, phi, c.code, mesh)
     _divergence!(c.r, phi, c.G, m, c.code, c.sp, c.an, mesh)
     c.r .= .-c.r; _freemask(c.r, c.code)
-    # scale of the residual: the currents that the contact potentials of this solve would drive through
-    # one cell, ‖diag‖·max|V|
-    ref = sqrt(_cdot(c.dg, c.dg)) * vmax
+    # scale of the residual: the currents that the spread of the contact potentials would drive through
+    # each free cell, ‖diag‖·ΔV
+    ref = sqrt(_cdot(c.dg, c.dg)) * vrange
     copyto!(c.r0, c.r); fill!(c.p, 0); fill!(c.v, 0)
     ρ0 = α = ω = 1.0
     it = 0
@@ -353,7 +503,7 @@ function _solvephi!(phi, c::Conduction, m, mesh, vmax)
         ρ1 == 0 && error("conduction: BiCGSTAB breakdown")
         β = (ρ1 / ρ0) * (α / ω)
         c.p .= c.r .+ T(β) .* (c.p .- T(ω) .* c.v)
-        c.y .= c.p ./ c.dg; _freemask(c.y, c.code)
+        _precondition!(c.y, c.p, c)
         _applyop!(c.v, c.y, c, m, mesh)
         α = ρ1 / _cdot(c.r0, c.v)
         c.s .= c.r .- T(α) .* c.v
@@ -361,7 +511,7 @@ function _solvephi!(phi, c::Conduction, m, mesh, vmax)
             phi .+= T(α) .* c.y
             return it
         end
-        c.zz .= c.s ./ c.dg; _freemask(c.zz, c.code)
+        _precondition!(c.zz, c.s, c)
         _applyop!(c.t, c.zz, c, m, mesh)
         tt = _cdot(c.t, c.t)
         ω = tt == 0 ? 0.0 : _cdot(c.t, c.s) / tt
@@ -384,18 +534,31 @@ contact values of the time last set (see [`setconduction!`](@ref)).
 """
 function solveconduction!(w::World, m)
     c = _conduction(w)
-    c.ready || _setupcells!(c, w)
-    mesh = w.mesh
+    hw = c.host
+    # m in Float64 on the host (a Float32 world or a GPU state)
+    m = m isa Array{Float64} ? m : (m isa Array ? (c.mh .= m) : (c.mh .= Array(m)))
+    (c.ready && _samesnap(c.snap, hw.material)) || _setupcells!(c, hw)
+    mesh = hw.mesh
     nc = length(c.contacts)
     pot = [k for k in 1:nc if c.contacts[k].kind === :potential]
     cur = [k for k in 1:nc if c.contacts[k].kind === :current]
-    ground = isempty(pot) ? pop!(cur) : 0                 # without a potential contact, the last current contact is at 0 V
+    if isempty(pot)                                       # the last current contact is the ground, at 0 V
+        length(cur) >= 2 || error("conduction: with no contact held at a potential, at least two contacts must be fed a current")
+        Is = [c.contacts[k].value for k in cur]
+        abs(sum(Is)) <= 1e-9 * maximum(abs, Is) ||
+            error("conduction: with no contact held at a potential, the contact currents must sum to zero (they sum to $(sum(Is)) A)")
+    end
+    ground = isempty(pot) ? pop!(cur) : 0
     # φ₀: potential contacts at their values, the others at 0
     vals = [c.contacts[k].kind === :potential ? c.contacts[k].value : 0.0 for k in 1:nc]
-    vmax = max(maximum(abs, vals; init = 0.0), 1e-300)
+    vrange = maximum(vals) - minimum(vals)
     b0 = c.basis[1]
     _setcontacts!(b0, c.code, vals)
-    it = any(!=(0), vals) ? _solvephi!(b0, c, m, mesh, vmax) : (fill!(b0, 0); 0)
+    it = if vrange > 0
+        _solvephi!(b0, c, m, mesh, vrange)
+    else                                                  # all contacts at one potential: φ₀ is that potential
+        b0 .= ifelse.(c.code .!= 0, vals[1], 0.0); 0
+    end
     _cellgradients!(c.G, b0, c.code, mesh)
     I0 = [_contactcurrent(b0, c.G, m, c.code, c.sp, c.an, mesh, k) for k in 1:nc]
     # ψ_l: current contact l at 1 V, all others at 0
@@ -422,20 +585,21 @@ function solveconduction!(w::World, m)
         q.I = I0[k] + (isempty(cur) ? 0.0 : sum(Iψ[k, l] * V[l] for l in eachindex(cur)))
     end
     _cellgradients!(c.G, c.phi, c.code, mesh)
-    _divergence!(c.phi, c.phi, c.G, m, c.code, c.sp, c.an, mesh; curr = c.j)
+    _divergence!(c.phi, c.phi, c.G, m, c.code, c.sp, c.an, mesh; curr = c.j, fc = c.fill)
     c.iterations = it
     return c
 end
 
 # --- output and the Simulation ---------------------------------------------------------------------
 
-for f in (:setconduction!, :setresistivity!, :addcontact!)
-    @eval function $f(sim::Simulation, args...; kwargs...)
-        $f(sim.world, args...; kwargs...)
-        sim.hostworld === sim.world || $f(sim.hostworld, args...; kwargs...)
-        return sim
-    end
+# One Conduction, on the host World, shared with the World of the simulation (on the GPU or not).
+function setconduction!(sim::Simulation; kwargs...)
+    setconduction!(sim.hostworld; kwargs...)
+    sim.world.conduction = sim.hostworld.conduction
+    return sim
 end
+setresistivity!(sim::Simulation, args...; kwargs...) = (setresistivity!(sim.hostworld, args...; kwargs...); sim)
+addcontact!(sim::Simulation, args...; kwargs...) = (addcontact!(sim.hostworld, args...; kwargs..., t = sim.t); sim)
 solveconduction!(sim::Simulation) = (_drive!(sim.hostworld, sim.t); solveconduction!(sim.hostworld, _hoststate(sim)))
 
 "The electric potential of each cell [V] for the present state: (1, Nx, Ny, Nz), for `save!(sim; field = potentialmap)`."
@@ -460,7 +624,8 @@ end
     q_resistance(a=1, b=2)
 
 Table column: the resistance (V_a − V_b)/I_a [Ω] between contacts `a` and `b` (in the order they were
-added): the two-terminal resistance when the current enters at a and leaves at b.
+added): the two-terminal resistance when the current enters at a and leaves at b. NaN or ±Inf when
+I_a = 0.
 """
 q_resistance(a::Integer = 1, b::Integer = 2) = Quantity("R", "Ohm", 1, function (w, m, t)
     c = solveconduction!(w, m)

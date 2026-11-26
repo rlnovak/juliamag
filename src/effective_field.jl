@@ -146,7 +146,17 @@ function _currentdensity!(w::World{T}, m) where {T}
     J = w.current.J
     zeeman!(w.Jbuf, J)                         # (writes a uniform vector)
     _addterms!(w.Jbuf, w.Jterms)
-    w.conduction === nothing || (w.Jbuf .+= solveconduction!(w, m).j)
+    if w.conduction !== nothing
+        c = solveconduction!(w, m)
+        if w.Jbuf isa Array
+            w.Jbuf .+= c.j
+        else                                   # the current density of the host to the device
+            c.jdev === nothing && (c.jdev = (similar(w.Jbuf), Array{T}(undef, size(c.j))))
+            jd, jh = c.jdev
+            jh .= c.j
+            w.Jbuf .+= copyto!(jd, jh)
+        end
+    end
     return w.Jbuf
 end
 

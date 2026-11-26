@@ -1,0 +1,31 @@
+== tilted domain wall
+JuliaMag   50 cells along x: R = 261.550813186 Ohm
+JuliaMag  100 cells along x: R = 261.552463605 Ohm
+JuliaMag  200 cells along x: R = 261.552924879 Ohm
+JuliaMag  400 cells along x: R = 261.553045554 Ohm
+JuliaMag extrapolated: 261.553088311 Ohm (order 1.93)
+FEM   200 nodes along x: R = 261.553056621 Ohm
+FEM   400 nodes along x: R = 261.553079113 Ohm
+FEM   800 nodes along x: R = 261.553084762 Ohm
+FEM extrapolated: 261.553086657 Ohm (order 1.99)
+FEM   400 nodes along x: R = 261.553079113 Ohm
+FEM   800 nodes along x: R = 261.553084762 Ohm
+FEM  1600 nodes along x: R = 261.553086172 Ohm
+FEM extrapolated: 261.553086641 Ohm (order 2.00)
+JuliaMag - FEM, extrapolated: 1.67e-06 Ohm (6.4e-09 relative)
+potential, 100x20 cells: max |JuliaMag - FEM (x8)| = 1.15e-05 V of 1 V
+potential, 200x40 cells: max |JuliaMag - FEM (x8)| = 2.94e-06 V of 1 V
+
+== uniform m at 45 degrees
+JuliaMag   50 cells along x: R = 256.233050833 Ohm
+JuliaMag  100 cells along x: R = 256.233316524 Ohm
+JuliaMag  200 cells along x: R = 256.233408497 Ohm
+JuliaMag  400 cells along x: R = 256.233437833 Ohm
+JuliaMag extrapolated: 256.233451571 Ohm (order 1.65)
+FEM   400 nodes along x: R = 256.233433077 Ohm
+FEM   800 nodes along x: R = 256.233445566 Ohm
+FEM  1600 nodes along x: R = 256.233449120 Ohm
+FEM extrapolated: 256.233450533 Ohm (order 1.81)
+JuliaMag - FEM, extrapolated: 1.04e-06 Ohm (4.1e-09 relative)
+potential, 100x20 cells: max |JuliaMag - FEM (x16)| = 2.22e-05 V of 1 V
+

@@ -502,12 +502,32 @@ function excitation_terms(T)
     end
 end
 
+# AMR conduction (solved on the host) feeding the spin torques of a GPU world.
+function conduction_terms(T)
+    mesh = Mesh((40, 12, 2), (3e-9, 3e-9, 3e-9))
+    rp = RegionParams(mesh, Material(Msat = T(8e5), Aex = T(1.3e-11), alpha = T(0.05), pol = T(0.5), xi = T(0.05)))
+    defregion!(rp, 1, XRange(-Inf, -57e-9)); defregion!(rp, 2, XRange(57e-9, Inf))
+    setregion!(rp, 3; Msat = 6e5, Aex = 1e-11, alpha = 0.05, pol = 0.5, xi = 0.05); defregion!(rp, 3, Circle(15e-9))
+    sim = Simulation(mesh, rp; verbose = false)
+    setconduction!(sim; rho_par = 210e-9, rho_perp = 200e-9)
+    addcontact!(sim, 1; current = t -> 2e-3 * (1 + 1e10 * t)); addcontact!(sim, 2; potential = 0.0)
+    setcurrent!(sim, (0, 0, 0); zhangli = true)
+    Random.seed!(11); setmag!(sim, normalize!(randommag!(Random.default_rng(), zeromag(T, mesh))))
+    g = togpu(sim)
+    JuliaMag._drive!(sim.world, 3e-11); JuliaMag._drive!(g.world, 3e-11)
+    check("AMR: torque with the current of the conduction", llgrhs!(similar(g.m), g.m, g.world), llgrhs!(similar(sim.m), sim.m, sim.world), T == Float64 ? 1e-12 : 1e-5)
+    a = copy(sim.m); b = copy(g.m)
+    advanceto!(TimeStepper(sim.world, a; solver = :rk4, fixdt = 2e-14), 1e-12); advanceto!(TimeStepper(g.world, b; solver = :rk4, fixdt = 2e-14), 1e-12)
+    check("AMR: 50 steps", b, a, T == Float64 ? 1e-11 : 1e-4)
+end
+
 for T in (Float64, Float32)
     println("\n================ ", T, " ================")
     gneb_terms(T)
     eig_terms(T)
     driver_terms(T)
     excitation_terms(T)
+    conduction_terms(T)
     mI, mB = mats(T)
     for (lab, mesh, mat) in (
             ("mat open 3D Dind", Mesh((20, 16, 4), (3e-9, 3e-9, 2e-9)), mI),
