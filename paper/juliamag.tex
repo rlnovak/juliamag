@@ -242,7 +242,7 @@ function exchange!(B::AbstractArray{T,4},
 end
 \end{lstlisting}
 %
-CPU execution passes an \texttt{Array}; GPU execution will pass a \texttt{CuArray}
+CPU execution passes an \texttt{Array}; GPU execution passes a \texttt{CuArray}
 and Julia dispatches to a device method with the same name. There are no
 \texttt{if gpu} branches and no duplicated call sites; GPU support is additive.
 
@@ -555,12 +555,9 @@ surface: it contributes nothing to the exchange (Neumann), rather than acting as
 neighbour with $\vm=0$. The thermal field uses the moment $fM_s$ of the cell, as the
 fluctuation--dissipation theorem requires with these energies; \mumax{} uses $M_s$. The
 other rules were checked against \mumax{} field by field, on the disc of
-Sec.~\ref{sec:discstt} and, for DMI and anisotropy, on random states. Departures from
-them in earlier versions of \JuliaMag{} were found and corrected this way: exchange,
-DMI and anisotropy fields divided by $fM_s$ (the last two affect no result reported
-here), and a demagnetizing energy whose field ignored the fill. The latter is
-guarded by a regression test: a uniformly magnetized cube in which every cell
-has fill $f$ must have $f^2$ times the demagnetizing energy of the full cube.
+Sec.~\ref{sec:discstt} and, for DMI and anisotropy, on random states. A further test
+checks the demagnetizing energy of partially filled cells: a uniformly magnetized cube in which
+every cell has fill $f$ must have $f^2$ times the demagnetizing energy of the full cube.
 
 % ==========================================================================
 \section{Output, materials, and the simulation interface}
@@ -621,9 +618,7 @@ or, in a multi-region simulation, as per-cell arrays, through the same kernel. T
 demagnetizing convolution uses the same real-kernel, batched FFT structure through
 \texttt{CUDA.CUFFT}, with the zero padding written once and preserved by the
 transforms. A right-hand-side evaluation of the LLG equation then performs no
-device allocations and launches $14$ kernels (an earlier version, written with
-shifted views and fused broadcasts, launched $182$ and allocated $74$ temporaries
-per evaluation, and was launch- and allocation-bound). Reductions (averages,
+device allocations and launches $14$ kernels. Reductions (averages,
 energies, the minimizer's Barzilai--Borwein step) accumulate in \texttt{Float64}
 in either precision. A test suite checks every GPU method against its CPU
 counterpart on open and periodic meshes, scalar and region materials, and both DMI
@@ -1239,9 +1234,9 @@ A random perturbation of amplitude $10^{-6}$ added to $\vm$ before each
 relaxation (dashed curves) makes the outcome depend on the random seed. In one
 realization the vortex renucleates at zero field; in another the disc reverses
 at $-10$~mT. Tilting the field by $0.1^\circ$ or $1^\circ$ from $x$ gives yet other
-switching fields, $-10$ and $-20$~mT. An earlier version of the code, in which the odd
-components of the demagnetizing kernel were not yet set exactly to zero on their
-symmetry planes (Sec.~\ref{sec:demag}), renucleated the vortex at $-15$~mT.
+switching fields, $-10$ and $-20$~mT. With the odd components of the demagnetizing kernel
+left at their rounding-level values on their symmetry planes instead of exactly zero
+(Sec.~\ref{sec:demag}), the vortex renucleates at $-15$~mT.
 
 The reversible branch and the annihilation field are the same in every variant.
 The renucleation field, however, is set by the thermal fluctuations or the
@@ -1406,7 +1401,7 @@ that it remains correct when the texture straddles the wrap seam.
 \end{figure}
 
 % ==========================================================================
-\section{Conclusion and outlook}
+\section{Conclusion}
 \label{sec:conclusion}
 
 We have presented \JuliaMag, a micromagnetic solver written entirely in Julia,
@@ -1445,29 +1440,10 @@ a single-precision evaluation of the equation of motion costs the same as in
 \mumax{} on the same device, and a single-precision run reproduces the
 double-precision one to $4\times10^{-6}$.
 
-Beyond conventional acceleration, a transparent, dispatch-based, and fully
-differentiable-by-construction Julia implementation is a natural substrate for
-the machine-learning methods now reshaping computational micromagnetics. Two
-directions are especially promising. First, the magnetostatic field --- the
-dominant cost --- is increasingly being approximated or accelerated by neural
-surrogates: physics-informed and physics-aware machine-learning schemes have been
-applied to stray-field computation and to micromagnetic energy minimization,
-replacing or preconditioning the expensive convolution and its associated
-minimization~\cite{schaffer2023,schaffer2025,schaffer2022}. A minimizer and demag
-solver expressed as ordinary Julia functions can be differentiated and composed
-with such surrogates directly, without a foreign-function boundary. Second, the
-LLG dynamics themselves can be learned or extrapolated: neural ordinary
-differential equations have been used to forecast the outcome of spintronic
-experiments~\cite{chen2022}, and the same \texttt{DifferentialEquations.jl}
-ecosystem~\cite{diffeq} that supplies \JuliaMag's \texttt{Tsit5} integrator also provides
-the adjoint-sensitivity and neural-ODE machinery on which such approaches are
-built. Positioning \JuliaMag{} within this ecosystem --- rather than as an
-isolated, hand-optimized binary --- is, in our view, its most significant
-long-term advantage.
-
-Energy barriers and linear eigenmodes (Secs.~\ref{sec:barriers} and~\ref{sec:eigen})
-are the most recent additions. A script front end in the style of \mumax{} is next; multi-backend
-GPU execution through \texttt{KernelAbstractions.jl} remains planned. The code is open source and available at
+Energy barriers along geodesic minimum-energy paths, with their saddle points certified by
+the eigenvalues of the energy Hessian, and the linear eigenmodes of the magnetization reproduce
+analytic results and the solvers of MicroMagnetic.jl (Secs.~\ref{sec:barriers}
+and~\ref{sec:eigen}). The code is open source and available at
 \url{https://github.com/rlnovak/juliamag}.
 
 \section*{Acknowledgments}
@@ -1534,26 +1510,6 @@ GPU execution through \texttt{KernelAbstractions.jl} remains planned. The code i
   spin-polarized current in a magnetic nanopillar: Analytical versus
   micromagnetic calculations,'' Phys.\ Rev.\ B \textbf{80}, 140401(R) (2009).
   \url{https://doi.org/10.1103/PhysRevB.80.140401}.
-
-% --- Machine learning in micromagnetics (perspectives) ---
-\bibitem{schaffer2023} S.\ Schaffer, T.\ Schrefl, H.\ Oezelt, A.\ Kovacs,
-  L.\ Breth, N.\ J.\ Mauser, D.\ Suess, and L.\ Exl, ``Physics-informed machine
-  learning and stray field computation with application to micromagnetic energy
-  minimization,'' J.\ Magn.\ Magn.\ Mater.\ \textbf{576}, 170761 (2023).
-  \url{https://doi.org/10.1016/j.jmmm.2023.170761}.
-\bibitem{schaffer2025} S.\ Schaffer, T.\ Schrefl, H.\ Oezelt, N.\ J.\ Mauser, and
-  L.\ Exl, ``Physics aware machine learning for micromagnetic energy
-  minimization: Recent algorithmic developments,'' Comput.\ Phys.\ Commun.\
-  \textbf{315}, 109719 (2025).
-  \url{https://doi.org/10.1016/j.cpc.2025.109719}.
-\bibitem{schaffer2022} S.\ Schaffer, N.\ J.\ Mauser, T.\ Schrefl, D.\ Suess, and
-  L.\ Exl, ``Machine Learning Methods for the Prediction of Micromagnetic
-  Magnetization Dynamics,'' IEEE Trans.\ Magn.\ \textbf{58}, 1 (2022).
-  \url{https://doi.org/10.1109/TMAG.2021.3095251}.
-\bibitem{chen2022} X.\ Chen, F.\ A.\ Araujo, M.\ Riou, \textit{et al.},
-  ``Forecasting the outcome of spintronic experiments with Neural Ordinary
-  Differential Equations,'' Nat.\ Commun.\ \textbf{13}, 1016 (2022).
-  \url{https://doi.org/10.1038/s41467-022-28571-7}.
 
 % --- Language / ecosystem ---
 \bibitem{julia} J.\ Bezanson, A.\ Edelman, S.\ Karpinski, and V.\ B.\ Shah,
