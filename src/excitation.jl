@@ -50,6 +50,9 @@ function fieldmap(::Type{T}, mesh::Mesh, f) where {T}
     all(isfinite, a) || throw(ArgumentError("fieldmap: the function gives a value that is not finite"))
     return a
 end
+# the do-block forms, fieldmap(mesh) do x, y, z … end
+fieldmap(f::Function, mesh::Mesh) = fieldmap(Float64, mesh, f)
+fieldmap(f::Function, ::Type{T}, mesh::Mesh) where {T} = fieldmap(T, mesh, f)
 fieldmap(mesh::Mesh, shape::Function, v) = fieldmap(Float64, mesh, shape, v)
 fieldmap(::Type{T}, mesh::Mesh, shape::Function, v) where {T} = fieldmap(T, mesh, (x, y, z) -> shape(x, y, z) ? v : (0, 0, 0))
 

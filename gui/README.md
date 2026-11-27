@@ -1,15 +1,12 @@
 # JuliaMag GUI
 
-A dedicated desktop window (Qt6/QML via [QML.jl](https://github.com/JuliaGraphics/QML.jl))
-with an embedded [Makie](https://makie.org) viewport for live plots and
-magnetization visualization — **not** a browser interface. The initial layout
-mirrors mumax3 (a control column on the left; visualization on the right) and is
-meant to be restyled.
+A desktop window (Qt6/QML via [QML.jl](https://github.com/JuliaGraphics/QML.jl)) with two
+embedded [Makie](https://makie.org) viewports. It shows the essentials of a running simulation and
+drives it; everything else is done in a Julia script.
 
 ## Setup (once)
 
-QML, QMLMakie, and GLMakie are heavy binary dependencies, so the GUI has its own
-environment separate from the core package:
+QML, QMLMakie and GLMakie are heavy binary dependencies, so the GUI has its own environment:
 
 ```
 julia --project=gui gui/setup.jl
@@ -20,59 +17,86 @@ This dev-installs JuliaMag from the parent directory and adds the GUI packages.
 ## Run
 
 ```
-julia --project=gui gui/app.jl
+julia -t auto --project=gui gui/app.jl
 ```
 
-A window opens. Set the mesh (with optional periodic-x and an optional geometry
-shape), pick a material and initial state, then:
+The GUI needs at least two threads: the simulation runs on a worker thread, the window on the
+main one.
 
-- **Build** assembles the `Simulation` from the inputs.
-- **Relax** minimizes to equilibrium.
-- **Run** integrates under the applied field, streaming results live.
-- **Pause** suspends/resumes a run; **Step** advances one `Δt` chunk (when not
-  running); **Stop** ends the run.
+**Getting a simulation.**
+- **Open script…**, or drop a `.jl` file on the window: the script is run in a fresh module and
+  must leave a variable `sim::Simulation`. It should set the simulation up and not run it; the GUI
+  runs it. Geometry, regions, materials, currents, AMR contacts, fields in space and time, the
+  table and the OVF autosaves of the script all apply.
+- **Build** makes a simple one from the inputs: a mesh, a shape (full mesh, cylinder, rectangle,
+  ellipse), a material of the library, α and an initial state.
 
-Two live panels on the right:
+**Driving it.**
+- **Relax**: the energy minimizer (`relax!`).
+- **Run**: integrate for the duration given (empty: until Stop), with the solver of the
+  simulation and its scheduled output. The run ends exactly at the end time.
+- **Pause / Resume** and **Stop** act between two steps.
+- **Applied field → Set**: the uniform applied field, applied between two steps if a run is going.
+  Running does not change the field otherwise.
 
-1. **Time series** — a chosen scalar vs. time. The dropdown below selects the
-   y-quantity: `mx/my/mz`, the vortex or skyrmion `x/y` position, or the
-   topological charge. (Switching quantity clears the curve, since the units
-   differ.)
-2. **Field** — an in-plane `(mx,my)` quiver over a colour map of the current
-   state. The dropdowns below choose the mapped component (`mz/mx/my`), the
-   colormap, and the z-layer (for multilayer meshes); the **show** checkbox turns
-   the panel off to save rendering cost. During a run the field is redrawn every
-   few chunks (throttled); it always redraws on pause, step, and completion.
+**What it shows.**
+- ⟨m⟩(t) and the total energy E(t). The energy costs a field evaluation (on the host for a GPU
+  simulation), so it is computed at most 4 times per second of wall time; untick "energy curve"
+  to skip it.
+- The state of the run: t, accepted (and undone) steps, dt, maxTorque, ⟨m⟩, E, B_ext, wall time
+  and steps per second, device and precision.
+- One layer of m, as mumax3's colour wheel (hue: in-plane angle; white +z, black −z) or one
+  component; empty cells grey.
 
-**Drag and drop** a `.jl` script defining a variable `sim::Simulation` onto the
-window to load and visualize it — e.g. any of the `examples/` scripts adapted to
-leave a `sim` in scope. This is the GUI's on-ramp for problems too complex for
-the built-in controls (multi-region geometry, custom materials, currents).
+## How it works
 
-## Structure
+- `core.jl`: the jobs (build, load, relax, run, set the field) on a worker thread, and the
+  snapshots they publish. It needs no window, and `test_core.jl` checks it headlessly:
+  `julia -t 2 --project=gui gui/test_core.jl`.
+- `app.jl`: the Makie figures and the functions QML calls. A QML timer calls `gui_poll` 30 times
+  per second (`JULIAMAG_GUI_HZ` to change it) on the main thread; it takes what the worker
+  published, updates the plots, and tells QML which viewport to repaint (a `MakieViewport` is
+  redrawn only when QML calls its `update()`).
+- `main.qml`: the layout.
 
-- `main.qml` — the window layout (Qt6 QML): the control column, a `DropArea`, and
-  the two `MakieViewport`s with their option dropdowns.
-- `app.jl` — the Julia driver: builds a `Simulation` from the inputs (or a dropped
-  script), exposes `gui_build`/`gui_relax`/`gui_run`/`gui_pause`/`gui_step`/
-  `gui_stop`/`gui_loadscript`/`gui_set_ycurve`/`gui_set_field` to QML via
-  `@qmlfunction`, and streams results into Makie `Observable`s. All simulation
-  work is plain JuliaMag; QML is only UI. The GUI never modifies the core package
-  — it is an optional front end over the same file→CLI workflow.
+**Threads.** Qt's event loop holds the main thread, so:
+- the main thread touches the simulation only through a job, and the worker never touches Makie or
+  Qt;
+- the worker must not wait with `sleep`: Julia's timers are run by the main thread's event loop,
+  which is Qt's here, and the wait may never end. A long `Libc.systemsleep` would block garbage
+  collection instead. Waits are short naps with a safepoint between them (`nap`).
+
+**What a run through the GUI is.** `advanceto!` on the stepper of the simulation, as `run!`, with a
+hook after every accepted step for the window's requests and the publications. It ends exactly at
+the end time, and its scheduled output (table, OVF) is that of `run!`. `test_core.jl` checks that
+the state after a GUI run is bit for bit that of `run!`.
+
+**Publications.** During a run the worker publishes at most 20 times per second of wall time ⟨m⟩
+and the maximum torque of the last step (no extra evaluation); 10 times per second the layer shown
+(only that layer is copied from the GPU); 4 times per second (1 on a GPU) the total energy.
+
+## Measurements (2026-11-27, Intel Core Ultra 5 125H, CPU, Float64)
+
+64 × 64 × 1 Permalloy disc, 256 nm, 4 nm cells, adaptive RK45, 10 mT:
+- **Publishing:** the same 0.2 ns run with and without the worker's publications, bit-identical
+  results, wall time ratio 1.00 (0.96–1.05 over several runs).
+- **The window:** in the same process, 8 s with the window updating at 30 per second, alternating
+  with 8 s with the poll muted: 182–275 steps/s against 240–274 steps/s, about 15 % slower
+  with the window, with a scatter of the same size. The plots kept 30 updates per second.
+- **Start-up:** loading the GUI packages takes about 90 s cold. The first build, relax and run
+  compile for about a minute more.
+
+`JULIAMAG_GUI_SMOKE=out.png julia -t auto --project=gui gui/app.jl` repeats this check without a
+person at the window: it builds and runs the disc, logs the steps per second with the window on
+and muted to `out.png.log`, and saves a picture of the window.
 
 ## Notes
 
-- The QML module for the Julia-provided components (including QMLMakie's
-  `MakieViewport`) is `jlqml` — `main.qml` does `import jlqml`. Earlier QML.jl
-  versions used `org.julialang`; if you see *module "org.julialang" is not
-  installed*, your QML.jl is ≥ 0.11 and the import must be `jlqml` (already fixed
-  here).
-- The Makie `Figure` is handed to QML as the context property `plot`, bound in
-  the QML by `MakieViewport { scene: plot }`. If a QML.jl version rejects a
-  `Figure` as a `loadqml` keyword, pass it instead with
-  `set_context_property(qmlcontext(), "plot", plot)` after `loadqml`.
+- The QML module of the Julia-provided components (with QMLMakie's `MakieViewport`) is `jlqml`
+  for QML.jl ≥ 0.11.
 - `ENV["QSG_RENDER_LOOP"] = "basic"` is set for stable embedded Makie rendering.
-- The GUI logic (building/relaxing/running a simulation, extracting the image)
-  is exercised headlessly, but the **window itself must be run on a machine with
-  a display and Qt** — it cannot be verified in a headless CI. If a control
-  doesn't behave as expected, the wiring is in `app.jl`'s QML-callable functions.
+- On exit, GLMakie's screens are dropped without OpenGL calls: the context has already gone with
+  the window.
+- A script runs in a fresh module; its functions (of time, quantities) are called in the newest
+  world (`invokelatest`).
+- `:tsit5` has no step hook: the GUI runs it in pieces of 1/200 of the duration.

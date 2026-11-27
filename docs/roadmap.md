@@ -428,6 +428,28 @@ result and a reference code, paper section, commit. Ask before starting each.
   - Correctness of the displayed quantities.
 - **Then the fixes,** each measured: frames per second and the solver slowdown
   with the GUI attached.
+- **Done 2026-11-27** (`gui/README.md`). The audit of the old GUI found:
+  - the solver ran on the main thread, so the window froze during every chunk, and Relax and
+    Build froze it entirely;
+  - it used the old `Integrator` (Tsit5), not the `Simulation` driver, so the mumax3 solvers,
+    spin torques, AMR and functions of time were bypassed;
+  - the Makie viewports were never repainted after the first frame (a `MakieViewport` needs
+    `update()` from QML), and the time axis did not rescale;
+  - the field panel was indexed cell by cell (a GPU sync per cell) and in cell units under
+    "nm" axes;
+  - no energy, step, dt, maxTorque, wall time or device; loading a script never worked on
+    Julia 1.12 (world age).
+
+  The rewrite:
+  - a worker thread runs the jobs, and the window polls snapshots 30 times per second;
+  - a run is `advanceto!` with a hook per step, bit-identical to `run!` (`gui/test_core.jl`, 42
+    checks);
+  - the window shows ⟨m⟩(t), E(t), the colour wheel or one component, and the state of the run.
+  - Measured: publishing costs nothing measurable, and the window about 15 % of the solver's speed
+    at 30 updates per second.
+  - A review found the script loading, `:tsit5` and field-during-relax bugs, all fixed and tested.
+  - It also found that the do-block `fieldmap(mesh) do … end` of the manual and the paper did not
+    exist; it does now.
 
 **Stage closure.** After items 1–4, this stage of JuliaMag is closed: a
 traditional micromagnetic code, implemented, validated and functional. Next come

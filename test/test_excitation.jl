@@ -10,6 +10,8 @@ erf_(x) = ccall((:erf, Base.libm_name), Float64, (Float64,), x)
         f = fieldmap(mesh, (x, y, z) -> (x, y, z))
         @test f[:, 1, 1, 1] ≈ collect(JuliaMag.cellcenter(mesh, 1, 1, 1))
         @test f[:, 8, 6, 2] ≈ [10.5e-9, 7.5e-9, 1.5e-9]
+        @test fieldmap(mesh) do x, y, z; (x, y, z); end == f                  # the do-block form
+        @test fieldmap(Float32, mesh) do x, y, z; (x, y, z); end == Float32.(f)
         s = fieldmap(mesh, XRange(0, Inf), (0, 0, 2))
         @test s[3, :, :, :] == [i > 4 ? 2.0 : 0.0 for i in 1:8, j in 1:6, k in 1:2]
         rp = RegionParams(mesh, mat); defregion!(rp, 3, YRange(0, Inf))

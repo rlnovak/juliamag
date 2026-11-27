@@ -1,332 +1,249 @@
-# JuliaMag GUI application.
+# JuliaMag GUI: a Qt6/QML window (QML.jl) with two Makie viewports (QMLMakie/GLMakie).
 #
-# Opens a dedicated Qt6/QML window (via QML.jl) with two embedded Makie viewports
-# (via QMLMakie/GLMakie): a time-series panel (a chosen scalar vs. time) and a
-# field panel (an in-plane (mx,my) quiver over an mz — or other — colour map of
-# the current state). The control column builds a Simulation from the inputs or
-# from a dropped Julia script, and drives it with Run/Pause/Step/Stop. All heavy
-# work stays in Julia; QML is only the UI.
+#   julia -t auto --project=gui gui/app.jl        (after gui/setup.jl once)
 #
-# Run:  julia --project=gui gui/app.jl   (after gui/setup.jl once)
+# The left column builds a simulation from a few inputs, or loads a Julia script that defines
+# `sim`, and drives it: Relax, Run, Pause, Stop, and the applied field. The right column shows
+# ⟨m⟩(t) and the total energy, the state of the run (t, steps, dt, maxTorque, wall time,
+# device), and one layer of m as mumax3's colour wheel or as one component.
+#
+# The jobs run on a worker thread (core.jl); this file only draws. A QML timer calls `gui_poll`
+# about 30 times per second on the main thread, which takes what the worker published and
+# updates the plots. Start Julia with at least two threads (`-t auto`).
 
-ENV["QSG_RENDER_LOOP"] = "basic"   # recommended for embedded Makie/JuliaCanvas
+ENV["QSG_RENDER_LOOP"] = "basic"   # recommended for embedded Makie
 
-using JuliaMag
+include(joinpath(@__DIR__, "core.jl"))
+
 using QML
 using QMLMakie
 using GLMakie
 using Makie
 using Observables
-using Printf
 
-# Makie/GeometryBasics also export Mesh, Cylinder, Rect, Circle, Cone; import the
-# JuliaMag geometry names explicitly so an unqualified `Mesh`/`Cylinder` here is
-# unambiguously JuliaMag's (an explicit import wins over the `using` glob).
-using JuliaMag: Mesh, Cylinder, Cuboid, Ellipsoid
+if Threads.nthreads(:default) < 1 || (Threads.nthreads(:default) == 1 && Threads.threadpool() === :default)
+    error("the GUI needs a worker thread besides the main one: start Julia with `-t auto` (or `-t 2`)")
+end
 
-# --- Shared state ----------------------------------------------------------
-
-const status   = Observable("Ready.")
-const sim_ref  = Ref{Union{Nothing,Simulation}}(nothing)
-const stopflag = Ref(false)
-const pauseflag = Ref(false)
-const running  = Ref(false)
 const materials = String[m for m in materialnames()]
+const props = JuliaPropertyMap("status" => "Ready.", "info" => infotext(Snapshot()), "busy" => false,
+                               "running" => false, "paused" => false, "fps" => "", "nz" => 1, "shot" => false)
 
-# Field-panel display options (set from QML dropdowns/checkbox).
-const field_on      = Ref(true)       # draw the field panel at all
-const field_quantity = Ref("mz")      # scalar shown as the colour map
-const field_colormap = Ref("balance") # Makie colormap name
-const field_layer   = Ref(1)          # z-layer to show
-const field_every   = Ref(4)          # redraw the field every N chunks (throttle)
+# --- Figures -------------------------------------------------------------------
 
-# Time-series option (which scalar is on the y-axis).
-const ycurve = Ref("mx")
+const MAXPTS = 20_000                     # points per curve kept on screen (thinned when exceeded)
+const mx_pts = Observable(Point2f[]); const my_pts = Observable(Point2f[]); const mz_pts = Observable(Point2f[])
+const e_pts = Observable(Point2d[])       # Float64: relative changes of E near equilibrium are small
+const e_unit = Ref(0.0)                   # energies are shown in units of 10^k J (0: not chosen yet)
 
-# --- Live plot data --------------------------------------------------------
+const curves = Figure(size = (620, 420))
+const ax_m = Axis(curves[1, 1], ylabel = "⟨m⟩", xticklabelsvisible = false)
+const ax_e = Axis(curves[2, 1], xlabel = "t (ns)", ylabel = "E (J)")
+lines!(ax_m, mx_pts, color = :red, label = "mx")
+lines!(ax_m, my_pts, color = :green, label = "my")
+lines!(ax_m, mz_pts, color = :blue, label = "mz")
+axislegend(ax_m, position = :rc, framevisible = false, orientation = :horizontal)
+lines!(ax_e, e_pts, color = :black)
+linkxaxes!(ax_m, ax_e)
 
-const ts   = Observable(Float64[])    # time [s]
-const ys   = Observable(Float64[])    # the selected scalar vs. time
-const ylabel = Observable("mx")
+const wheel_img = Observable(fill(RGB{Float32}(0.75, 0.75, 0.75), 2, 2))
+const comp_img = Observable(fill(NaN32, 2, 2))
+const xr = Observable((-1.0, 1.0)); const yr = Observable((-1.0, 1.0))
+const view_mode = Ref("wheel")
+const last_slice = Ref{Any}(nothing)
 
-# Field-panel observables. The quiver arrays start with a single degenerate arrow
-# (not empty): arrows2d! cannot build its mesh from empty vectors.
-const fieldscalar = Observable(zeros(Float32, 2, 2))   # colour-map array
-const qx = Observable(Float32[1]); const qy = Observable(Float32[1])
-const qu = Observable(Float32[0]); const qv = Observable(Float32[0])
-const field_title = Observable("mz")
-const field_cmap  = Observable(:balance)   # colormap symbol for the field panel
+const field = Figure(size = (620, 480))
+const ax_f = Axis(field[1, 1], aspect = DataAspect(), xlabel = "x (nm)", ylabel = "y (nm)")
+const im_wheel = image!(ax_f, xr, yr, wheel_img; interpolate = false)
+const im_comp = image!(ax_f, xr, yr, comp_img; colormap = :RdBu, colorrange = (-1, 1),
+                       nan_color = RGBf(0.75, 0.75, 0.75), interpolate = false, visible = false)
+const cbar = Colorbar(field[1, 2], im_comp; height = Relative(0.6))
+cbar.blockscene.visible[] = false
 
-# --- Makie figures (one per QML viewport) ----------------------------------
-
-function build_curve_figure()
-    fig = Figure(size = (560, 360))
-    ax  = Axis(fig[1, 1], xlabel = "t (ns)", ylabel = "value")
-    ax.ylabel = "mx"
-    lines!(ax, lift(t -> t .* 1e9, ts), ys, color = :dodgerblue)
-    on(ylabel) do lab; ax.ylabel = lab; end
-    return fig
+# Append without notifying; past MAXPTS keep every other point, and always the newest.
+function _append!(obs, pts)
+    isempty(pts) && return false
+    v = obs.val
+    append!(v, pts)
+    length(v) > MAXPTS && (obs.val = push!(v[1:2:end-1], v[end]))
+    return true
 end
 
-function build_field_figure()
-    fig = Figure(size = (560, 420))
-    ax  = Axis(fig[1, 1], aspect = DataAspect(), xlabel = "x (nm)", ylabel = "y (nm)")
-    hm  = heatmap!(ax, fieldscalar, colormap = field_cmap, colorrange = (-1, 1))
-    Colorbar(fig[1, 2], hm)
-    arrows2d!(ax, qx, qy, qu, qv; color = :black)
-    on(field_title) do ttl; ax.title = ttl; end
-    return fig
-end
-
-const plot_curve = build_curve_figure()
-const plot_field = build_field_figure()
-
-# --- Building a simulation from GUI inputs ---------------------------------
-
-# Map a geometry choice + size to region params (region 0 empty background,
-# region 1 = the shape, keeping the chosen material) or a plain single-region
-# material for "Full mesh". The size is a diameter/side in nm; the shape is made
-# tall along z so it spans every layer.
-function _apply_geometry(mesh, mat, geom, sizestr)
-    geom = String(geom)
-    geom == "Full mesh" && return mat
-    s = parse(Float64, sizestr) * 1e-9
-    tall = 10 * mesh.cellsize[3] * mesh.size[3] + s      # spans all z layers
-    rp = RegionParams(mesh, mat)
-    setregion!(rp, 0; Msat = 0.0)                        # empty background
-    shape = geom == "Cylinder"  ? Cylinder(s, tall) :
-            geom == "Rectangle" ? Cuboid(s, s, tall)   :
-                                  Ellipsoid(s, s, tall)  # "Ellipse"
-    defregion!(rp, 1, shape)                             # region 1 keeps `mat`
-    return rp
-end
-
-function make_sim(nx, ny, nz, cellstr, matname, alphastr, statename, geom, sizestr, pbcx)
-    c = parse(Float64, cellstr) * 1e-9
-    mesh = Mesh((Int(nx), Int(ny), Int(nz)), (c, c, c); pbc = (pbcx ? 1 : 0, 0, 0))
-    mat  = material(String(matname); alpha = parse(Float64, alphastr))
-    params = _apply_geometry(mesh, mat, geom, sizestr)
-    sim = Simulation(mesh, params; demag = true)
-
-    state = String(statename)
-    cfg = if state == "Vortex"
-        VortexConfig(mesh; circ = 1, pol = 1)
-    elseif state == "Néel skyrmion"
-        NeelSkyrmionConfig(mesh; charge = 1, pol = -1)
-    elseif state == "Bloch skyrmion"
-        BlochSkyrmionConfig(mesh; charge = 1, pol = -1)
-    elseif state == "Random"
-        RandomConfig()
+function _drawslice!(sl, box)
+    last_slice[] = sl
+    box === nothing || (xr.val = (box[1], box[2]); yr.val = (box[3], box[4]))
+    if view_mode[] == "wheel"
+        wheel_img[] = wheelimage(sl)
     else
-        UniformConfig(1, 0, 0)
+        comp_img[] = componentimage(sl, view_mode[] == "mx" ? 1 : view_mode[] == "my" ? 2 : 3)
     end
-    setmag!(sim, cfg)
-    return sim
+    box === nothing || (notify(xr); notify(yr); reset_limits!(ax_f))
 end
 
-# --- Extracting display data from the current state ------------------------
+# --- The poll of the window ------------------------------------------------------
 
-# The scalar shown as the colour map, for the selected quantity and layer.
-function _scalar_field(sim, quantity, layer)
-    m = sim.m
-    Nx, Ny, Nz = sim.world.mesh.size
-    k = clamp(layer, 1, Nz)
-    comp = quantity == "mx" ? 1 : quantity == "my" ? 2 : 3
-    img = Array{Float32}(undef, Nx, Ny)
-    @inbounds for j in 1:Ny, i in 1:Nx
-        img[i, j] = Float32(m[comp, i, j, k])
+const frames = Ref(0); const fps_t0 = Ref(time()); const fps_text = Ref("")
+const shown = Dict{String,Any}()          # the values last given to QML
+
+_setprop!(k, v) = get(shown, k, nothing) == v || (props[k] = v; shown[k] = v)
+
+function gui_poll()
+    mute[] && return 0
+    s, mp, ep, reset = takeupdates!()
+    if reset
+        mx_pts.val = Point2f[]; my_pts.val = Point2f[]; mz_pts.val = Point2f[]; e_pts.val = Point2d[]
+        e_unit[] = 0.0; ax_e.ylabel = "E (J)"
     end
-    return img
+    if !isempty(ep) && e_unit[] == 0
+        x = maximum(p -> abs(p[2]), ep)
+        k = x > 0 ? floor(Int, log10(x)) : 0
+        e_unit[] = 10.0^k; ax_e.ylabel = rich("E (10", superscript(string(k)), " J)")
+    end
+    a = _append!(mx_pts, [Point2f(p[1] * 1e9, p[2]) for p in mp])
+    _append!(my_pts, [Point2f(p[1] * 1e9, p[3]) for p in mp])
+    _append!(mz_pts, [Point2f(p[1] * 1e9, p[4]) for p in mp])
+    b = _append!(e_pts, [Point2d(p[1] * 1e9, p[2] / e_unit[]) for p in ep])
+    redraw = 0                            # which viewports QML must update: 1 curves, 2 the map
+    if a || b || reset
+        notify(mx_pts); notify(my_pts); notify(mz_pts); notify(e_pts)
+        autolimits!(ax_m); autolimits!(ax_e)
+        redraw |= 1
+    end
+    if s.slice !== nothing
+        _drawslice!(s.slice, s.mesh)
+        s.mesh === nothing || _setprop!("nz", Int(s.mesh[5]))
+        redraw |= 2
+    end
+    _setprop!("info", infotext(s))
+    _setprop!("status", s.message)
+    _setprop!("busy", busy())
+    _setprop!("running", busy() && s.phase in ("running", "paused"))
+    _setprop!("paused", s.phase == "paused")
+    shoot[] && _setprop!("shot", true)
+    frames[] += 1
+    if time() - fps_t0[] >= 2
+        fps_text[] = @sprintf("%.0f updates/s", frames[] / (time() - fps_t0[]))
+        _setprop!("fps", fps_text[])
+        frames[] = 0; fps_t0[] = time()
+    end
+    return redraw
 end
 
-# Refresh the field panel (colour map + subsampled in-plane quiver).
-function update_field!(sim)
-    field_on[] || return
-    Nx, Ny, Nz = sim.world.mesh.size
-    cx, cy, _ = sim.world.mesh.cellsize
-    k = clamp(field_layer[], 1, Nz)
-    fieldscalar[] = _scalar_field(sim, field_quantity[], k)
-    field_title[] = @sprintf("%s (layer %d)", field_quantity[], k)
+# --- Calls from QML ----------------------------------------------------------------
 
-    # In-plane quiver, subsampled to ~20 arrows across x.
-    st = max(1, Nx ÷ 20)
-    xs = Float32[]; ys_ = Float32[]; us = Float32[]; vs = Float32[]
-    scale = Float32(0.8 * st)
-    @inbounds for j in 1:st:Ny, i in 1:st:Nx
-        push!(xs, Float32(i)); push!(ys_, Float32(j))
-        push!(us, Float32(sim.m[1, i, j, k]) * scale)
-        push!(vs, Float32(sim.m[2, i, j, k]) * scale)
-    end
-    qx[] = xs; qy[] = ys_; qu[] = us; qv[] = vs
-end
+_num(x) = parse(Float64, String(x))
+_busymsg(ok) = ok || setstatus!("A job is running.")
 
-# The scalar plotted on the time-series y-axis for the current state.
-function _ycurve_value(sim)
-    q = ycurve[]
-    if q == "mx"; return average(sim)[1]
-    elseif q == "my"; return average(sim)[2]
-    elseif q == "mz"; return average(sim)[3]
-    elseif q == "vortex x"; return vortexcore(sim.m, sim.world.mesh)[1]
-    elseif q == "vortex y"; return vortexcore(sim.m, sim.world.mesh)[2]
-    elseif q == "skyrmion x"; return skyrmionpos(sim.m, sim.world.mesh)[1]
-    elseif q == "skyrmion y"; return skyrmionpos(sim.m, sim.world.mesh)[2]
-    elseif q == "topological charge"; return topologicalcharge(sim.m, sim.world.mesh)
-    else; return average(sim)[1]
-    end
-end
-
-_push_point!(sim) = (push!(ts[], sim.t); push!(ys[], _ycurve_value(sim));
-                     notify(ts); notify(ys))
-
-# --- QML-callable functions ------------------------------------------------
-
-function gui_build(nx, ny, nz, cellstr, matname, alphastr, statename, geom, sizestr, pbcx)
-    status[] = "Building simulation…"
+function gui_build(nx, ny, nz, cell, mat, alpha, state, geom, sz, pbcx)
     try
-        sim = make_sim(nx, ny, nz, cellstr, matname, alphastr, statename, geom, sizestr, pbcx)
-        sim_ref[] = sim
-        ts[] = Float64[]; ys[] = Float64[]
-        update_field!(sim)
-        status[] = "Built. Relax or Run."
+        _busymsg(job_build(Int(nx), Int(ny), Int(nz), _num(cell), String(mat), _num(alpha), String(state),
+                           String(geom), _num(sz), Bool(pbcx)))
     catch e
-        status[] = "Build error: " * sprint(showerror, e)
+        setstatus!("Input error: " * sprint(showerror, e))
     end
     nothing
 end
 
-function gui_relax()
-    sim = sim_ref[]
-    sim === nothing && (status[] = "Build first."; return nothing)
-    status[] = "Relaxing…"
-    relax!(sim; stopdm = 1e-6)
-    update_field!(sim)
-    mx, my, mz = average(sim)
-    status[] = @sprintf("Relaxed. ⟨m⟩ = (%.3f, %.3f, %.3f)", mx, my, mz)
-    nothing
-end
+gui_loadscript(url) = (_busymsg(job_load(urlpath(String(url)))); nothing)
+gui_relax() = (_busymsg(job_relax()); nothing)
 
-# Load a dropped Julia script: include it and adopt the `sim` it defines.
-function gui_loadscript(path)
-    p = String(path)
-    startswith(p, "file://") && (p = p[8:end])
-    Sys.iswindows() && startswith(p, "/") && (p = p[2:end])   # file:///C:/… → C:/…
-    status[] = "Loading " * basename(p) * "…"
+function gui_run(dur)
+    d = strip(String(dur))
     try
-        mod = Module(:DroppedScript)
-        Core.eval(mod, :(using JuliaMag))
-        Base.include(mod, p)
-        if isdefined(mod, :sim) && getfield(mod, :sim) isa Simulation
-            sim_ref[] = getfield(mod, :sim)
-            ts[] = Float64[]; ys[] = Float64[]
-            update_field!(sim_ref[])
-            status[] = "Loaded sim from " * basename(p)
-        else
-            status[] = "Script ran but defined no `sim::Simulation`."
-        end
+        duration = isempty(d) || lowercase(d) in ("inf", "∞") ? Inf : _num(d) * 1e-9
+        duration > 0 || error("the duration must be positive")
+        _busymsg(job_run(duration))
     catch e
-        status[] = "Script error: " * sprint(showerror, e)
+        setstatus!("Input error: " * sprint(showerror, e))
     end
     nothing
 end
 
-# Run in chunks of `savedt`, streaming the curve and (throttled) the field.
-function gui_run(durstr, savedtstr, bxstr, bystr, bzstr)
-    sim = sim_ref[]
-    sim === nothing && (status[] = "Build first."; return nothing)
-    running[] && (status[] = "Already running."; return nothing)
-    duration = parse(Float64, durstr) * 1e-9
-    savedt   = parse(Float64, savedtstr) * 1e-12
-    Bext = (parse(Float64, bxstr), parse(Float64, bystr), parse(Float64, bzstr)) .* 1e-3
-    JuliaMag.setexternalfield!(sim.world, Bext)
+gui_pause() = (pauseflag[] = !pauseflag[]; nothing)
+gui_stop() = (stopflag[] = true; pauseflag[] = false; nothing)
 
-    stopflag[] = false; pauseflag[] = false; running[] = true
-    nchunks = max(1, round(Int, duration / savedt))
-    # The Integrator's clock starts at 0: sim.t = t0 + its time (else a second run
-    # would reset sim.t).
-    t0 = sim.t
-    it = JuliaMag.Integrator(sim.world, sim.m; tend = duration)
-    status[] = "Running…"
-    _push_point!(sim)
-    @async begin
-        i = 0
-        while i < nchunks
-            stopflag[] && break
-            if pauseflag[]
-                status[] = "Paused."
-                while pauseflag[] && !stopflag[]; sleep(0.05); end
-                stopflag[] && break
-                status[] = "Running…"
+function gui_field(bx, by, bz)
+    try
+        job_field((_num(bx), _num(by), _num(bz)) .* 1e-3)
+    catch e
+        setstatus!("Input error: " * sprint(showerror, e))
+    end
+    nothing
+end
+
+function gui_view(mode, lay, energy)
+    view_mode[] = String(mode)
+    w = view_mode[] == "wheel"
+    im_wheel.visible[] = w; im_comp.visible[] = !w; cbar.blockscene.visible[] = !w
+    want_energy[] = Bool(energy)
+    if Int(lay) != layer[]
+        job_layer(Int(lay))
+    elseif last_slice[] !== nothing
+        _drawslice!(last_slice[], nothing)
+    end
+    return 2
+end
+
+@qmlfunction gui_poll gui_build gui_loadscript gui_relax gui_run gui_pause gui_stop gui_field gui_view
+
+# A check without a person at the window: JULIAMAG_GUI_SMOKE=out.png waits for the window, builds
+# a vortex disc, relaxes it, runs it in a field for 30 s while it logs the steps per second and the
+# updates per second to out.png.log, then has the window save a picture of itself and quit.
+const smoke = get(ENV, "JULIAMAG_GUI_SMOKE", "")
+const smokelog = Ref{Any}(nothing)
+const shoot = Ref(false)
+const mute = Ref(false)                   # smoke: the poll does nothing (A/B of the window's cost)
+function slog(x...)
+    io = smokelog[]
+    io === nothing && return
+    println(io, round(time(), digits = 2), " ", x...); flush(io)
+end
+if !isempty(smoke)
+    smokelog[] = open(smoke * ".log", "w")
+    slog("threads ", Threads.nthreads(:default), "+", Threads.nthreads(:interactive), ", main thread in pool ", Threads.threadpool())
+    Threads.@spawn :default begin
+        try
+            t0 = time(); dumped = false
+            while fps_text[] == ""                     # wait for the window to poll
+                nap(0.2)
+                if !dumped && time() - t0 > 300
+                    slog("no poll after 300 s: task backtraces to stderr"); dumped = true
+                    ccall(:jl_print_task_backtraces, Cvoid, ())
+                end
             end
-            JuliaMag.advance!(it, savedt)
-            sim.t = t0 + JuliaMag.currenttime(it)
-            copyto!(sim.m, JuliaMag.state(it))
-            _push_point!(sim)
-            (i % field_every[] == 0) && update_field!(sim)
-            i += 1
-            yield()
+            slog("window polling: ", fps_text[])
+            job_build(64, 64, 1, 4.0, "Permalloy", 0.02, "Vortex", "Cylinder", 256.0, false); wait(job[])
+            job_relax(); wait(job[])
+            job_field((10e-3, 0.0, 0.0)); wait(job[])
+            slog("run")
+            job_run(Inf)
+            nap(4)                                     # past the start of the run
+            for i in 1:8                               # window on / muted, alternately
+                mute[] = iseven(i)
+                n0 = (@lock lk snap[].nsteps); w0 = time()
+                nap(8)
+                n1 = (@lock lk snap[].nsteps); w1 = time()
+                slog(mute[] ? "muted " : "window", ": ", round((n1 - n0) / (w1 - w0), digits = 1), " steps/s, ", fps_text[])
+            end
+            mute[] = false; nap(1)
+            shoot[] = true
+        catch e
+            slog(sprint(showerror, e, catch_backtrace()))
         end
-        update_field!(sim)
-        running[] = false
-        mx, my, mz = average(sim)
-        status[] = @sprintf("Done. t = %.3f ns, ⟨m⟩ = (%.3f, %.3f, %.3f)",
-                            sim.t * 1e9, mx, my, mz)
     end
-    nothing
 end
 
-# Advance exactly one chunk of `savedt` (when not in a running loop).
-function gui_step(savedtstr, bxstr, bystr, bzstr)
-    sim = sim_ref[]
-    sim === nothing && (status[] = "Build first."; return nothing)
-    running[] && (status[] = "Pause before stepping."; return nothing)
-    savedt = parse(Float64, savedtstr) * 1e-12
-    Bext = (parse(Float64, bxstr), parse(Float64, bystr), parse(Float64, bzstr)) .* 1e-3
-    JuliaMag.setexternalfield!(sim.world, Bext)
-    t0 = sim.t
-    it = JuliaMag.Integrator(sim.world, sim.m; tend = savedt)
-    JuliaMag.advance!(it, savedt)
-    sim.t = t0 + JuliaMag.currenttime(it)
-    copyto!(sim.m, JuliaMag.state(it))
-    _push_point!(sim)
-    update_field!(sim)
-    status[] = @sprintf("Stepped to t = %.4f ns", sim.t * 1e9)
-    nothing
-end
+# updates of the window per second (JULIAMAG_GUI_HZ, default 30)
+const pollms = round(Int, 1000 / parse(Float64, get(ENV, "JULIAMAG_GUI_HZ", "30")))
 
-gui_pause()  = (pauseflag[] = !pauseflag[];
-                status[] = pauseflag[] ? "Pausing…" : "Resuming…"; nothing)
-gui_stop()   = (stopflag[] = true; pauseflag[] = false;
-                status[] = "Stopping…"; nothing)
-
-# Display-option setters from QML.
-function gui_set_ycurve(name)
-    ycurve[] = String(name); ylabel[] = String(name)
-    sim = sim_ref[]
-    # Recompute the whole curve for the new quantity is not stored; just relabel
-    # and let subsequent points use it. Reset so the axis is clean.
-    ts[] = Float64[]; ys[] = Float64[]
-    sim !== nothing && _push_point!(sim)
-    nothing
-end
-function gui_set_field(quantity, colormap, layer, on)
-    field_quantity[] = String(quantity)
-    field_colormap[] = String(colormap)
-    field_cmap[]     = Symbol(String(colormap))   # live-updates the heatmap
-    field_layer[]    = Int(layer)
-    field_on[]       = Bool(on)
-    sim = sim_ref[]
-    sim !== nothing && field_on[] && update_field!(sim)
-    nothing
-end
-
-@qmlfunction gui_build gui_relax gui_loadscript gui_run gui_step gui_pause gui_stop gui_set_ycurve gui_set_field
-
-# --- Launch ----------------------------------------------------------------
-# The two Makie Figures and the observables are exposed to QML as context
-# properties. (The QML module for the Julia-provided components — including
-# QMLMakie's MakieViewport — is `jlqml` in QML.jl ≥ 0.11, imported in main.qml.)
-
-loadqml(joinpath(@__DIR__, "main.qml");
-        status = status, materials = materials,
-        plot_curve = plot_curve, plot_field = plot_field)
+loadqml(joinpath(@__DIR__, "main.qml"); props = props, materials = materials, pollms = pollms,
+        plot_curve = curves, plot_field = field, smoke = smoke)
 exec()
+stopflag[] = true
+# The window has closed with its OpenGL context: forget GLMakie's screens without the GL calls
+# that its exit hook would make on them.
+empty!(GLMakie.ALL_SCREENS); empty!(GLMakie.SINGLETON_SCREEN)
+for ((atlas, ctx), (tex, func)) in GLMakie.atlas_texture_cache
+    Makie.remove_font_render_callback!(atlas, func)
+end
+empty!(GLMakie.atlas_texture_cache)
