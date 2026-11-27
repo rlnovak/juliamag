@@ -4,7 +4,7 @@ Where JuliaMag stands and where it can go next, including a comparison with
 [MicroMagnetic.jl](https://github.com/MagneticSimulation/MicroMagnetic.jl), the
 other Julia micromagnetic simulator.
 
-## Current state (2026-11)
+## Current state (first stage closed 2026-11-27)
 
 Validated CPU + GPU micromagnetic solver:
 
@@ -20,14 +20,20 @@ Validated CPU + GPU micromagnetic solver:
 - **GPU:** the whole pipeline runs on CUDA via a package extension (dispatch on
   `CuArray`), one mumax3-style kernel per term, Float64 and Float32, validated on
   hardware (labmac03/04, Quadro P1000); a whole `Simulation` moves with `togpu`.
+- **Excitations:** applied fields and spin currents as maps times functions of
+  time; currents computed from the anisotropic magnetoresistance of the texture
+  (finite-volume conduction solve with contacts; R(t), potential and current maps).
+- **Beyond dynamics:** geodesic nudged elastic bands with climbing image and
+  certified saddle points; linear eigenmodes of an equilibrium.
 - **Validation:** µMAG standard problems 2, 4, 5 vs mumax3 and OOMMF; a
   current-driven vortex in a disc vs mumax3 (fields, 7 ns and 40 ns dynamics); a
   second round adapted from magnum.np demos. All re-run after the November 2026
   fixes and GPU rewrite (`gpu_validation/revalidation/`).
 - **Tooling:** mumax3-style driver layer (`tableadd!`/`tableautosave!`,
   `autosave!`/`save!` of OVF, output directory, run log with wall-clock times and
-  device), feature trackers, material library, a QML desktop GUI, a Colab
-  benchmark notebook, a paper.
+  device), feature trackers, material library, a QML desktop GUI (solver on a
+  worker thread, live curves and magnetization map), a Colab benchmark notebook,
+  a paper.
 
 ## Comparison with MicroMagnetic.jl
 
@@ -451,20 +457,19 @@ result and a reference code, paper section, commit. Ask before starting each.
   - It also found that the do-block `fieldmap(mesh) do … end` of the manual and the paper did not
     exist; it does now.
 
-**Stage closure.** After items 1–4, this stage of JuliaMag is closed: a
-traditional micromagnetic code, implemented, validated and functional. Next come
-the future directions below.
+**Stage closure: closed 2026-11-27 (user).** Items 1–4 are done, and this stage of
+JuliaMag is closed: a traditional micromagnetic code, implemented, validated and
+functional.
+- Final checks on the closing commit:
+  - the CPU test suite, 5891/5891 on dc351e8 (labmac03, 38 min);
+  - the GPU suite (`gpu_validation/test_gpu.jl`), 1143/1143 on 519e38a (no GPU code changed after it);
+  - the GUI's headless checks, 42/42.
+- The paper (Overleaf, 23 pages) describes the code as it stands.
 
-## Near-term priorities
+## Next
 
-The **driver ergonomics group above** is done (2026-11-20). Next, in order (see
-"Work queue"):
-1. finish the finite-temperature hysteresis and its paper section;
-2. **GNEB** and **eigenmodes** ([`plan_neb_eigen.md`](plan_neb_eigen.md));
-3. the mumax3-style input file;
-4. the GUI review.
-
-That closes the stage.
+The stage is closed. What comes next is chosen by the user from the future features and the two
+future directions below; each starts only on request.
 
 ## Future features
 

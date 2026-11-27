@@ -28,7 +28,9 @@ Index convention is `(x, y, z)`, 1-based, everywhere.
 
 ## Status
 
-Under construction. Roadmap:
+First stage closed (2026-11-27): a traditional micromagnetic code, implemented, validated
+and functional. What may come next is in the [roadmap](docs/roadmap.md).
+
 
 - [x] **1.** Package skeleton, `Mesh`, `Material`, magnetization states
 - [x] **2.** Exchange, uniaxial anisotropy, Zeeman fields (+ interfacial & bulk DMI)
@@ -49,6 +51,10 @@ Under construction. Roadmap:
       temperature in every solver; `TableAdd`/`TableAutosave`/`AutoSave`-style
       output; run log with wall-clock times and device; whole simulations on the GPU
       (`togpu(sim)`)
+- [x] Finite temperature (stochastic LLG)
+- [x] Energy barriers (geodesic NEB, climbing image, certified saddles) and linear eigenmodes
+- [x] Fields and currents that vary in space and time; currents from anisotropic magnetoresistance
+- [x] Desktop GUI ([`gui/`](gui/)): the solver on a worker thread, live curves and magnetization map
 
 ## Usage
 
