@@ -14,6 +14,10 @@ This manual covers installation, the core concepts, and three worked tutorials:
 2. [A disc with a vortex](#tutorial-2--a-disc-with-a-vortex) — non-rectangular geometry.
 3. [A stripe with a skyrmion driven by a current](#tutorial-3--a-stripe-with-a-skyrmion-and-a-current) — DMI + spin-transfer torque.
 
+The checks of JuliaMag against analytic results, OOMMF, mumax3, MicroMagnetic.jl, magnum.np and an
+independent finite-element solution are repeated step by step in the
+[validation tutorials](validation.md).
+
 ---
 
 ## 1. Installation
@@ -817,9 +821,14 @@ are refused. Both features work in Float64 by default; in Float32 the tolerances
 
 - **Standalone examples:** [`examples/`](../examples/) has the standard problems
   2, 4, and 5 with comparison plots against mumax3 and OOMMF.
-- **Desktop GUI:** a dedicated Qt/Makie window — see [`gui/README.md`](../gui/README.md).
-  Set it up once with `julia --project=gui gui/setup.jl`, then
-  `julia --project=gui gui/app.jl`.
+- **Validation tutorials:** [`validation.md`](validation.md) repeats every check against other codes
+  and analytic results, with the scripts and the numbers they give.
+- **Desktop GUI:** a Qt/Makie window — see [`gui/README.md`](../gui/README.md). Set it up once with
+  `julia --project=gui gui/setup.jl`, then `julia -t auto --project=gui gui/app.jl` (it needs at
+  least two threads: the simulation runs on a worker thread, the window on the main one). It opens
+  a script that leaves a `sim::Simulation` (or builds a simple one), relaxes it, runs it with its
+  own solver and output, pauses or stops between steps, and sets the applied field during a run.
+  It shows ⟨m⟩(t), E(t), the state of the run and one layer of m.
 - **GPU benchmark on Colab:** [`colab/`](../colab/) has a ready notebook (with an
   Open-in-Colab badge) to run the verification and benchmark on a cloud GPU.
 - **Paper:** [`paper/juliamag.tex`](../paper/juliamag.tex) documents the design
