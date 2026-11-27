@@ -73,7 +73,9 @@ entirely in the Julia programming language. \JuliaMag{} solves the
 Landau--Lifshitz--Gilbert (LLG) equation on a finite-difference mesh, including
 the exchange, magnetostatic (demagnetizing), uniaxial anisotropy, Zeeman, and
 Dzyaloshinskii--Moriya interactions, as well as the Zhang--Li and Slonczewski
-spin-transfer torques. The code is designed around Julia's multiple dispatch:
+spin-transfer torques. Applied fields and currents can vary in space and time, and
+the current can be computed from the anisotropic magnetoresistance of the
+magnetization. The code is designed around Julia's multiple dispatch:
 every field and torque operates on an abstract array type, so the same source
 runs unchanged on CPU and GPU arrays, and material parameters are read through
 accessors so that a single-material and a multi-region (multilayer) simulation
@@ -152,7 +154,9 @@ the FFT-accelerated demagnetization (Sec.~\ref{sec:fields}), the torques
 including spin-transfer (Sec.~\ref{sec:torques}), the time integration and energy
 minimization (Sec.~\ref{sec:solvers}), the initial states and I/O
 (Sec.~\ref{sec:config}), the geometry and material-region model
-(Sec.~\ref{sec:regions}), the output and simulation interface
+(Sec.~\ref{sec:regions}), the applied fields and currents that vary in space and
+time, with currents computed from the anisotropic magnetoresistance
+(Sec.~\ref{sec:excitation}), the output and simulation interface
 (Sec.~\ref{sec:interface}), and the GPU package extension
 (Sec.~\ref{sec:gpu}). Section~\ref{sec:validation} validates \JuliaMag{}
 against the \mumax{} and \oommf{} reference codes on the $\mu$MAG standard
@@ -558,6 +562,115 @@ other rules were checked against \mumax{} field by field, on the disc of
 Sec.~\ref{sec:discstt} and, for DMI and anisotropy, on random states. A further test
 checks the demagnetizing energy of partially filled cells: a uniformly magnetized cube in which
 every cell has fill $f$ must have $f^2$ times the demagnetizing energy of the full cube.
+
+% ==========================================================================
+\section{Fields and currents in space and time}
+\label{sec:excitation}
+
+The applied field is a uniform part plus any number of terms, each a map on the mesh
+times a function of time,
+%
+\begin{equation}
+  \vB_{\mathrm{ext}}(\bm{r},t) = \vB_0(t) + \sum_k \bm{b}_k(\bm{r})\,f_k(t),
+  \label{eq:bext}
+\end{equation}
+%
+as \mumax's \texttt{B\_ext.Add(mask, f(t))}. The current density of the
+spin-transfer torques is built in the same way. A map is either a function of
+position sampled at the cell centres (\texttt{fieldmap}) or a vector painted on a
+region (\texttt{regionmap}):
+%
+\begin{lstlisting}
+pulse = fieldmap(mesh) do x, y, z       # tesla per unit of f
+    (exp(-((x - 40e-9)^2 + y^2) / (2 * (30e-9)^2)), 0, 0)
+end
+addfield!(sim, pulse, t -> 0.02exp(-((t - 0.2e-9) / 50e-12)^2))
+addcurrent!(sim, regionmap(sim, 1, (0, 0, 1e12)))   # A/m^2
+\end{lstlisting}
+%
+The functions are evaluated at the time of every stage of the integrator, and the
+maps stay on the device during a GPU run. Every part of the code that uses the
+applied field sees the terms: the effective field, the Zeeman and total energies,
+the energy minimizer, and the energy barriers and eigenmodes of
+Secs.~\ref{sec:barriers} and~\ref{sec:eigen}. With a current that varies from
+cell to cell, each cell takes the spin-torque parameters of its region ($M_s$,
+$P$, $\xi$, $\Lambda$, $\epsilon'$, $\alpha$), as in \mumax.
+
+\subsection{Currents from anisotropic magnetoresistance}
+\label{sec:amr}
+
+A current fed through contacts does not flow uniformly through a magnetic texture,
+because the resistivity of a ferromagnet depends on the angle between the current
+and the magnetization~\cite{mcguire1975}:
+%
+\begin{equation}
+  \rho(\vm) = \rho_\perp\,\mathsf{I} + \Delta\rho\,\vm\vm^{\mathsf{T}},
+  \qquad
+  \sigma(\vm) = \rho^{-1}
+  = \frac{1}{\rho_\perp}\Big[\mathsf{I} - \frac{\Delta\rho}{\rho_\parallel}\,\vm\vm^{\mathsf{T}}\Big],
+  \label{eq:amrsigma}
+\end{equation}
+%
+with $\Delta\rho = \rho_\parallel-\rho_\perp$. In the quasi-static limit, charge
+conservation gives
+%
+\begin{equation}
+  \nabla\cdot\big[\sigma(\vm)\,\nabla\phi\big] = 0,
+  \qquad
+  \bm{j} = -\sigma(\vm)\,\nabla\phi .
+  \label{eq:amr}
+\end{equation}
+%
+The off-diagonal part of $\sigma$ is the planar Hall effect: where $\vm$ is oblique
+to the current, a transverse electric field builds up. \JuliaMag{} solves
+Eq.~\eqref{eq:amr} for the magnetization of every stage of the integrator, so the
+current follows the texture as it moves, and $\bm{j}$ enters the spin-transfer
+torques of Sec.~\ref{sec:stt}. The table records the resistance $R(t)$ between two
+contacts and the potential and current of each contact, and the maps of $\phi$ and
+$\bm{j}$ are saved like the magnetization. The Oersted field of $\bm{j}$ is not
+included.
+
+\paragraph{Discretization.}
+Equation~\eqref{eq:amr} is discretized by finite volumes on the cells of the mesh.
+The flux through the face between two cells uses the mean of their conductivity
+tensors. Its normal part takes the difference of the two potentials, and its
+tangential parts the mean of the central differences in the two cells. Each face
+flux is computed once, then added to one cell and subtracted from the other, so the
+charge is conserved to rounding. Faces towards cells that do not conduct carry no
+flux. A partially filled cell (Sec.~\ref{sec:regions}) conducts with $f\sigma$, and
+its current density is that of the material. A region without $M_s$, such as a lead,
+conducts isotropically, with $\rho_\perp$.
+
+\paragraph{Contacts.}
+A contact is a region held at a potential, or fed a total current. Either can be a
+function of time. Contacts are perfect conductors: on the face between a contact
+and the conductor the potential is that of the contact, half a cell from the centre
+of the conductor cell. The potentials of the current contacts follow from their
+currents by superposition: one solution has every current contact at $0$~V, and one
+more per current contact has that contact at $1$~V and all others at $0$. Cells that are not
+connected to any contact are treated as insulators, with a warning.
+
+On a contact face the flux keeps the tangential gradient of the conductor cell. The
+face is an equipotential, so the tangential derivative vanishes there, and dropping
+the term looks natural; it doubles the error. For a locally uniform $\sigma$, the
+one-sided normal derivative at the face is in error by
+$\tfrac{h}{4}\sigma_{dd}\,\partial_d^2\phi$, with $d$ the normal direction and $h$
+the cell size. Since $\partial_e^2\phi=0$ on the face, Eq.~\eqref{eq:amr} there
+reads $\sigma_{dd}\,\partial_d^2\phi = -2\sigma_{de}\,\partial_d\partial_e\phi$. The
+tangential gradient at the cell centre, $\tfrac{h}{2}\partial_d\partial_e\phi$,
+therefore cancels the $O(h)$ error.
+
+\paragraph{Solver.}
+The discrete operator is not symmetric where $\sigma$ has off-diagonal parts. It is
+solved with BiCGSTAB~\cite{vandervorst1992}, preconditioned by a sparse Cholesky
+factorization of the isotropic problem on the same cells, which is computed once
+per geometry. Since $\Delta\rho/\rho$ is a few percent, the preconditioned operator
+is close to the identity, and a solve started from the previous solution takes
+$0$--$3$ iterations, about the cost of one to three evaluations of the effective
+field. The solve is always done in \texttt{Float64} on the host, also for a
+single-precision or GPU simulation. In \texttt{Float32} the residual stalls near
+$10^{-6}$, and $0.2\%$ of the charge was lost. On the GPU, $\vm$ is copied to the
+host and $\bm{j}$ back at each stage.
 
 % ==========================================================================
 \section{Output, materials, and the simulation interface}
@@ -1187,6 +1300,141 @@ $0.1\%$ above the frequency of the gyration.)
   \label{fig:eigen}
 \end{figure*}
 
+\subsection{Fields and currents in space and time}
+\label{sec:valfields}
+
+Four problems exercise Eq.~\eqref{eq:bext} and the currents per cell. Each runs in
+both codes on the same GPU, in \texttt{Float32}, with the adaptive RK45 at
+$\mathrm{MaxErr}=10^{-5}$ (Table~\ref{tab:fields}):
+%
+\begin{itemize}
+  \item a Gaussian pulse, in space and in time, on a vortex
+        (\mumax{} \texttt{B\_ext.Add(mask, f(t))});
+  \item fields per region that oscillate in time, on a film
+        (\texttt{B\_ext.SetRegion});
+  \item a Zhang--Li current in one half of the standard-problem-5 square;
+  \item a Slonczewski current through a nanocontact in a disc.
+\end{itemize}
+%
+The two field problems oscillate quickly. Their differences come from table rows
+that fall at different adaptive times, and from the start states, relaxed in single
+precision by each code. In the second problem the first row differs: \mumax{} still
+reports the field it had before the assignment, because it evaluates a function of
+time only once the time changes. On the GPU, the fields, energies and torques with
+these terms agree with the CPU to $10^{-15}$ in \texttt{Float64} and
+$5\times10^{-7}$ in \texttt{Float32}, and so do $100$ steps of integration.
+
+\begin{table}[t]
+  \centering
+  \caption{Fields and currents in space and time against \mumax{}~3.11: root mean
+  square difference of the components of $\langle\vm\rangle$ over the run, relative
+  to the largest value of each component, and of the total energy (for the fields
+  per region, from the second row).}
+  \label{tab:fields}
+  \begin{tabular}{lccc}
+    \hline
+    problem & time & $\langle\vm\rangle$ & $E_{\mathrm{total}}$ \\
+    \hline
+    Gaussian pulse on a vortex       & $2$~ns & $(2.5$--$3.5)\times10^{-4}$ & $2\times10^{-6}$ \\
+    fields per region, film          & $1$~ns & $(0.9$--$4.6)\times10^{-4}$ & $1.4\times10^{-4}$ \\
+    Zhang--Li current in one half    & $1$~ns & $(0.3$--$0.9)\times10^{-5}$ & $3\times10^{-7}$ \\
+    Slonczewski current, nanocontact & $2$~ns & $(0.2$--$1.1)\times10^{-5}$ & $5\times10^{-7}$ \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\subsection{Currents from anisotropic magnetoresistance}
+\label{sec:valamr}
+
+\paragraph{Analytic strip.}
+For uniform $\vm$ at an angle $\theta$ to a strip, the computed fields give
+$E_x/j_x = \rho_\perp + \Delta\rho\cos^2\theta$ and
+$E_y/j_x = \Delta\rho\sin\theta\cos\theta$ to $10^{-7}$, at five angles.
+
+\paragraph{Against finite elements.}
+An independent solution with linear finite elements on triangles serves as the
+reference. The sample is a rectangle of $400\times80$~nm$^2$, $4$~nm thick, with
+$\rho_\parallel=210$ and $\rho_\perp=200$~n$\Omega$\,m and contacts at $1$ and
+$0$~V on the short sides. Two textures were used:
+%
+\begin{itemize}
+  \item a domain wall at an angle to the strip, $\vm=(\cos\vartheta,\sin\vartheta,0)$
+        with $\vartheta = 2\arctan\exp[(x-0.3y)/\delta]$ and $\delta=15$~nm, where
+        $\sigma_{xy}$ changes sign;
+  \item uniform $\vm$ at $45^\circ$, which has the largest planar Hall field. This
+        field is shorted at the contacts, so the case tests the contact faces.
+\end{itemize}
+%
+\JuliaMag{} ran on $50\times10$ to $400\times80$ cells, and the finite elements on
+up to $16$ nodes per cell along each side. Table~\ref{tab:amr} compares the
+Richardson limits of the resistance; they agree to $6\times10^{-9}$ and
+$4\times10^{-9}$. For uniform $\vm$ the order is below $2$ in both methods. It
+comes from the corners where the contacts meet the insulating sides. For the tilted
+wall, the potential at the cell centres agrees with the finite elements to
+$3\times10^{-6}$ of the applied $1$~V on $200\times40$ cells.
+Figure~\ref{fig:amr}(a) shows its planar Hall part, about $1$~mV, which the two
+methods give to $3\times10^{-3}$~mV.
+
+\begin{table}[t]
+  \centering
+  \caption{Resistance of the $400\times80\times4$~nm$^3$ strip: Richardson limits
+  of \JuliaMag{} ($50\times10$ to $400\times80$ cells) and of the finite-element
+  solution, with the observed orders of convergence.}
+  \label{tab:amr}
+  \begin{tabular}{lcccc}
+    \hline
+    texture & \JuliaMag{} ($\Omega$) & finite elements ($\Omega$) & difference & orders \\
+    \hline
+    tilted wall         & $261.553088$ & $261.553087$ & $6\times10^{-9}$ & $1.9$, $2.0$ \\
+    uniform, $45^\circ$ & $256.233452$ & $256.233451$ & $4\times10^{-9}$ & $1.7$, $1.8$ \\
+    \hline
+  \end{tabular}
+\end{table}
+
+\paragraph{A vortex between two leads.}
+The AMR also changes the dynamics. The test case is a Permalloy disc, $128$~nm in
+diameter and $10$~nm thick, on $2$~nm cells ($M_s=800$~kA/m, $A=13$~pJ/m,
+$\alpha=0.02$). Two non-magnetic leads, $40$~nm wide, feed it $2$~mA through
+contacts at their ends. The current exerts the Zhang--Li torque ($P=0.4$,
+$\xi=0.05$) on the relaxed vortex for $3$~ns, with
+$\Delta\rho/\rho_\perp = \varepsilon = 0$, $0.02$ and $0.04$. Already at
+$\varepsilon=0$ the current is not uniform: it follows the shape of the disc and
+the leads. The AMR changes $\bm{j}$ by $O(\varepsilon)$, so its effect on the
+resistance and on the core must be linear at small $\varepsilon$. It is:
+%
+\begin{center}
+\begin{tabular}{lccc}
+  \hline
+  & $\varepsilon=0.02$ & $\varepsilon=0.04$ & ratio \\
+  \hline
+  $R(0) - R(0)|_{\varepsilon=0}$ & $0.298215~\Omega$ & $0.593176~\Omega$ & $1.989$ \\
+  peak-to-peak of $R(t)$, $t>0.5$~ns & $1.22$~m$\Omega$ & $2.40$~m$\Omega$ & $1.97$ \\
+  largest shift of the core & $0.411$~nm & $0.786$~nm & $1.91$ \\
+  \hline
+\end{tabular}
+\end{center}
+%
+The remainder of the core shift, $\max|\bm{d}_{0.04}-2\bm{d}_{0.02}| = 0.037$~nm,
+is $5\%$ of $\bm{d}_{0.04}$, of order $\varepsilon$ as expected for the next term
+[Fig.~\ref{fig:amr}(b,c)]. A conduction solve took $0$ or $1$ BiCGSTAB iteration
+in this run. On the GPU, with the conduction solved on the host, the torques of a
+three-region film fed by a current contact that varies in time agree with the CPU
+to $4\times10^{-16}$ in \texttt{Float64} and $2\times10^{-7}$ in \texttt{Float32},
+and $50$ fourth-order Runge--Kutta steps to $8\times10^{-15}$ and $4\times10^{-7}$.
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=0.85\textwidth]{figures/amr_conduction.png}
+  \caption{Currents from anisotropic magnetoresistance. (a)~Planar Hall part of the
+  potential, $\phi$ minus its mean over each cross-section, for the tilted wall on
+  $200\times40$ cells: \JuliaMag{} (colour) and the finite-element reference
+  (contours, dashed where negative). The dotted line marks the centre of the wall.
+  (b)~Resistance of the vortex disc between the contacts, relative to its initial
+  value. (c)~Shift of the core along $x$ caused by the AMR: the shift for
+  $\varepsilon=0.04$ and twice the shift for $\varepsilon=0.02$.}
+  \label{fig:amr}
+\end{figure*}
+
 % ==========================================================================
 \section{Applications}
 \label{sec:applications}
@@ -1443,7 +1691,12 @@ double-precision one to $4\times10^{-6}$.
 Energy barriers along geodesic minimum-energy paths, with their saddle points certified by
 the eigenvalues of the energy Hessian, and the linear eigenmodes of the magnetization reproduce
 analytic results and the solvers of MicroMagnetic.jl (Secs.~\ref{sec:barriers}
-and~\ref{sec:eigen}). The code is open source and available at
+and~\ref{sec:eigen}). Fields and currents that vary in space and time follow
+\mumax{} to $2\times10^{-6}$--$5\times10^{-4}$ in $\langle\vm\rangle$. Currents computed from the
+anisotropic magnetoresistance give the resistance of a finite-element solution to
+$6\times10^{-9}$, and their effect on a gyrating vortex is linear in the
+magnetoresistance, as it must be (Secs.~\ref{sec:valfields} and~\ref{sec:valamr}).
+The code is open source and available at
 \url{https://github.com/rlnovak/juliamag}.
 
 \section*{Acknowledgments}
@@ -1574,6 +1827,15 @@ and~\ref{sec:eigen}). The code is open source and available at
   diagram for switching a magnetic vortex core in soft magnetic nanodots,''
   Phys.\ Rev.\ Lett.\ \textbf{101}, 267206 (2008).
   \url{https://doi.org/10.1103/PhysRevLett.101.267206}.
+
+% --- Anisotropic magnetoresistance ---
+\bibitem{mcguire1975} T.\ R.\ McGuire and R.\ I.\ Potter, ``Anisotropic
+  magnetoresistance in ferromagnetic 3d alloys,'' IEEE Trans.\ Magn.\
+  \textbf{11}, 1018 (1975). \url{https://doi.org/10.1109/TMAG.1975.1058782}.
+\bibitem{vandervorst1992} H.\ A.\ van der Vorst, ``Bi-CGSTAB: A fast and smoothly
+  converging variant of Bi-CG for the solution of nonsymmetric linear systems,''
+  SIAM J.\ Sci.\ Stat.\ Comput.\ \textbf{13}, 631 (1992).
+  \url{https://doi.org/10.1137/0913035}.
 
 \end{thebibliography}
 
